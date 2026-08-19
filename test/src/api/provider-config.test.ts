@@ -9,6 +9,7 @@ import {
   saveProviderConfig,
   deleteProviderConfig,
 } from "~/src/llm/credential-store";
+import { testProviderConnection } from "~/src/llm/provider-test";
 import type { SessionAuth } from "~/src/types";
 
 vi.mock("~/src/llm/credential-store", () => ({
@@ -22,10 +23,15 @@ vi.mock("~/src/audit/audit-logger", () => ({
   auditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("~/src/llm/provider-test", () => ({
+  testProviderConnection: vi.fn(),
+}));
+
 const mockGetProviderConfig = vi.mocked(getProviderConfig);
 const mockListProviderConfigs = vi.mocked(listProviderConfigs);
 const mockSaveProviderConfig = vi.mocked(saveProviderConfig);
 const mockDeleteProviderConfig = vi.mocked(deleteProviderConfig);
+const mockTestProviderConnection = vi.mocked(testProviderConnection);
 
 const session: SessionAuth = {
   userId: "user_1",
@@ -54,7 +60,6 @@ function config(
     provider: "openai",
     enabled: true,
     keys: ["sk-openai-test"],
-    defaultModel: "gpt-4o",
     settings: { timeout: 60 },
     updatedAt: 123,
     ...over,
@@ -90,7 +95,6 @@ describe("GET /api/providers", () => {
       mode: "pi-ai",
       configured: true,
       enabled: true,
-      defaultModel: "gpt-4o",
       keyCount: 2,
     });
     const serialized = JSON.stringify(body);
@@ -143,7 +147,6 @@ describe("PUT /api/providers/:provider", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           keys: ["sk-a", "sk-b"],
-          defaultModel: "gpt-4o-mini",
         }),
       },
     );
@@ -225,6 +228,102 @@ describe("PUT /api/providers/:provider", () => {
     const call = mockSaveProviderConfig.mock.calls[0][3];
     expect(call.keys).toBeUndefined();
     expect(call.settings).toEqual({ timeout: 30 });
+  });
+});
+
+describe("POST /api/providers/:provider/test", () => {
+  const postJson = (path: string, payload: string) =>
+    fetchJson(buildApp(), path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: payload,
+    });
+
+  beforeEach(() => {
+    mockTestProviderConnection.mockResolvedValue({
+      ok: true,
+      status: 200,
+      modelCount: 3,
+    });
+  });
+
+  it("tests with candidate keys and returns the result", async () => {
+    const { status, body } = await postJson(
+      "/api/providers/openai/test",
+      JSON.stringify({ keys: ["sk-candidate"] }),
+    );
+    expect(status).toBe(200);
+    expect(body).toEqual({ ok: true, status: 200, modelCount: 3 });
+    expect(mockTestProviderConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "openai", keys: ["sk-candidate"] }),
+    );
+  });
+
+  it("falls back to stored keys and merges stored settings", async () => {
+    mockGetProviderConfig.mockResolvedValue(
+      config({ keys: ["sk-stored"], settings: { timeout: 30 } }),
+    );
+    const { status } = await postJson(
+      "/api/providers/openai/test",
+      JSON.stringify({}),
+    );
+    expect(status).toBe(200);
+    expect(mockTestProviderConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        keys: ["sk-stored"],
+        settings: { timeout: 30 },
+      }),
+    );
+  });
+
+  it("returns 404 when nothing is configured and no keys given", async () => {
+    mockGetProviderConfig.mockResolvedValue(undefined);
+    const { status, body } = await postJson(
+      "/api/providers/anthropic/test",
+      JSON.stringify({}),
+    );
+    expect(status).toBe(404);
+    expect(body.error).toContain("not configured");
+    expect(mockTestProviderConnection).not.toHaveBeenCalled();
+  });
+
+  it("passes through a failed test result", async () => {
+    mockTestProviderConnection.mockResolvedValue({
+      ok: false,
+      status: 401,
+      error: "invalid api key",
+    });
+    const { status, body } = await postJson(
+      "/api/providers/openai/test",
+      JSON.stringify({ keys: ["bad"] }),
+    );
+    expect(status).toBe(200);
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe("invalid api key");
+  });
+
+  it("rejects an invalid provider id", async () => {
+    const { status } = await postJson(
+      "/api/providers/Bad%20Provider!/test",
+      JSON.stringify({ keys: ["a"] }),
+    );
+    expect(status).toBe(400);
+  });
+
+  it("rejects invalid keys", async () => {
+    const { status } = await postJson(
+      "/api/providers/openai/test",
+      JSON.stringify({ keys: "not-an-array" }),
+    );
+    expect(status).toBe(400);
+  });
+
+  it("rejects non-object settings", async () => {
+    const { status } = await postJson(
+      "/api/providers/openai/test",
+      JSON.stringify({ settings: "nope" }),
+    );
+    expect(status).toBe(400);
   });
 });
 

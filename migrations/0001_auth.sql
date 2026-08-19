@@ -26,11 +26,10 @@ CREATE TABLE IF NOT EXISTS users (
     emailVerified BOOLEAN NOT NULL,
     image TEXT,
     createdAt TIMESTAMP NOT NULL,
-    updatedAt TIMESTAMP NOT NULL
+    updatedAt TIMESTAMP NOT NULL,
+    lastSignedInAt TIMESTAMP
     -- Optional: For Gmail duplicate prevention (see docs)
     -- normalized_email TEXT
-    -- Optional: Sign-in tracking for engagement analytics
-    -- lastSignedInAt TIMESTAMP  -- Updated on each sign-in
 );
 
 -- Sessions

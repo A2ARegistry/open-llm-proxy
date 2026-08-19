@@ -35,7 +35,6 @@ export interface StoredProviderConfig {
   provider: string;
   enabled: boolean;
   encryptedKeys: EncryptedCredential[];
-  defaultModel?: string;
   settings: ProviderSettings;
   updatedAt: number;
 }
@@ -89,7 +88,6 @@ function parseRow(row: ProviderConfigRow): StoredProviderConfig {
     row.config,
     {} as {
       keys?: unknown[];
-      defaultModel?: string;
       settings?: ProviderSettings;
     },
   );
@@ -98,7 +96,6 @@ function parseRow(row: ProviderConfigRow): StoredProviderConfig {
     provider: row.provider,
     enabled: row.enabled === 1,
     encryptedKeys: (config.keys ?? []) as EncryptedCredential[],
-    defaultModel: config.defaultModel,
     settings: config.settings ?? {},
     updatedAt: 0,
   };
@@ -152,7 +149,6 @@ export async function listProviderConfigs(
 export interface SaveProviderConfigInput {
   keys?: string[]; // plaintext keys to encrypt (replaces existing)
   enabled?: boolean;
-  defaultModel?: string;
   settings?: ProviderSettings;
 }
 
@@ -174,7 +170,6 @@ export async function saveProviderConfig(
 
   const nextConfig = {
     keys: encryptedKeys,
-    defaultModel: input.defaultModel ?? existing?.defaultModel,
     settings: { ...(existing?.settings ?? {}), ...(input.settings ?? {}) },
   };
 
@@ -194,7 +189,6 @@ export async function saveProviderConfig(
       ...existing,
       enabled: input.enabled !== false,
       encryptedKeys,
-      defaultModel: nextConfig.defaultModel,
       settings: nextConfig.settings,
       keys: input.keys ?? existing.keys,
       updatedAt: now,
@@ -221,7 +215,6 @@ export async function saveProviderConfig(
     provider,
     enabled: input.enabled !== false,
     encryptedKeys,
-    defaultModel: nextConfig.defaultModel,
     settings: nextConfig.settings,
     keys: input.keys ?? [],
     updatedAt: now,

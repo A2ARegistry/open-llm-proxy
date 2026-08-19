@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS provider_configs (
     organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     provider TEXT NOT NULL, -- 'openai', 'anthropic', 'custom-openai', ...
     enabled INTEGER NOT NULL DEFAULT 1,
-    config TEXT NOT NULL,   -- JSON: encrypted keys (envelope), defaultModel, settings
+    config TEXT NOT NULL,   -- JSON: encrypted keys (envelope), settings
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     UNIQUE(organization_id, provider)
@@ -82,7 +82,7 @@ CREATE INDEX IF NOT EXISTS idx_metrics_org_provider_ts ON request_metrics(organi
 -- Audit logs
 CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
-    organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE, -- NULL for system-wide events (e.g. sign-in)
     user_id TEXT NOT NULL REFERENCES users(id),
     action TEXT NOT NULL,       -- 'create', 'update', 'delete', 'auth'
     resource_type TEXT NOT NULL, -- 'provider', 'api_key', 'user', 'tenant', 'session', ...

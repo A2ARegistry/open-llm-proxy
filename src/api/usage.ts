@@ -14,7 +14,7 @@ export const usageRouter = new Hono<AppBindings>();
 
 function range(c: { req: { query: (k: string) => string | undefined } }) {
   const now = nowSeconds();
-  const q = c.req.query;
+  const q = (k: string) => c.req.query(k);
   const startRaw = q("start");
   const endRaw = q("end");
   const start = startRaw ? Math.floor(Number(startRaw)) : now - 30 * 24 * 3600;

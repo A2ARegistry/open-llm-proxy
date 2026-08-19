@@ -41,7 +41,7 @@ export async function verifyPassword(
   return diff === 0;
 }
 
-export const DEFAULT_ADMIN_EMAIL = "admin@localhost";
+export const DEFAULT_ADMIN_EMAIL = "admin@example.com";
 export const DEFAULT_ADMIN_PASSWORD = "AwesomeProxy!!";
 
 export const INITIAL_ADMIN_SETTING = "app.initial_admin";
@@ -57,7 +57,7 @@ export interface InitialAdminInfo {
 
 /**
  * Seed a default owner account on a fresh database so the deployment is usable
- * immediately: `admin@localhost` / `AwesomeProxy!!` (overridable via
+ * immediately: `admin@example.com` / `AwesomeProxy!!` (overridable via
  * `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` env vars). The account is
  * pre-verified (no email round-trip) and flagged as must-change-password.
  *

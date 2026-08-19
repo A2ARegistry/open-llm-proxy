@@ -7,7 +7,10 @@
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev",
+    "dev": "npm run db:migrate:local && wrangler dev --port 8787",
+    "migrate": "wrangler d1 migrations apply DB --remote",
+    "release": "npm run migrate && npm run deploy",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "cf-typegen": "wrangler types",
     "cf:login": "wrangler login",
     "cf:logout": "wrangler logout",

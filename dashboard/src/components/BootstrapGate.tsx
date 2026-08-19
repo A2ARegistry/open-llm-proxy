@@ -1,7 +1,8 @@
+import { apiGet, apiSend } from "../lib/api";
+import { Button, Input, Spinner } from "./ui";
+import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiGet, apiSend } from "../lib/api";
-import { Spinner } from "./ui";
 
 interface BootstrapStatus {
   initialized: boolean;
@@ -25,6 +26,7 @@ export function BootstrapGate({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [mustChange, setMustChange] = useState(false);
+  const [phase, setPhase] = useState<"form" | "success">("form");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -42,6 +44,15 @@ export function BootstrapGate({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (phase !== "success") return;
+    const t = setTimeout(() => {
+      setMustChange(false);
+      navigate("/dashboard", { replace: true });
+    }, 1600);
+    return () => clearTimeout(t);
+  }, [phase, navigate]);
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -54,8 +65,14 @@ export function BootstrapGate({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
+  const finish = () => {
+    setMustChange(false);
+    navigate("/dashboard", { replace: true });
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (busy) return;
     setError(null);
     if (newPassword.length < 12) {
       setError("New password must be at least 12 characters");
@@ -71,13 +88,35 @@ export function BootstrapGate({ children }: { children: React.ReactNode }) {
         currentPassword,
         newPassword,
       });
-      navigate("/dashboard", { replace: true });
+      setPhase("success");
     } catch (err) {
-      setError((err as { message?: string }).message || "Password change failed");
-    } finally {
+      setError(
+        (err as { message?: string }).message || "Password change failed",
+      );
       setBusy(false);
     }
   };
+
+  if (phase === "success") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
+            <CheckCircle2 size={30} className="text-green-600" />
+          </div>
+          <h1 className="text-xl font-semibold text-gray-900">
+            Password changed
+          </h1>
+          <p className="mt-2 text-sm text-gray-500">
+            Your password has been updated. Taking you to the dashboard…
+          </p>
+          <Button className="mt-6 w-full" onClick={finish}>
+            Continue to dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
@@ -90,8 +129,8 @@ export function BootstrapGate({ children }: { children: React.ReactNode }) {
             Set a new admin password
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            You signed in with the default credentials. Choose a strong
-            password to continue.
+            You signed in with the default credentials. Choose a strong password
+            to continue.
           </p>
         </div>
         <form
@@ -106,42 +145,38 @@ export function BootstrapGate({ children }: { children: React.ReactNode }) {
           <label className="mb-1 block text-sm font-medium text-gray-700">
             Current password
           </label>
-          <input
+          <Input
             type="password"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             required
-            className="mb-4 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="mb-4"
           />
           <label className="mb-1 block text-sm font-medium text-gray-700">
             New password
           </label>
-          <input
+          <Input
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             required
             minLength={12}
-            className="mb-4 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="mb-4"
           />
           <label className="mb-1 block text-sm font-medium text-gray-700">
             Confirm new password
           </label>
-          <input
+          <Input
             type="password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             required
             minLength={12}
-            className="mb-6 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="mb-6"
           />
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {busy ? "Saving…" : "Change password"}
-          </button>
+          <Button type="submit" loading={busy} className="w-full">
+            Change password
+          </Button>
         </form>
       </div>
     </div>

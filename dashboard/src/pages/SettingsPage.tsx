@@ -1,8 +1,3 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { BellRing, ShieldAlert, Zap } from "lucide-react";
-import { apiGet, apiSend } from "../lib/api";
-import { fmtUsd } from "../lib/format";
 import {
   Badge,
   Button,
@@ -13,6 +8,11 @@ import {
   Select,
   Spinner,
 } from "../components/ui";
+import { apiGet, apiSend } from "../lib/api";
+import { fmtUsd } from "../lib/format";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { BellRing, ShieldAlert, Zap } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface AlertSettings {
   enabled: boolean;
@@ -55,8 +55,20 @@ export function SettingsPage() {
     queryKey: ["spend-status"],
     queryFn: () =>
       apiGet<{
-        daily: { usageUsd: number; limitUsd: number | null; percent: number; breached: boolean; warning: boolean } | null;
-        monthly: { usageUsd: number; limitUsd: number | null; percent: number; breached: boolean; warning: boolean } | null;
+        daily: {
+          usageUsd: number;
+          limitUsd: number | null;
+          percent: number;
+          breached: boolean;
+          warning: boolean;
+        } | null;
+        monthly: {
+          usageUsd: number;
+          limitUsd: number | null;
+          percent: number;
+          breached: boolean;
+          warning: boolean;
+        } | null;
       }>("/api/usage/alerts"),
   });
   const alerts = useQuery({
@@ -66,11 +78,16 @@ export function SettingsPage() {
   const webhooks = useQuery({
     queryKey: ["alert-webhooks"],
     queryFn: () =>
-      apiGet<{ webhooks: WebhookView[] }>("/api/alerts/webhooks").then((r) => r.webhooks),
+      apiGet<{ webhooks: WebhookView[] }>("/api/alerts/webhooks").then(
+        (r) => r.webhooks,
+      ),
   });
   const events = useQuery({
     queryKey: ["alert-events"],
-    queryFn: () => apiGet<{ events: AlertEventView[] }>("/api/alerts/events").then((r) => r.events),
+    queryFn: () =>
+      apiGet<{ events: AlertEventView[] }>("/api/alerts/events").then(
+        (r) => r.events,
+      ),
   });
 
   const [daily, setDaily] = useState("");
@@ -90,18 +107,30 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (status.data) {
-      setDaily(status.data.daily?.limitUsd != null ? String(status.data.daily.limitUsd) : "");
-      setMonthly(status.data.monthly?.limitUsd != null ? String(status.data.monthly.limitUsd) : "");
+      setDaily(
+        status.data.daily?.limitUsd != null
+          ? String(status.data.daily.limitUsd)
+          : "",
+      );
+      setMonthly(
+        status.data.monthly?.limitUsd != null
+          ? String(status.data.monthly.limitUsd)
+          : "",
+      );
     }
     if (alerts.data) setAlertsForm(alerts.data.alerts);
   }, [status.data, alerts.data]);
 
   const saveLimits = useMutation({
     mutationFn: () =>
-      apiSend<{ spendLimits: { dailyUsd?: number; monthlyUsd?: number } }>("PUT", "/api/usage/limits", {
-        dailyUsd: daily.trim() === "" ? null : Number(daily),
-        monthlyUsd: monthly.trim() === "" ? null : Number(monthly),
-      }),
+      apiSend<{ spendLimits: { dailyUsd?: number; monthlyUsd?: number } }>(
+        "PUT",
+        "/api/usage/limits",
+        {
+          dailyUsd: daily.trim() === "" ? null : Number(daily),
+          monthlyUsd: monthly.trim() === "" ? null : Number(monthly),
+        },
+      ),
     onSuccess: () => {
       setMessage("Spend limits saved.");
       setError(null);
@@ -111,7 +140,12 @@ export function SettingsPage() {
   });
 
   const saveAlerts = useMutation({
-    mutationFn: () => apiSend<{ alerts: AlertSettings }>("PUT", "/api/alerts/config", alertsForm),
+    mutationFn: () =>
+      apiSend<{ alerts: AlertSettings }>(
+        "PUT",
+        "/api/alerts/config",
+        alertsForm,
+      ),
     onSuccess: (data) => {
       setAlertsForm(data.alerts);
       setMessage("Alert settings saved.");
@@ -149,7 +183,10 @@ export function SettingsPage() {
   });
 
   const sendTest = useMutation<
-    { email: { success: boolean; error?: string }; webhooks: { delivered: number; failed: number } | null },
+    {
+      email: { success: boolean; error?: string };
+      webhooks: { delivered: number; failed: number } | null;
+    },
     Error
   >({
     mutationFn: () => apiSend("POST", "/api/alerts/test"),
@@ -171,15 +208,23 @@ export function SettingsPage() {
     },
   });
 
-  if (status.isLoading || alerts.isLoading) return <Spinner label="Loading settings…" />;
+  if (status.isLoading || alerts.isLoading)
+    return <Spinner label="Loading settings…" />;
   if (status.error)
-    return <EmptyState title="Could not load settings" description={status.error.message} />;
+    return (
+      <EmptyState
+        title="Could not load settings"
+        description={status.error.message}
+      />
+    );
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Settings</h1>
-        <p className="text-sm text-gray-500">Spend limits and alerting for this organization.</p>
+        <p className="text-sm text-gray-500">
+          Spend limits and alerting for this organization.
+        </p>
       </div>
 
       <Card
@@ -189,7 +234,8 @@ export function SettingsPage() {
       >
         {status.data?.daily?.breached || status.data?.monthly?.breached ? (
           <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            A spend limit has been reached. Keys are currently disabled until the window resets.
+            A spend limit has been reached. Keys are currently disabled until
+            the window resets.
           </div>
         ) : null}
 
@@ -236,7 +282,10 @@ export function SettingsPage() {
         {message && <p className="mt-3 text-sm text-green-700">{message}</p>}
 
         <div className="mt-4">
-          <Button onClick={() => saveLimits.mutate()} loading={saveLimits.isPending}>
+          <Button
+            onClick={() => saveLimits.mutate()}
+            loading={saveLimits.isPending}
+          >
             Save limits
           </Button>
         </div>
@@ -253,7 +302,9 @@ export function SettingsPage() {
               <input
                 type="checkbox"
                 checked={alertsForm.enabled}
-                onChange={(e) => setAlertsForm({ ...alertsForm, enabled: e.target.checked })}
+                onChange={(e) =>
+                  setAlertsForm({ ...alertsForm, enabled: e.target.checked })
+                }
                 className="h-4 w-4 rounded border-gray-300 text-indigo-600"
               />
               Alerting enabled
@@ -262,7 +313,12 @@ export function SettingsPage() {
               <input
                 type="checkbox"
                 checked={alertsForm.emailEnabled}
-                onChange={(e) => setAlertsForm({ ...alertsForm, emailEnabled: e.target.checked })}
+                onChange={(e) =>
+                  setAlertsForm({
+                    ...alertsForm,
+                    emailEnabled: e.target.checked,
+                  })
+                }
                 className="h-4 w-4 rounded border-gray-300 text-indigo-600"
               />
               Email owners/admins
@@ -278,7 +334,10 @@ export function SettingsPage() {
                 max="100"
                 value={alertsForm.errorThresholdPct}
                 onChange={(e) =>
-                  setAlertsForm({ ...alertsForm, errorThresholdPct: Number(e.target.value) })
+                  setAlertsForm({
+                    ...alertsForm,
+                    errorThresholdPct: Number(e.target.value),
+                  })
                 }
               />
             </div>
@@ -289,7 +348,10 @@ export function SettingsPage() {
                 min="1"
                 value={alertsForm.errorMinRequests}
                 onChange={(e) =>
-                  setAlertsForm({ ...alertsForm, errorMinRequests: Number(e.target.value) })
+                  setAlertsForm({
+                    ...alertsForm,
+                    errorMinRequests: Number(e.target.value),
+                  })
                 }
               />
             </div>
@@ -300,7 +362,10 @@ export function SettingsPage() {
                 min="5"
                 value={alertsForm.errorWindowMinutes}
                 onChange={(e) =>
-                  setAlertsForm({ ...alertsForm, errorWindowMinutes: Number(e.target.value) })
+                  setAlertsForm({
+                    ...alertsForm,
+                    errorWindowMinutes: Number(e.target.value),
+                  })
                 }
               />
             </div>
@@ -311,7 +376,10 @@ export function SettingsPage() {
                 min="5"
                 value={alertsForm.cooldownMinutes}
                 onChange={(e) =>
-                  setAlertsForm({ ...alertsForm, cooldownMinutes: Number(e.target.value) })
+                  setAlertsForm({
+                    ...alertsForm,
+                    cooldownMinutes: Number(e.target.value),
+                  })
                 }
               />
             </div>
@@ -321,7 +389,10 @@ export function SettingsPage() {
           {message && <p className="text-sm text-green-700">{message}</p>}
 
           <div className="flex items-center gap-2">
-            <Button onClick={() => saveAlerts.mutate()} loading={saveAlerts.isPending}>
+            <Button
+              onClick={() => saveAlerts.mutate()}
+              loading={saveAlerts.isPending}
+            >
               Save alert settings
             </Button>
             <Button
@@ -346,9 +417,14 @@ export function SettingsPage() {
           {webhooks.data?.length ? (
             <ul className="divide-y divide-gray-100 rounded-md border border-gray-200">
               {webhooks.data.map((wh) => (
-                <li key={wh.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <li
+                  key={wh.id}
+                  className="flex items-center justify-between gap-3 px-4 py-3"
+                >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-gray-800">{wh.url}</p>
+                    <p className="truncate text-sm font-medium text-gray-800">
+                      {wh.url}
+                    </p>
                     <div className="mt-1 flex flex-wrap items-center gap-1">
                       <Badge tone={wh.enabled ? "green" : "gray"}>
                         {wh.enabled ? "enabled" : "disabled"}
@@ -361,10 +437,23 @@ export function SettingsPage() {
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => toggleWebhook.mutate({ id: wh.id, enabled: !wh.enabled })}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        toggleWebhook.mutate({
+                          id: wh.id,
+                          enabled: !wh.enabled,
+                        })
+                      }
+                    >
                       {wh.enabled ? "Disable" : "Enable"}
                     </Button>
-                    <Button size="sm" variant="danger" onClick={() => deleteWebhook.mutate(wh.id)}>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => deleteWebhook.mutate(wh.id)}
+                    >
                       Delete
                     </Button>
                   </div>
@@ -372,7 +461,9 @@ export function SettingsPage() {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-gray-500">No webhook subscriptions yet.</p>
+            <p className="text-sm text-gray-500">
+              No webhook subscriptions yet.
+            </p>
           )}
 
           <div className="rounded-md border border-gray-200 bg-gray-50 p-4">
@@ -398,21 +489,22 @@ export function SettingsPage() {
               <Label>Events</Label>
               <Select
                 multiple
-                className="min-h-[64px] w-full"
+                className="w-full"
                 value={whEvents}
-                onChange={(e) => {
-                  const selected = Array.from(e.target.selectedOptions).map((o) => o.value);
-                  setWhEvents(selected);
-                }}
-              >
-                <option value="quota_exceeded">quota_exceeded</option>
-                <option value="high_error_rate">high_error_rate</option>
-                <option value="test">test</option>
-              </Select>
+                onChange={(v) => setWhEvents(v as string[])}
+                options={[
+                  { value: "quota_exceeded", label: "quota_exceeded" },
+                  { value: "high_error_rate", label: "high_error_rate" },
+                  { value: "test", label: "test" },
+                ]}
+              />
             </div>
             {whError && <p className="mt-2 text-sm text-red-600">{whError}</p>}
             <div className="mt-3">
-              <Button onClick={() => addWebhook.mutate()} loading={addWebhook.isPending}>
+              <Button
+                onClick={() => addWebhook.mutate()}
+                loading={addWebhook.isPending}
+              >
                 Add webhook
               </Button>
             </div>
@@ -430,23 +522,33 @@ export function SettingsPage() {
         ) : events.data?.length ? (
           <ul className="divide-y divide-gray-100 rounded-md border border-gray-200">
             {events.data.map((ev) => (
-              <li key={ev.id} className="flex items-center justify-between gap-3 px-4 py-3">
+              <li
+                key={ev.id}
+                className="flex items-center justify-between gap-3 px-4 py-3"
+              >
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-800">
                     {ev.eventType}
                     {ev.provider ? ` · ${ev.provider}` : ""}
-                    <span className="ml-1 text-xs text-gray-400">level {ev.level}</span>
+                    <span className="ml-1 text-xs text-gray-400">
+                      level {ev.level}
+                    </span>
                   </p>
                   <p className="text-xs text-gray-500">
-                    {new Date(ev.createdAt * 1000).toLocaleString()} · {ev.channel}
+                    {new Date(ev.createdAt * 1000).toLocaleString()} ·{" "}
+                    {ev.channel}
                   </p>
                 </div>
-                <Badge tone={ev.status === "sent" ? "green" : "red"}>{ev.status}</Badge>
+                <Badge tone={ev.status === "sent" ? "green" : "red"}>
+                  {ev.status}
+                </Badge>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-gray-500">No alerts have been triggered yet.</p>
+          <p className="text-sm text-gray-500">
+            No alerts have been triggered yet.
+          </p>
         )}
       </Card>
     </div>

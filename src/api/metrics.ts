@@ -6,7 +6,7 @@ export const metricsRouter = new Hono<AppBindings>();
 
 function rangeParams(c: { req: { query: (k: string) => string | undefined } }) {
   const now = Math.floor(Date.now() / 1000);
-  const q = c.req.query;
+  const q = (k: string) => c.req.query(k);
   const startRaw = q("start");
   const endRaw = q("end");
   const start = startRaw ? Math.floor(Number(startRaw)) : now - 24 * 3600;
@@ -98,7 +98,7 @@ metricsRouter.get("/latency", async (c) => {
 metricsRouter.get("/requests", async (c) => {
   const orgId = c.get("session")!.organizationId!;
   const { start, end, provider } = rangeParams(c);
-  const q = c.req.query;
+  const q = (k: string) => c.req.query(k);
   const limit = Math.min(Number(q("limit")) || 50, 200);
   const offset = Math.max(Number(q("offset")) || 0, 0);
 

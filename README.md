@@ -69,7 +69,7 @@ Before you begin, ensure you have the following installed:
 7. Open your worker URL and sign in with the initial admin account:
 
    ```
-   admin@localhost / AwesomeProxy!!
+   admin@example.com / AwesomeProxy!!
    ```
 
    You will be asked to set a new password on first sign-in.
@@ -92,12 +92,12 @@ All have working built-in defaults; set them via `wrangler` vars/secrets only if
 
 - `BETTER_AUTH_SECRET`: Better Auth signing secret (auto-generated + persisted in D1 by default).
 - `ENCRYPTION_KEY`: master key for tenant credential encryption (auto-generated + persisted by default).
-- `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD`: seeded admin credentials (defaults `admin@localhost` / `AwesomeProxy!!`).
+- `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD`: seeded admin credentials (defaults `admin@example.com` / `AwesomeProxy!!`).
 - `TURNSTILE_SECRET`: optional Cloudflare Turnstile key for sign-up bot protection.
 
 ### Local Development
 
-When running locally with `npm run dev`, Wrangler simulates D1, Durable Objects, and KV. Apply the migrations on your local DB with `npx wrangler d1 migrations apply DB --local`.
+When running locally with `npm run dev`, Wrangler simulates D1, Durable Objects, and KV. The `dev` script applies the D1 migrations to your local DB first (`db:migrate:local`), so a fresh checkout boots with the correct schema automatically. To reset local state, delete `.wrangler/state/v3/d1`.
 
 ### Admin Console (Dashboard)
 

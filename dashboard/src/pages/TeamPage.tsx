@@ -1,7 +1,3 @@
-import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Award, MailPlus, UserMinus, Users } from "lucide-react";
-import { apiGet, apiSend, InvitationView, MemberView } from "../lib/api";
 import {
   Badge,
   Button,
@@ -14,7 +10,11 @@ import {
   Spinner,
   roleTone,
 } from "../components/ui";
+import { apiGet, apiSend, InvitationView, MemberView } from "../lib/api";
 import { fmtDate } from "../lib/format";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Award, MailPlus, UserMinus, Users } from "lucide-react";
+import { useState } from "react";
 
 export function TeamPage() {
   const qc = useQueryClient();
@@ -27,7 +27,8 @@ export function TeamPage() {
   });
   const invitesQuery = useQuery({
     queryKey: ["team-invitations"],
-    queryFn: () => apiGet<{ invitations: InvitationView[] }>("/api/team/invitations"),
+    queryFn: () =>
+      apiGet<{ invitations: InvitationView[] }>("/api/team/invitations"),
   });
 
   const self = membersQuery.data?.members.find((m) => m.self);
@@ -50,7 +51,8 @@ export function TeamPage() {
   });
 
   const cancelInvite = useMutation({
-    mutationFn: (id: string) => apiSend("POST", `/api/team/invitations/${id}/cancel`),
+    mutationFn: (id: string) =>
+      apiSend("POST", `/api/team/invitations/${id}/cancel`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["team-invitations"] }),
     onError: (e: Error) => setNotice(e.message),
   });
@@ -65,7 +67,8 @@ export function TeamPage() {
     onError: (e: Error) => setNotice(e.message),
   });
 
-  if (membersQuery.isLoading || invitesQuery.isLoading) return <Spinner label="Loading team…" />;
+  if (membersQuery.isLoading || invitesQuery.isLoading)
+    return <Spinner label="Loading team…" />;
   if (membersQuery.error || invitesQuery.error)
     return (
       <EmptyState
@@ -75,14 +78,18 @@ export function TeamPage() {
     );
 
   const members = membersQuery.data!.members;
-  const invitations = invitesQuery.data!.invitations.filter((i) => i.status === "pending");
+  const invitations = invitesQuery.data!.invitations.filter(
+    (i) => i.status === "pending",
+  );
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Team</h1>
-          <p className="text-sm text-gray-500">People with access to this workspace.</p>
+          <p className="text-sm text-gray-500">
+            People with access to this workspace.
+          </p>
         </div>
         {isAdmin && (
           <Button onClick={() => setInviting(true)}>
@@ -97,7 +104,10 @@ export function TeamPage() {
         </div>
       )}
 
-      <Card title={`Members (${members.length})`} subtitle="Roles control who can manage this workspace.">
+      <Card
+        title={`Members (${members.length})`}
+        subtitle="Roles control who can manage this workspace."
+      >
         {members.length === 0 ? (
           <EmptyState icon={<Users size={36} />} title="No members" />
         ) : (
@@ -111,7 +121,11 @@ export function TeamPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-gray-800">
                       {m.name}
-                      {m.self && <span className="ml-1 text-xs font-normal text-gray-400">(you)</span>}
+                      {m.self && (
+                        <span className="ml-1 text-xs font-normal text-gray-400">
+                          (you)
+                        </span>
+                      )}
                     </p>
                     <p className="truncate text-xs text-gray-500">{m.email}</p>
                   </div>
@@ -119,29 +133,39 @@ export function TeamPage() {
                     <Select
                       value={m.role}
                       disabled={setRole.isPending}
-                      onChange={(e) => {
+                      onChange={(v) => {
                         if (m.role === "owner" && !isOwner) {
-                          setNotice("Only the owner can change an owner's role.");
+                          setNotice(
+                            "Only the owner can change an owner's role.",
+                          );
                           return;
                         }
-                        if (confirm(`Change ${m.name}'s role to ${e.target.value}?`))
-                          setRole.mutate({ id: m.id, role: e.target.value });
-                        else e.target.value = m.role;
+                        if (confirm(`Change ${m.name}'s role to ${v}?`))
+                          setRole.mutate({ id: m.id, role: v as string });
                       }}
-                    >
-                      {["owner", "admin", "member", "viewer"].map((r) => (
-                        <option key={r} value={r} disabled={r === "owner" && m.role === "owner"}>
-                          {r}
-                        </option>
-                      ))}
-                    </Select>
+                      options={["owner", "admin", "member", "viewer"].map(
+                        (r) => ({
+                          value: r,
+                          label: r,
+                          disabled: r === "owner" && m.role === "owner",
+                        }),
+                      )}
+                    />
                   )}
                   {!isAdmin && <Badge tone={roleTone(m.role)}>{m.role}</Badge>}
                   {isOwner && m.role !== "owner" && (
-                    <Button size="sm" variant="outline" onClick={() => {
-                      if (confirm(`Transfer ownership to ${m.name}? You will become an admin.`))
-                        transfer.mutate(m.id);
-                    }}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `Transfer ownership to ${m.name}? You will become an admin.`,
+                          )
+                        )
+                          transfer.mutate(m.id);
+                      }}
+                    >
                       <Award size={13} /> Make owner
                     </Button>
                   )}
@@ -150,7 +174,8 @@ export function TeamPage() {
                       size="sm"
                       variant="ghost"
                       onClick={() => {
-                        if (confirm(`Remove ${m.name} from this workspace?`)) removeMember.mutate(m.id);
+                        if (confirm(`Remove ${m.name} from this workspace?`))
+                          removeMember.mutate(m.id);
                       }}
                     >
                       <UserMinus size={13} className="text-red-500" />
@@ -170,9 +195,12 @@ export function TeamPage() {
               {invitations.map((inv) => (
                 <li key={inv.id} className="flex items-center gap-3 px-5 py-3">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-gray-800">{inv.email}</p>
+                    <p className="truncate text-sm font-medium text-gray-800">
+                      {inv.email}
+                    </p>
                     <p className="text-xs text-gray-500">
-                      {inv.role} · {inv.expired ? "expired" : "awaiting response"}
+                      {inv.role} ·{" "}
+                      {inv.expired ? "expired" : "awaiting response"}
                     </p>
                   </div>
                   <Badge tone={inv.expired ? "red" : "amber"}>
@@ -183,7 +211,8 @@ export function TeamPage() {
                       size="sm"
                       variant="ghost"
                       onClick={() => {
-                        if (confirm(`Cancel the invitation to ${inv.email}?`)) cancelInvite.mutate(inv.id);
+                        if (confirm(`Cancel the invitation to ${inv.email}?`))
+                          cancelInvite.mutate(inv.id);
                       }}
                     >
                       Cancel
@@ -229,7 +258,10 @@ function InviteModal({
   const submit = async () => {
     setSending(true);
     try {
-      await apiSend("POST", "/api/team/invitations", { email: email.trim(), role });
+      await apiSend("POST", "/api/team/invitations", {
+        email: email.trim(),
+        role,
+      });
       onInvited();
     } catch (err) {
       onError((err as Error).message);
@@ -265,11 +297,21 @@ function InviteModal({
         </div>
         <div>
           <Label>Role</Label>
-          <Select value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="member">Member — can use the API and view analytics</option>
-            <option value="admin">Admin — can also manage providers, keys, team</option>
-            <option value="viewer">Viewer — read-only access</option>
-          </Select>
+          <Select
+            value={role}
+            onChange={(v) => setRole(v as string)}
+            options={[
+              {
+                value: "member",
+                label: "Member — can use the API and view analytics",
+              },
+              {
+                value: "admin",
+                label: "Admin — can also manage providers, keys, team",
+              },
+              { value: "viewer", label: "Viewer — read-only access" },
+            ]}
+          />
         </div>
       </div>
     </Modal>

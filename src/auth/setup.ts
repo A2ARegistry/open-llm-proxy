@@ -97,6 +97,7 @@ async function buildAuth(env: Env): Promise<AppAuth> {
   const brandName = env.APP_NAME || "Open LLM Proxy";
   const secret = await getAuthSecret(env);
   const baseUrl = env.BASE_URL || "http://localhost:8787";
+  const dashboardUrl = env.DASHBOARD_URL || baseUrl;
   const { sendVerificationEmail, sendResetPassword, sendInvitationEmail } =
     buildAuthEmailCallbacks({ env, brandName, baseUrl });
 
@@ -139,7 +140,7 @@ async function buildAuth(env: Env): Promise<AppAuth> {
         },
       }),
     ],
-    trustedOrigins: [baseUrl],
+    trustedOrigins: [baseUrl, dashboardUrl],
   });
 }
 

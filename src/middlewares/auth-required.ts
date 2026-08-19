@@ -79,12 +79,12 @@ export const sessionAuthMiddleware = createMiddleware<AppBindings>(
     const result = await auth.api.getSession({
       headers: c.req.raw.headers,
     });
-    if (!result?.session?.user) {
+    if (!result?.session || !result?.user) {
       return c.json({ error: "Not authenticated" }, 401);
     }
 
-    const session = result.session.session;
-    const user = result.session.user;
+    const session = result.session;
+    const user = result.user;
     let organizationId: string | null = null;
     let role: string | null = null;
 

@@ -32,7 +32,8 @@
     "SESSION_CACHE_TTL_SECONDS": "60",
     "RATE_LIMITER_SHARDS": "4",
     "METRICS_BUFFER_SHARDS": "4",
-    "APP_NAME": "Open LLM Proxy"
+    "APP_NAME": "Open LLM Proxy",
+    "DASHBOARD_URL": "http://localhost:5173"
   },
   // Cron trigger for the alerting engine (Phase 5.3): evaluate spend +
   // error-rate alerts for all tenants every 5 minutes.

@@ -68,13 +68,13 @@ describe("bootstrap admin", () => {
     expect(await ensureInitialAdmin(env)).toBe(true);
 
     const admin = await getInitialAdmin(env);
-    expect(admin?.email).toBe("admin@localhost");
+    expect(admin?.email).toBe("admin@example.com");
     expect(admin?.mustChangePassword).toBe(true);
 
     const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?")
       .bind(admin!.userId)
       .first<{ email: string; emailVerified: number }>();
-    expect(user?.email).toBe("admin@localhost");
+    expect(user?.email).toBe("admin@example.com");
     expect(user?.emailVerified).toBe(1);
 
     const member = await env.DB.prepare(
@@ -95,7 +95,7 @@ describe("bootstrap admin", () => {
     await ensureInitialAdmin(env);
     const status = await bootstrapStatus(env);
     expect(status.initialized).toBe(true);
-    expect(status.defaultCredentials?.email).toBe("admin@localhost");
+    expect(status.defaultCredentials?.email).toBe("admin@example.com");
     expect(status.defaultCredentials?.password).toBe("AwesomeProxy!!");
   });
 

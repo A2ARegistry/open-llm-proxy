@@ -1,8 +1,8 @@
+import { fetchBootstrapStatus } from "../../components/BootstrapGate";
+import { AuthLayout } from "./AuthLayout";
+import { AuthForm } from "@contentgrowth/content-auth";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AuthForm } from "@contentgrowth/content-auth";
-import { AuthLayout } from "./AuthLayout";
-import { fetchBootstrapStatus } from "../../components/BootstrapGate";
 
 export function SignInPage() {
   const navigate = useNavigate();
@@ -24,14 +24,16 @@ export function SignInPage() {
 
   const afterAuth = () => {
     if (invitationId) {
-      navigate(`/accept-invitation?id=${encodeURIComponent(invitationId)}`, { replace: true });
+      navigate(`/accept-invitation?id=${encodeURIComponent(invitationId)}`, {
+        replace: true,
+      });
     } else {
       navigate("/dashboard", { replace: true });
     }
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout inCard={false}>
       {hint && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           <p className="font-medium">First-time setup credentials</p>
@@ -46,7 +48,11 @@ export function SignInPage() {
       <AuthForm
         view="signin"
         forgotPasswordUrl="/forgot-password"
-        redirectUrl={invitationId ? `/accept-invitation?id=${encodeURIComponent(invitationId)}` : "/dashboard"}
+        redirectUrl={
+          invitationId
+            ? `/accept-invitation?id=${encodeURIComponent(invitationId)}`
+            : "/dashboard"
+        }
         signupUrl="/signup"
         onSuccess={afterAuth}
       />
@@ -57,7 +63,7 @@ export function SignInPage() {
 export function SignUpPage() {
   const navigate = useNavigate();
   return (
-    <AuthLayout>
+    <AuthLayout inCard={false}>
       <AuthForm
         view="signup"
         redirectUrl="/dashboard"

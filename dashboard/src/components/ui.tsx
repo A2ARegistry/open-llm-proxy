@@ -1,5 +1,5 @@
-import React, { ReactNode, useEffect } from "react";
-import { Loader2, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, X } from "lucide-react";
+import React, { ReactNode, useEffect, useRef, useState } from "react";
 
 type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "outline";
 type ButtonSize = "sm" | "md";
@@ -57,12 +57,18 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div className={`rounded-lg border border-gray-200 bg-white shadow-sm ${className}`}>
+    <div
+      className={`rounded-lg border border-gray-200 bg-white shadow-sm ${className}`}
+    >
       {(title || actions) && (
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <div>
-            {title && <h3 className="text-sm font-semibold text-gray-900">{title}</h3>}
-            {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
+            {title && (
+              <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+            )}
+            {subtitle && (
+              <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>
+            )}
           </div>
           {actions && <div className="flex items-center gap-2">{actions}</div>}
         </div>
@@ -113,21 +119,130 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   );
 }
 
-export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  const { className = "", children, ...rest } = props;
+export function Label({ children }: { children: ReactNode }) {
   return (
-    <select
-      className={`rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${className}`}
-      {...rest}
-    >
+    <label className="mb-1 block text-xs font-medium text-gray-600">
       {children}
-    </select>
+    </label>
   );
 }
 
-export function Label({ children }: { children: ReactNode }) {
+export interface SelectOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+
+export function Select({
+  value,
+  onChange,
+  options,
+  multiple = false,
+  placeholder = "Select…",
+  disabled = false,
+  className = "",
+}: {
+  value: string | string[];
+  onChange: (value: string | string[]) => void;
+  options: SelectOption[];
+  multiple?: boolean;
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const selected = Array.isArray(value) ? value : [value];
+  const current = options.filter((o) => selected.includes(o.value));
+  const label = current.length
+    ? current.map((o) => o.label).join(", ")
+    : placeholder;
+
+  const toggle = (opt: SelectOption) => {
+    if (opt.disabled) return;
+    if (multiple) {
+      const next = selected.includes(opt.value)
+        ? selected.filter((v) => v !== opt.value)
+        : [...selected, opt.value];
+      onChange(next);
+    } else {
+      onChange(opt.value);
+      setOpen(false);
+    }
+  };
+
   return (
-    <label className="mb-1 block text-xs font-medium text-gray-600">{children}</label>
+    <div ref={ref} className={`relative ${className}`}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`flex w-full items-center justify-between gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400 ${
+          open ? "border-indigo-500 ring-1 ring-indigo-500" : ""
+        }`}
+      >
+        <span
+          className={`truncate text-left ${current.length ? "text-gray-900" : "text-gray-400"}`}
+        >
+          {label}
+        </span>
+        <ChevronDown
+          size={14}
+          className={`shrink-0 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+        >
+          {options.map((opt) => {
+            const isSel = selected.includes(opt.value);
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="option"
+                aria-selected={isSel}
+                disabled={opt.disabled}
+                onClick={() => toggle(opt)}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm focus:outline-none ${
+                  opt.disabled
+                    ? "cursor-not-allowed text-gray-300"
+                    : "text-gray-700 hover:bg-indigo-50"
+                }`}
+              >
+                {multiple && (
+                  <Check
+                    size={14}
+                    className={`shrink-0 ${isSel ? "text-indigo-600" : "text-transparent"}`}
+                  />
+                )}
+                <span className="truncate">{opt.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -155,7 +270,9 @@ export function EmptyState({
     <div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
       {icon && <div className="text-gray-300">{icon}</div>}
       <p className="text-sm font-medium text-gray-700">{title}</p>
-      {description && <p className="max-w-sm text-xs text-gray-500">{description}</p>}
+      {description && (
+        <p className="max-w-sm text-xs text-gray-500">{description}</p>
+      )}
       {action && <div className="mt-2">{action}</div>}
     </div>
   );
@@ -174,7 +291,9 @@ export function StatCard({
 }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white px-5 py-4 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        {label}
+      </p>
       <p
         className={`mt-1 text-2xl font-semibold ${
           tone === "red" ? "text-red-600" : "text-gray-900"
@@ -216,7 +335,10 @@ export function Modal({
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
           <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
             <X size={18} />
           </button>
         </div>

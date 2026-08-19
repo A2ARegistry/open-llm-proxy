@@ -12,6 +12,7 @@ import {
   getV1ProviderSpec,
   resolveProviderMode,
 } from "../llm/provider-registry";
+import { testProviderConnection } from "../llm/provider-test";
 import { Hono } from "hono";
 
 const PROVIDER_ID_RE = /^[a-z][a-z0-9-]{0,47}$/;
@@ -21,7 +22,6 @@ function publicProviderView(input: {
   provider: string;
   configured: boolean;
   enabled: boolean;
-  defaultModel?: string;
   settings: Record<string, unknown>;
   keyCount: number;
   updatedAt?: number;
@@ -34,7 +34,6 @@ function publicProviderView(input: {
     mode: resolveProviderMode(input.provider),
     configured: input.configured,
     enabled: input.enabled,
-    defaultModel: input.defaultModel ?? null,
     settings: input.settings,
     keyCount: input.keyCount,
     updatedAt: input.updatedAt ?? null,
@@ -73,7 +72,6 @@ providerConfigRouter.get("/", async (c) => {
       provider: cfg.provider,
       configured: true,
       enabled: cfg.enabled,
-      defaultModel: cfg.defaultModel,
       settings: cfg.settings,
       keyCount: cfg.keys.length,
       updatedAt: cfg.updatedAt,
@@ -107,7 +105,6 @@ providerConfigRouter.get("/:provider", async (c) => {
       provider: cfg.provider,
       configured: true,
       enabled: cfg.enabled,
-      defaultModel: cfg.defaultModel,
       settings: cfg.settings,
       keyCount: cfg.keys.length,
       updatedAt: cfg.updatedAt,
@@ -156,7 +153,6 @@ providerConfigRouter.put("/:provider", async (c) => {
   const input: SaveProviderConfigInput = {
     keys: keys?.map((k) => k.trim()),
     enabled: body.enabled,
-    defaultModel: body.defaultModel,
     settings,
   };
 
@@ -180,7 +176,6 @@ providerConfigRouter.put("/:provider", async (c) => {
         provider: saved.provider,
         configured: true,
         enabled: saved.enabled,
-        defaultModel: saved.defaultModel,
         settings: saved.settings,
         keyCount: saved.keys.length,
         updatedAt: saved.updatedAt,
@@ -196,6 +191,73 @@ providerConfigRouter.put("/:provider", async (c) => {
     }
     throw err;
   }
+});
+
+// POST /api/providers/:provider/test — probe connectivity with candidate keys.
+// If `keys` are supplied they are tested as-is (nothing is persisted); otherwise
+// the stored config's keys are used.
+providerConfigRouter.post("/:provider/test", async (c) => {
+  const session = c.get("session")!;
+  const orgId = session.organizationId!;
+  const provider = c.req.param("provider");
+
+  if (!PROVIDER_ID_RE.test(provider)) {
+    return c.json({ error: "Invalid provider id" }, 400);
+  }
+
+  const body = (await c.req.json().catch(() => null)) as {
+    keys?: unknown;
+    settings?: unknown;
+  } | null;
+  if (!body) return c.json({ error: "Invalid JSON body" }, 400);
+
+  let keys: string[] | undefined;
+  if (body.keys !== undefined) {
+    if (
+      !Array.isArray(body.keys) ||
+      body.keys.some((k) => typeof k !== "string" || k.trim().length === 0) ||
+      body.keys.length > MAX_KEYS_PER_PROVIDER
+    ) {
+      return c.json(
+        {
+          error: `keys must be a non-empty array of strings (max ${MAX_KEYS_PER_PROVIDER})`,
+        },
+        400,
+      );
+    }
+    keys = (body.keys as string[]).map((k) => k.trim());
+  }
+
+  let settings: Record<string, unknown>;
+  try {
+    settings = validateSettings(body.settings);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+
+  let testKeys = keys;
+  let testSettings = settings;
+  if (testKeys === undefined) {
+    const cfg = await getProviderConfig(c.env, orgId, provider);
+    if (!cfg) {
+      return c.json(
+        {
+          error:
+            "Provider is not configured. Save it first or provide keys to test.",
+        },
+        404,
+      );
+    }
+    testKeys = cfg.keys;
+    testSettings = { ...cfg.settings, ...settings };
+  }
+
+  const result = await testProviderConnection({
+    provider,
+    keys: testKeys,
+    settings: testSettings,
+  });
+  return c.json(result);
 });
 
 // DELETE /api/providers/:provider — remove the provider config entirely.

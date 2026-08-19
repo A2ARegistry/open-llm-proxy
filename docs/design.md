@@ -51,7 +51,7 @@ This document outlines the V2 architecture for transforming the current Open LLM
 - Limited metrics/observability
 
 > The V1 env/config deployment path has been removed. Deploy is self-serve: the
-> worker seeds a default admin (`admin@localhost` / `AwesomeProxy!!`), rotates
+> worker seeds a default admin (`admin@example.com` / `AwesomeProxy!!`), rotates
 > its runtime secrets into D1 on first boot, and all provider/API-key config
 > happens through the dashboard (D1-backed).
 

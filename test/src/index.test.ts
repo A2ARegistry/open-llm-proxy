@@ -28,7 +28,7 @@ describe("worker dispatch (V2)", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.initialized).toBe(true);
-    expect(body.defaultCredentials?.email).toBe("admin@localhost");
+    expect(body.defaultCredentials?.email).toBe("admin@example.com");
   });
 
   it("returns 401 for unauthenticated /v1/models requests", async () => {

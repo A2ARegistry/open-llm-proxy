@@ -3,7 +3,12 @@ export interface ApiKeyView {
   name: string;
   keyPrefix: string;
   status: string;
-  scopes: { providers?: string[]; models?: string[]; spendCapUsd?: number; ipAllowlist?: string[] };
+  scopes: {
+    providers?: string[];
+    models?: string[];
+    spendCapUsd?: number;
+    ipAllowlist?: string[];
+  };
   createdAt: number;
   expiresAt: number | null;
   lastUsedAt: number | null;
@@ -16,10 +21,16 @@ export interface ProviderView {
   mode: string;
   configured: boolean;
   enabled: boolean;
-  defaultModel: string | null;
   settings: Record<string, unknown>;
   keyCount: number;
   updatedAt: number | null;
+}
+
+export interface ProviderTestResult {
+  ok: boolean;
+  status?: number | null;
+  error?: string | null;
+  modelCount?: number | null;
 }
 
 export interface MemberView {
@@ -92,9 +103,11 @@ async function parse<T>(res: Response): Promise<T> {
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     const message =
-      (body && typeof (body as { error?: { message?: string } }).error === "object"
+      (body &&
+      typeof (body as { error?: { message?: string } }).error === "object"
         ? (body as { error: { message?: string } }).error?.message
-        : (body as { error?: string })?.error) || `Request failed (${res.status})`;
+        : (body as { error?: string })?.error) ||
+      `Request failed (${res.status})`;
     throw new Error(message);
   }
   return body as T;
@@ -112,7 +125,8 @@ export async function apiSend<T>(
   const res = await fetch(path, {
     method,
     credentials: "include",
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    headers:
+      body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   return parse<T>(res);
