@@ -1,0 +1,18 @@
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ResetPasswordForm } from "@contentgrowth/content-auth";
+import { AuthLayout } from "./AuthLayout";
+
+export function ResetPasswordPage() {
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const token = params.get("token");
+  return (
+    <AuthLayout>
+      <ResetPasswordForm
+        token={token}
+        onBackToLogin={() => navigate("/signin")}
+        onSuccess={() => navigate("/signin")}
+      />
+    </AuthLayout>
+  );
+}

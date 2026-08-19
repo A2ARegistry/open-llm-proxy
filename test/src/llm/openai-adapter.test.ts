@@ -1,0 +1,160 @@
+import { describe, it, expect } from "vitest";
+import {
+  assistantToOpenAI,
+  encodeSse,
+  eventToOpenAIChunks,
+  parseModelString,
+  resolveModel,
+  toPiContext,
+} from "~/src/llm/openai-adapter";
+import type { AssistantMessage, AssistantMessageEvent } from "@earendil-works/pi-ai";
+
+function baseAssistant(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text: "Hello" }],
+    api: "openai-completions",
+    provider: "openai",
+    model: "gpt-4o-mini",
+    usage: {
+      input: 10,
+      output: 5,
+      cacheRead: 3,
+      cacheWrite: 0,
+      totalTokens: 15,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp: Date.now(),
+    ...overrides,
+  };
+}
+
+describe("parseModelString / resolveModel", () => {
+  it("splits provider/model", () => {
+    expect(parseModelString("openai/gpt-4o-mini")).toEqual({
+      provider: "openai",
+      model: "gpt-4o-mini",
+    });
+  });
+
+  it("keeps bare ids with empty provider", () => {
+    expect(parseModelString("gpt-4o-mini")).toEqual({
+      provider: "",
+      model: "gpt-4o-mini",
+    });
+  });
+
+  it("substitutes default model", () => {
+    expect(resolveModel("default", "openai/gpt-4o")).toEqual({
+      provider: "openai",
+      model: "gpt-4o",
+    });
+  });
+});
+
+describe("toPiContext", () => {
+  it("extracts system + user + assistant + tool messages", () => {
+    const context = toPiContext({
+      model: "openai/gpt-4o-mini",
+      messages: [
+        { role: "system", content: "Be terse" },
+        { role: "user", content: "Hi" },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_1",
+              function: { name: "lookup", arguments: '{"q":"x"}' },
+            },
+          ],
+        },
+        { role: "tool", tool_call_id: "call_1", content: "42" },
+      ],
+    });
+
+    expect(context.systemPrompt).toBe("Be terse");
+    expect(context.messages.length).toBe(3);
+    const [user, assistant, tool] = context.messages;
+    expect(user.role).toBe("user");
+    expect((user as { content: string }).content).toBe("Hi");
+    expect(assistant.role).toBe("assistant");
+    const calls = (assistant as { content: unknown[] }).content.filter(
+      (c) => (c as { type: string }).type === "toolCall",
+    );
+    expect(calls).toHaveLength(1);
+    expect(tool.role).toBe("toolResult");
+    const toolResult = tool as { toolCallId: string; toolName: string; content: { text: string }[] };
+    expect(toolResult.toolCallId).toBe("call_1");
+    expect(toolResult.toolName).toBe("lookup");
+    expect(toolResult.content[0].text).toBe("42");
+  });
+
+  it("omits empty tool results", () => {
+    const context = toPiContext({
+      messages: [{ role: "tool", tool_call_id: "call_2", content: "" }],
+    });
+    expect(context.messages).toHaveLength(0);
+  });
+});
+
+describe("assistantToOpenAI", () => {
+  it("maps text + usage + finish reason", () => {
+    const out = assistantToOpenAI(baseAssistant(), "openai/gpt-4o-mini");
+    expect(out.object).toBe("chat.completion");
+    expect(out.choices[0].message.content).toBe("Hello");
+    expect(out.choices[0].finish_reason).toBe("stop");
+    expect(out.usage.prompt_tokens).toBe(10);
+    expect(out.usage.completion_tokens).toBe(5);
+    expect(out.usage.prompt_tokens_details.cached_tokens).toBe(3);
+  });
+
+  it("maps tool calls and tool-use finish reason", () => {
+    const message = baseAssistant({
+      content: [
+        { type: "toolCall", id: "call_1", name: "lookup", arguments: { q: "x" } },
+      ],
+      stopReason: "toolUse",
+    });
+    const out = assistantToOpenAI(message, "m");
+    expect(out.choices[0].finish_reason).toBe("tool_calls");
+    expect(out.choices[0].message.tool_calls[0].function.arguments).toBe('{"q":"x"}');
+  });
+});
+
+describe("eventToOpenAIChunks / encodeSse", () => {
+  const requestModel = "openai/gpt-4o-mini";
+  const responseId = "chatcmpl-abc";
+
+  it("emits role header then content deltas then a done chunk", () => {
+    const state = { emittedRole: false };
+    const textDelta = {
+      type: "text_delta",
+      contentIndex: 0,
+      delta: "Hello",
+      partial: baseAssistant(),
+    } as unknown as AssistantMessageEvent;
+    const done = {
+      type: "done",
+      reason: "stop",
+      message: baseAssistant({ content: [{ type: "text", text: "Hello" }] }),
+    } as unknown as AssistantMessageEvent;
+
+    const all = [
+      ...eventToOpenAIChunks(textDelta, requestModel, responseId, state),
+      ...eventToOpenAIChunks(done, requestModel, responseId, state),
+    ];
+    expect(all).toHaveLength(3);
+    const [role, delta, final] = all.map((c) => JSON.parse(c));
+    expect(role.choices[0].delta.role).toBe("assistant");
+    expect(delta.choices[0].delta.content).toBe("Hello");
+    expect(final.choices[0].finish_reason).toBe("stop");
+    expect(final.usage.prompt_tokens).toBe(10);
+  });
+
+  it("serializes SSE including [DONE]", () => {
+    const sse = encodeSse(['{"a":1}']);
+    expect(sse).toBe('data: {"a":1}\n\ndata: [DONE]\n\n');
+  });
+});

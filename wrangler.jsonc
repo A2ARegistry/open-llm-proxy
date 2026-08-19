@@ -1,0 +1,99 @@
+// This file is used to configure the Cloudflare Workers project using Wrangler.
+// Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "open-llm-proxy",
+  "main": "src/index.ts",
+  // Compatibility dates
+  // Docs: https://developers.cloudflare.com/workers/configuration/compatibility-dates/
+  "compatibility_date": "2026-07-16",
+  // Compatibility flags
+  // Docs: https://developers.cloudflare.com/workers/configuration/compatibility-flags/
+  "compatibility_flags": ["nodejs_compat"],
+  // Workers Logs
+  // Docs: https://developers.cloudflare.com/workers/observability/logs/workers-logs/
+  "observability": {
+    "logs": {
+      "enabled": true
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.05
+    }
+  },
+  // Smart Placement
+  // Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/
+  "placement": {
+    "mode": "off"
+  },
+  "vars": {
+    "BASE_URL": "http://localhost:8787",
+    "ENVIRONMENT": "development",
+    "SESSION_CACHE_TTL_SECONDS": "60",
+    "RATE_LIMITER_SHARDS": "4",
+    "METRICS_BUFFER_SHARDS": "4",
+    "APP_NAME": "Open LLM Proxy"
+  },
+  // Cron trigger for the alerting engine (Phase 5.3): evaluate spend +
+  // error-rate alerts for all tenants every 5 minutes.
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  // Admin dashboard SPA (Phase 2.2). Built by `npm run build:dashboard`;
+  // the Worker serves it through the ASSETS binding so /api and /v1 keep
+  // going through the Hono app / legacy V1 chain respectively.
+  "assets": {
+    "directory": "./dashboard/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "EMAIL_TEMPLATE_CACHE",
+        "class_name": "EmailingCacheDO"
+      },
+      {
+        "name": "METRICS_BUFFER",
+        "class_name": "MetricsBuffer"
+      },
+      {
+        "name": "RATE_LIMITER",
+        "class_name": "RateLimiter"
+      },
+      {
+        "name": "RESPONSE_CACHE",
+        "class_name": "ResponseCache"
+      },
+      {
+        "name": "SESSION_MANAGER",
+        "class_name": "SessionManager"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v2.0",
+      "new_sqlite_classes": [
+        "EmailingCacheDO",
+        "MetricsBuffer",
+        "RateLimiter",
+        "ResponseCache",
+        "SessionManager"
+      ]
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "open-llm-proxy",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SESSION_CACHE",
+      "id": "00000000000000000000000000000000"
+    }
+  ]
+}
