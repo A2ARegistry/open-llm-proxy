@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* content-auth's `button[type="submit"]` rule reads these vars globally; define
+   them outside `.ca-container` so our own submit buttons (e.g. the change-password
+   gate) get the indigo theme instead of a transparent background. */
+:root {
+  --ca-btn-primary-bg: #4f46e5;
+  --ca-btn-primary-text: #ffffff;
+  --ca-btn-primary-hover: #4338ca;
+}
+
 html,
 body,
 #root {
