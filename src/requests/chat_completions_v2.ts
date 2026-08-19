@@ -1,5 +1,14 @@
 import { TenantService } from "../db/tenant";
 import { getProviderConfig } from "../llm/credential-store";
+import {
+  isVertexProvider,
+  parseVertexConfig,
+  resolveVertexHeaders,
+  vertexBaseUrl,
+  vertexChatCompletionsPath,
+  vertexModelsPath,
+  vertexModelId,
+} from "../llm/google-vertex";
 import { createTenantModels, modelFor } from "../llm/models-factory";
 import {
   assistantToOpenAI,
@@ -415,21 +424,55 @@ export async function chatCompletionsV2(
   }
 
   // V1 fallback (Ollama, Cohere, Perplexity, custom OpenAI-compatible endpoints)
-  const client = new V1OpenAICompatibleClient({
-    provider: providerName,
-    keys: config.keys,
-    custom: config.settings?.baseUrl
-      ? {
-          baseUrl: config.settings.baseUrl as string,
-          chatCompletionPath: config.settings.chatCompletionPath as
-            string | undefined,
-          modelsPath: config.settings.modelsPath as string | undefined,
-        }
-      : undefined,
-  });
+  // and Google Vertex AI (OpenAI-compatible endpoint with custom auth).
+  let client: V1OpenAICompatibleClient;
+  let upstreamModelId = modelId;
+  if (isVertexProvider(providerName)) {
+    let vertexAuth: Record<string, string>;
+    try {
+      const vertex = parseVertexConfig({
+        settings: config.settings,
+        keys: config.keys,
+      });
+      vertexAuth = await resolveVertexHeaders(vertex);
+      upstreamModelId = vertexModelId(modelId);
+      client = new V1OpenAICompatibleClient({
+        provider: providerName,
+        baseUrl: vertexBaseUrl(vertex.settings.location),
+        chatCompletionPath: vertexChatCompletionsPath(
+          vertex.settings.projectId,
+          vertex.settings.location,
+        ),
+        modelsPath: vertexModelsPath(
+          vertex.settings.projectId,
+          vertex.settings.location,
+        ),
+        keys: config.keys,
+        authHeaders: vertexAuth,
+      });
+    } catch (err) {
+      return errorBody(
+        "not_configured",
+        err instanceof Error ? err.message : "Vertex AI is not configured",
+      );
+    }
+  } else {
+    client = new V1OpenAICompatibleClient({
+      provider: providerName,
+      keys: config.keys,
+      custom: config.settings?.baseUrl
+        ? {
+            baseUrl: config.settings.baseUrl as string,
+            chatCompletionPath: config.settings.chatCompletionPath as
+              string | undefined,
+            modelsPath: config.settings.modelsPath as string | undefined,
+          }
+        : undefined,
+    });
+  }
   const upstreamBody = JSON.stringify({
     ...chatBody,
-    model: modelId,
+    model: upstreamModelId,
     stream,
     ...(numberParam(chatBody.temperature) !== undefined
       ? { temperature: chatBody.temperature }

@@ -1,5 +1,12 @@
 import { ProviderSettings } from "./credential-store";
 import {
+  isVertexProvider,
+  parseVertexConfig,
+  resolveVertexHeaders,
+  vertexBaseUrl,
+  vertexModelsPath,
+} from "./google-vertex";
+import {
   canonicalProviderName,
   getPiAiProviderSpec,
   getV1ProviderSpec,
@@ -97,15 +104,43 @@ export async function testProviderConnection(input: {
   keys: string[];
   settings?: ProviderSettings;
 }): Promise<ProviderTestResult> {
+  const provider = canonicalProviderName(input.provider);
+
+  if (isVertexProvider(provider)) {
+    let target: TestTarget;
+    try {
+      const vertex = parseVertexConfig({
+        settings: input.settings,
+        keys: input.keys,
+      });
+      target = {
+        url: `${vertexBaseUrl(vertex.settings.location)}${vertexModelsPath(
+          vertex.settings.projectId,
+          vertex.settings.location,
+        )}`,
+        headers: await resolveVertexHeaders(vertex),
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+    return probe(target);
+  }
+
   const resolved = resolveTestTarget(input);
   if ("error" in resolved) return { ok: false, error: resolved.error };
+  return probe(resolved.target);
+}
 
+async function probe(target: TestTarget): Promise<ProviderTestResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
-    const res = await fetch(resolved.target.url, {
+    const res = await fetch(target.url, {
       method: "GET",
-      headers: resolved.target.headers,
+      headers: target.headers,
       signal: controller.signal,
     });
     if (res.ok) {

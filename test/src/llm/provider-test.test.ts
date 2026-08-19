@@ -143,4 +143,35 @@ describe("testProviderConnection", () => {
     expect(result.error).toBe("fetch failed");
     vi.unstubAllGlobals();
   });
+
+  it("probes Google Vertex AI through the OpenAI-compatible endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ id: "gemini-2.5-flash" }] }), {
+        status: 200,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await testProviderConnection({
+      provider: "google-vertex",
+      keys: ["AIza-vertex"],
+      settings: { authMode: "api-key", projectId: "p", location: "global" },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.modelCount).toBe(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://aiplatform.googleapis.com/v1/projects/p/locations/global/endpoints/openapi/models",
+      expect.objectContaining({ headers: { "x-goog-api-key": "AIza-vertex" } }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("fails cleanly for an unconfigured Google Vertex AI provider", async () => {
+    const result = await testProviderConnection({
+      provider: "google-vertex",
+      keys: [],
+      settings: {},
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/authMode/);
+  });
 });

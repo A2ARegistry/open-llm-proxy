@@ -3,7 +3,7 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generative-ai.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 
-export type LlmMode = "pi-ai" | "v1";
+export type LlmMode = "pi-ai" | "v1" | "vertex";
 
 export interface RegisteredProvider {
   id: string;
@@ -147,10 +147,12 @@ const V1_FALLBACK_PROVIDERS: Record<
 export function canonicalProviderName(name: string): string {
   if (name === "google") return "google-ai-studio";
   if (name === "xai") return "grok";
+  if (name === "vertex" || name === "google-vertex") return "google-vertex";
   return name;
 }
 
 export function resolveProviderMode(name: string): LlmMode {
+  if (name === "google-vertex") return "vertex";
   if (PI_AI_PROVIDERS[name]) return "pi-ai";
   if (V1_FALLBACK_PROVIDERS[name]) return "v1";
   // Unknown provider names default to pi-ai when they look like built-in ids;

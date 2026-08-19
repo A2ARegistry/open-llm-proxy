@@ -7,6 +7,7 @@ import {
   saveProviderConfig,
   SaveProviderConfigInput,
 } from "../llm/credential-store";
+import { parseVertexConfig } from "../llm/google-vertex";
 import {
   getPiAiProviderSpec,
   getV1ProviderSpec,
@@ -146,6 +147,11 @@ providerConfigRouter.put("/:provider", async (c) => {
   let settings: Record<string, unknown>;
   try {
     settings = validateSettings(body.settings);
+    if (provider === "google-vertex") {
+      // Vertex settings carry the auth mode + GCP project/location; validate
+      // them together with the credential before persisting anything.
+      parseVertexConfig({ settings, keys });
+    }
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400);
   }

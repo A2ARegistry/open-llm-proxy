@@ -27,7 +27,8 @@ import { useState } from "react";
 const PROVIDER_CATALOG: { id: string; name: string; needsKey: boolean }[] = [
   { id: "openai", name: "OpenAI", needsKey: true },
   { id: "anthropic", name: "Anthropic", needsKey: true },
-  { id: "google-ai-studio", name: "Google AI Studio", needsKey: true },
+  { id: "google-ai-studio", name: "Google AI Studio (Gemini API)", needsKey: true },
+  { id: "google-vertex", name: "Google Vertex AI", needsKey: true },
   { id: "deepseek", name: "DeepSeek", needsKey: true },
   { id: "mistral", name: "Mistral", needsKey: true },
   { id: "groq", name: "Groq", needsKey: true },
@@ -45,6 +46,7 @@ export function ProvidersPage() {
   const [editing, setEditing] = useState<{
     provider: string;
     name: string;
+    settings?: Record<string, unknown>;
   } | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -159,7 +161,11 @@ export function ProvidersPage() {
                     size="sm"
                     variant="ghost"
                     onClick={() =>
-                      setEditing({ provider: p.provider, name: p.name })
+                      setEditing({
+                        provider: p.provider,
+                        name: p.name,
+                        settings: p.settings,
+                      })
                     }
                   >
                     Configure
@@ -195,6 +201,13 @@ export function ProvidersPage() {
                   <p className="font-medium">{fmtDate(p.updatedAt)}</p>
                 </div>
               </div>
+              {p.provider === "google-vertex" && (
+                <p className="mt-3 text-xs text-gray-500">
+                  {String(p.settings.projectId ?? "—")} ·{" "}
+                  {String(p.settings.location ?? "—")} ·{" "}
+                  {String(p.settings.authMode ?? "—")}
+                </p>
+              )}
               {testing?.provider === p.provider && (
                 <TestResultNote testing={testing} />
               )}
@@ -216,6 +229,7 @@ export function ProvidersPage() {
       {editing && (
         <ProviderFormModal
           provider={editing.provider}
+          initialSettings={editing.settings}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -258,17 +272,70 @@ function TestResultNote({
   );
 }
 
+function VertexAuthModePicker({
+  value,
+  onChange,
+}: {
+  value: "api-key" | "service-account";
+  onChange: (v: "api-key" | "service-account") => void;
+}) {
+  const options: { id: "api-key" | "service-account"; label: string; hint: string }[] = [
+    { id: "api-key", label: "API key", hint: "Project-scoped Google Cloud API key" },
+    {
+      id: "service-account",
+      label: "Service account",
+      hint: "OAuth2 token minted from service-account JSON",
+    },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {options.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => onChange(o.id)}
+          aria-pressed={value === o.id}
+          className={`rounded-md border px-3 py-2 text-left transition ${
+            value === o.id
+              ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500"
+              : "border-gray-300 bg-white hover:bg-gray-50"
+          }`}
+        >
+          <p className={`text-sm font-medium ${value === o.id ? "text-indigo-700" : "text-gray-700"}`}>
+            {o.label}
+          </p>
+          <p className="mt-0.5 text-[11px] text-gray-500">{o.hint}</p>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ProviderFormModal({
   provider,
+  initialSettings,
   onClose,
   onSaved,
 }: {
   provider: string | null;
+  initialSettings?: Record<string, unknown>;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [selected, setSelected] = useState(provider ?? PROVIDER_CATALOG[0].id);
+  const isVertex = provider === "google-vertex";
+  const [selected, setSelected] = useState(
+    provider ?? PROVIDER_CATALOG[0].id,
+  );
   const [keysText, setKeysText] = useState("");
+  const [projectId, setProjectId] = useState(
+    isVertex ? String(initialSettings?.projectId ?? "") : "",
+  );
+  const [location, setLocation] = useState(
+    isVertex ? String(initialSettings?.location ?? "") : "",
+  );
+  const [authMode, setAuthMode] = useState<"api-key" | "service-account">(
+    initialSettings?.authMode === "service-account" ? "service-account" : "api-key",
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
@@ -285,19 +352,42 @@ function ProviderFormModal({
       .map((k) => k.trim())
       .filter(Boolean);
 
+  const canTest = () => {
+    if (selected === "google-vertex") {
+      return projectId.trim() && location.trim() && keysText.trim();
+    }
+    return !(needsKey && !keysText.trim());
+  };
+
+  const buildBody = (): { keys?: string[]; settings?: Record<string, unknown> } => {
+    if (selected === "google-vertex") {
+      return {
+        keys: [keysText.trim()],
+        settings: {
+          authMode,
+          projectId: projectId.trim(),
+          location: location.trim(),
+        },
+      };
+    }
+    const keys = enteredKeys();
+    return {
+      keys: keys.length ? keys : undefined,
+      settings: {},
+    };
+  };
+
   const submit = async () => {
     setError(null);
-    const keys = enteredKeys();
+    setSaving(true);
     try {
       await apiSend("PUT", `/api/providers/${selected}`, {
-        keys: keys.length ? keys : undefined,
+        ...buildBody(),
         enabled: true,
-        settings: {},
       });
       onSaved();
     } catch (err) {
       setError((err as Error).message);
-    } finally {
       setSaving(false);
     }
   };
@@ -307,11 +397,10 @@ function ProviderFormModal({
     setTesting(true);
     setTestResult(null);
     try {
-      const keys = enteredKeys();
       const result = await apiSend<ProviderTestResult>(
         "POST",
         `/api/providers/${selected}/test`,
-        keys.length ? { keys } : {},
+        buildBody(),
       );
       setTestResult(result);
     } catch (err) {
@@ -335,7 +424,7 @@ function ProviderFormModal({
             variant="outline"
             onClick={runTest}
             loading={testing}
-            disabled={needsKey && !keysText.trim()}
+            disabled={!canTest()}
           >
             <Wifi size={14} /> Test connection
           </Button>
@@ -361,24 +450,79 @@ function ProviderFormModal({
         )}
         {provider && (
           <p className="text-xs text-gray-500">
-            Update credentials for this provider.
+            Update credentials for this provider. Existing keys are preserved
+            unless you enter new ones.
           </p>
         )}
-        <div>
-          <Label>API key(s)</Label>
-          <textarea
-            className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            rows={3}
-            placeholder={
-              needsKey === false ? "(optional for local providers)" : "sk-…"
-            }
-            value={keysText}
-            onChange={(e) => setKeysText(e.target.value)}
-          />
-          <p className="mt-1 text-[11px] text-gray-400">
-            One key per line. Keys are encrypted at rest.
-          </p>
-        </div>
+
+        {selected === "google-vertex" ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Google Cloud project ID</Label>
+                <Input
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                  placeholder="my-gcp-project"
+                />
+              </div>
+              <div>
+                <Label>Location</Label>
+                <Input
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="us-central1 or global"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Authentication</Label>
+              <VertexAuthModePicker value={authMode} onChange={setAuthMode} />
+            </div>
+            <div>
+              <Label>
+                {authMode === "api-key" ? "Google Cloud API key" : "Service account JSON"}
+              </Label>
+              {authMode === "api-key" ? (
+                <Input
+                  value={keysText}
+                  onChange={(e) => setKeysText(e.target.value)}
+                  placeholder="AIza…"
+                />
+              ) : (
+                <textarea
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  rows={6}
+                  placeholder={"{\n  \"type\": \"service_account\",\n  \"client_email\": \"…\",\n  \"private_key\": \"-----BEGIN PRIVATE KEY-----…\"\n}"}
+                  value={keysText}
+                  onChange={(e) => setKeysText(e.target.value)}
+                />
+              )}
+              <p className="mt-1 text-[11px] text-gray-400">
+                {authMode === "api-key"
+                  ? "Create a Google Cloud API key in your project. Requires the Vertex AI API to be enabled."
+                  : "Paste the service-account JSON. We mint a short-lived OAuth2 token server-side; the key is encrypted at rest."}
+              </p>
+            </div>
+          </>
+        ) : (
+          <div>
+            <Label>API key(s)</Label>
+            <textarea
+              className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              rows={3}
+              placeholder={
+                needsKey === false ? "(optional for local providers)" : "sk-…"
+              }
+              value={keysText}
+              onChange={(e) => setKeysText(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-gray-400">
+              One key per line. Keys are encrypted at rest.
+            </p>
+          </div>
+        )}
+
         {testResult && (
           <p
             className={`flex items-start gap-1 text-xs ${testResult.ok ? "text-green-600" : "text-red-600"}`}

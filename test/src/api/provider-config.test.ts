@@ -229,6 +229,55 @@ describe("PUT /api/providers/:provider", () => {
     expect(call.keys).toBeUndefined();
     expect(call.settings).toEqual({ timeout: 30 });
   });
+
+  it("accepts a valid Google Vertex AI config", async () => {
+    mockSaveProviderConfig.mockResolvedValue(
+      config({
+        provider: "google-vertex",
+        keys: ["AIza-x"],
+        enabled: true,
+        settings: {
+          authMode: "api-key",
+          projectId: "p",
+          location: "us-central1",
+        },
+      }),
+    );
+    const { status } = await fetchJson(
+      buildApp(),
+      "/api/providers/google-vertex",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          keys: ["AIza-x"],
+          settings: {
+            authMode: "api-key",
+            projectId: "p",
+            location: "us-central1",
+          },
+        }),
+      },
+    );
+    expect(status).toBe(200);
+  });
+
+  it("rejects a Google Vertex AI config missing required settings", async () => {
+    const { status, body } = await fetchJson(
+      buildApp(),
+      "/api/providers/google-vertex",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          keys: ["AIza-x"],
+          settings: { authMode: "api-key" },
+        }),
+      },
+    );
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/project ID/);
+  });
 });
 
 describe("POST /api/providers/:provider/test", () => {

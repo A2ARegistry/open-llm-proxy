@@ -12,6 +12,8 @@ export class V1OpenAICompatibleClient {
   private readonly keys: string[];
   private readonly needsKey: boolean;
   private readonly extraHeaders: Record<string, string>;
+  /** When set, replaces the default `Authorization: Bearer <key>` header. */
+  private readonly authHeaders?: Record<string, string>;
 
   constructor(options: {
     provider: string;
@@ -24,6 +26,7 @@ export class V1OpenAICompatibleClient {
       chatCompletionPath?: string;
       modelsPath?: string;
     };
+    authHeaders?: Record<string, string>;
   }) {
     const canonical = canonicalProviderName(options.provider);
     const spec = getV1ProviderSpec(canonical);
@@ -48,6 +51,7 @@ export class V1OpenAICompatibleClient {
     if (canonical === "cohere") {
       // Cohere accepts OpenAI-compatible headers already; no extras.
     }
+    this.authHeaders = options.authHeaders;
   }
 
   private getKey(): string | undefined {
@@ -59,9 +63,12 @@ export class V1OpenAICompatibleClient {
     const headers: Record<string, string> = {
       "content-type": "application/json",
       ...this.extraHeaders,
+      ...(this.authHeaders ?? {}),
     };
-    const key = this.getKey();
-    if (key) headers.authorization = `Bearer ${key}`;
+    if (!this.authHeaders) {
+      const key = this.getKey();
+      if (key) headers.authorization = `Bearer ${key}`;
+    }
     return headers;
   }
 
