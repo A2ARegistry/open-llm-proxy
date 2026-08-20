@@ -27,7 +27,11 @@ import { useState } from "react";
 const PROVIDER_CATALOG: { id: string; name: string; needsKey: boolean }[] = [
   { id: "openai", name: "OpenAI", needsKey: true },
   { id: "anthropic", name: "Anthropic", needsKey: true },
-  { id: "google-ai-studio", name: "Google AI Studio (Gemini API)", needsKey: true },
+  {
+    id: "google-ai-studio",
+    name: "Google AI Studio (Gemini API)",
+    needsKey: true,
+  },
   { id: "google-vertex", name: "Google Vertex AI", needsKey: true },
   { id: "deepseek", name: "DeepSeek", needsKey: true },
   { id: "mistral", name: "Mistral", needsKey: true },
@@ -203,9 +207,13 @@ export function ProvidersPage() {
               </div>
               {p.provider === "google-vertex" && (
                 <p className="mt-3 text-xs text-gray-500">
-                  {String(p.settings.projectId ?? "—")} ·{" "}
-                  {String(p.settings.location ?? "—")} ·{" "}
                   {String(p.settings.authMode ?? "—")}
+                  {p.settings.projectId
+                    ? ` · ${String(p.settings.projectId)}`
+                    : ""}
+                  {p.settings.location
+                    ? ` · ${String(p.settings.location)}`
+                    : ""}
                 </p>
               )}
               {testing?.provider === p.provider && (
@@ -320,9 +328,7 @@ function ProviderFormModal({
   onSaved: () => void;
 }) {
   const isVertex = provider === "google-vertex";
-  const [selected, setSelected] = useState(
-    provider ?? PROVIDER_CATALOG[0].id,
-  );
+  const [selected, setSelected] = useState(provider ?? PROVIDER_CATALOG[0].id);
   const [keysText, setKeysText] = useState("");
   const [projectId, setProjectId] = useState(
     isVertex ? String(initialSettings?.projectId ?? "") : "",
@@ -332,6 +338,11 @@ function ProviderFormModal({
   );
   const [authMode, setAuthMode] = useState<"api-key" | "service-account">(
     initialSettings?.authMode === "api-key" ? "api-key" : "service-account",
+  );
+  const [customModelsText, setCustomModelsText] = useState(
+    isVertex && Array.isArray(initialSettings?.customModels)
+      ? (initialSettings.customModels as string[]).join("\n")
+      : "",
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -349,21 +360,42 @@ function ProviderFormModal({
       .map((k) => k.trim())
       .filter(Boolean);
 
+  const parseCustomModels = () =>
+    customModelsText
+      .split("\n")
+      .map((c) => c.trim())
+      .filter(Boolean);
+
   const canTest = () => {
     if (selected === "google-vertex") {
-      return projectId.trim() && location.trim() && keysText.trim();
+      if (authMode === "service-account") {
+        return projectId.trim() && location.trim() && keysText.trim();
+      }
+      return !!keysText.trim();
     }
     return !(needsKey && !keysText.trim());
   };
 
-  const buildBody = (): { keys?: string[]; settings?: Record<string, unknown> } => {
+  const buildBody = (): {
+    keys?: string[];
+    settings?: Record<string, unknown>;
+  } => {
     if (selected === "google-vertex") {
+      if (authMode === "service-account") {
+        return {
+          keys: [keysText.trim()],
+          settings: {
+            authMode,
+            projectId: projectId.trim(),
+            location: location.trim(),
+          },
+        };
+      }
       return {
         keys: [keysText.trim()],
         settings: {
           authMode,
-          projectId: projectId.trim(),
-          location: location.trim(),
+          customModels: parseCustomModels(),
         },
       };
     }
@@ -454,31 +486,35 @@ function ProviderFormModal({
 
         {selected === "google-vertex" ? (
           <>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Google Cloud project ID</Label>
-                <Input
-                  value={projectId}
-                  onChange={(e) => setProjectId(e.target.value)}
-                  placeholder="my-gcp-project"
-                />
-              </div>
-              <div>
-                <Label>Location</Label>
-                <Input
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="us-central1 or global"
-                />
-              </div>
-            </div>
             <div>
               <Label>Authentication</Label>
               <VertexAuthModePicker value={authMode} onChange={setAuthMode} />
             </div>
+            {authMode === "service-account" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Google Cloud project ID</Label>
+                  <Input
+                    value={projectId}
+                    onChange={(e) => setProjectId(e.target.value)}
+                    placeholder="my-gcp-project"
+                  />
+                </div>
+                <div>
+                  <Label>Location</Label>
+                  <Input
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="us-central1 or global"
+                  />
+                </div>
+              </div>
+            )}
             <div>
               <Label>
-                {authMode === "api-key" ? "Google Cloud API key" : "Service account JSON"}
+                {authMode === "api-key"
+                  ? "Google Cloud API key"
+                  : "Service account JSON"}
               </Label>
               {authMode === "api-key" ? (
                 <Input
@@ -490,17 +526,35 @@ function ProviderFormModal({
                 <textarea
                   className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   rows={6}
-                  placeholder={"{\n  \"type\": \"service_account\",\n  \"client_email\": \"…\",\n  \"private_key\": \"-----BEGIN PRIVATE KEY-----…\"\n}"}
+                  placeholder={
+                    '{\n  "type": "service_account",\n  "client_email": "…",\n  "private_key": "-----BEGIN PRIVATE KEY-----…"\n}'
+                  }
                   value={keysText}
                   onChange={(e) => setKeysText(e.target.value)}
                 />
               )}
               <p className="mt-1 text-[11px] text-gray-400">
                 {authMode === "api-key"
-                  ? "Create a Google Cloud API key in your project. Requires the Vertex AI API to be enabled."
+                  ? "Vertex AI Express Mode — just an API key, no project setup. Create a Google Cloud (or Gemini) API key in your project."
                   : "Paste the service-account JSON. We mint a short-lived OAuth2 token server-side; the key is encrypted at rest."}
               </p>
             </div>
+            {authMode === "api-key" && (
+              <div>
+                <Label>Custom model IDs (optional)</Label>
+                <textarea
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  rows={2}
+                  placeholder={"gemini-2.5-flash-lite\ngemini-3.5-pro-preview"}
+                  value={customModelsText}
+                  onChange={(e) => setCustomModelsText(e.target.value)}
+                />
+                <p className="mt-1 text-[11px] text-gray-400">
+                  One model id per line, shown in /v1/models. Any model id works
+                  at request time even without listing it here.
+                </p>
+              </div>
+            )}
           </>
         ) : (
           <div>

@@ -5,6 +5,7 @@ import {
   resolveVertexHeaders,
   vertexBaseUrl,
   vertexModelsPath,
+  type VertexSettings,
 } from "./google-vertex";
 import {
   canonicalProviderName,
@@ -107,32 +108,41 @@ export async function testProviderConnection(input: {
   const provider = canonicalProviderName(input.provider);
 
   if (isVertexProvider(provider)) {
-    let target: TestTarget;
+    let vertex: { settings: VertexSettings; credential: string };
     try {
-      const vertex = parseVertexConfig({
+      vertex = parseVertexConfig({
         settings: input.settings,
         keys: input.keys,
       });
-      target = {
-        url: `${vertexBaseUrl(vertex.settings.location)}${vertexModelsPath(
-          vertex.settings.projectId,
-          vertex.settings.location,
-        )}`,
-        headers: await resolveVertexHeaders(vertex),
-      };
     } catch (err) {
       return {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       };
     }
-    return probe(target);
+    const headers = await resolveVertexHeaders(vertex);
+    // Express Mode (api-key): no project/location, no OpenAI-compat models
+    // endpoint — verify connectivity through a minimal generateContent call.
+    if (vertex.settings.authMode === "api-key") {
+      return probeVertexExpress(headers);
+    }
+    return probe({
+      url: `${vertexBaseUrl(vertex.settings.location)}${vertexModelsPath(
+        vertex.settings.projectId,
+        vertex.settings.location,
+      )}`,
+      headers,
+    });
   }
 
   const resolved = resolveTestTarget(input);
   if ("error" in resolved) return { ok: false, error: resolved.error };
   return probe(resolved.target);
 }
+
+/** Express Mode probe endpoint (global host, no project/location). */
+const VERTEX_EXPRESS_GENERATE_URL =
+  "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:generateContent";
 
 async function probe(target: TestTarget): Promise<ProviderTestResult> {
   const controller = new AbortController();
@@ -147,6 +157,43 @@ async function probe(target: TestTarget): Promise<ProviderTestResult> {
       const modelCount = parseModelCount(await res.text());
       return { ok: true, status: res.status, modelCount };
     }
+    const body = await res.text().catch(() => "");
+    const message =
+      extractErrorMessage(body) || `Upstream error (${res.status})`;
+    return { ok: false, status: res.status, error: message };
+  } catch (err) {
+    const aborted =
+      err instanceof Error && err.name === "AbortError"
+        ? "Request timed out"
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    return { ok: false, error: aborted };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Express Mode has no models-list endpoint, so connectivity is verified with a
+ * minimal generateContent call against a stable base model. Only auth is tested;
+ * the response body is discarded.
+ */
+async function probeVertexExpress(
+  headers: Record<string, string>,
+): Promise<ProviderTestResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(VERTEX_EXPRESS_GENERATE_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: "ping" }] }],
+      }),
+      signal: controller.signal,
+    });
+    if (res.ok) return { ok: true, status: res.status };
     const body = await res.text().catch(() => "");
     const message =
       extractErrorMessage(body) || `Upstream error (${res.status})`;

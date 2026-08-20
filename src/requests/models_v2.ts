@@ -1,5 +1,17 @@
 import { TenantService } from "../db/tenant";
 import { listProviderConfigs } from "../llm/credential-store";
+import {
+  parseVertexConfig,
+  resolveVertexHeaders,
+  vertexBaseUrl,
+  vertexModelsPath,
+} from "../llm/google-vertex";
+import {
+  builtinModels,
+  mergeModels,
+  normalizeProviderModelId,
+  synthesizedMetadata,
+} from "../llm/model-catalog";
 import { isModelAllowed } from "../llm/policy";
 import {
   V1_PROVIDER_NAMES,
@@ -8,7 +20,6 @@ import {
 } from "../llm/provider-registry";
 import { V1OpenAICompatibleClient } from "../llm/v1-provider";
 import { ApiKeyAuth } from "../types";
-import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 
 interface ModelsInput {
   env: Env;
@@ -24,6 +35,34 @@ interface CatalogEntry {
   maxTokens?: number;
   cost?: unknown;
   [key: string]: unknown;
+}
+
+function entry(
+  id: string,
+  api: string,
+  meta: { contextWindow?: number; maxTokens?: number; cost?: unknown },
+): CatalogEntry {
+  return { id, api, ...meta };
+}
+
+async function fetchJson(
+  url: string,
+  headers?: Record<string, string>,
+): Promise<unknown | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROVIDER_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      headers,
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function fetchV1Models(
@@ -57,7 +96,7 @@ async function fetchV1Models(
     const data = (await response.json()) as { data?: { id?: string }[] };
     return (data.data ?? [])
       .filter((m) => typeof m.id === "string")
-      .map((m) => ({ id: m.id as string, api: "openai-completions" }));
+      .map((m) => entry(m.id as string, "openai-completions", {}));
   } catch {
     return [];
   } finally {
@@ -65,20 +104,99 @@ async function fetchV1Models(
   }
 }
 
-function piBuiltinModels(provider: string): CatalogEntry[] {
-  try {
-    return getBuiltinModels(
-      provider as Parameters<typeof getBuiltinModels>[0],
-    ).map((m) => ({
-      id: m.id,
-      api: m.api,
+function catalogModels(provider: string): CatalogEntry[] {
+  return builtinModels(provider).map((m) =>
+    entry(String(m.id ?? ""), String(m.api ?? ""), {
       contextWindow: (m as { contextWindow?: number }).contextWindow,
       maxTokens: (m as { maxTokens?: number }).maxTokens,
       cost: (m as { cost?: unknown }).cost,
-    }));
-  } catch {
-    return [];
+    }),
+  );
+}
+
+/**
+ * Google AI Studio: baked catalog + the live model list from the
+ * generativelanguage API (falls back to baked on any error).
+ */
+async function aiStudioModels(cfg: {
+  keys: string[];
+}): Promise<CatalogEntry[]> {
+  const baked = catalogModels("google-ai-studio");
+  const key = cfg.keys[0];
+  if (!key) return baked;
+  const json = await fetchJson(
+    "https://generativelanguage.googleapis.com/v1beta/models",
+    { "x-goog-api-key": key },
+  );
+  const list =
+    json && Array.isArray((json as { models?: unknown }).models)
+      ? (json as { models: { name?: string }[] }).models
+      : [];
+  const live = list
+    .map((m) => m.name)
+    .filter((n): n is string => typeof n === "string")
+    .map((n) => normalizeProviderModelId(n, "google-ai-studio"))
+    .filter((n) => n.length > 0)
+    .map((id) => entry(id, "google-generative-ai", synthesizedMetadata(id)));
+  return mergeModels(baked, live);
+}
+
+/**
+ * Google Vertex AI: baked catalog, merged with the live OpenAI-compatible model
+ * list for service-account mode and any tenant-pinned custom model ids
+ * (Express Mode has no model-list endpoint, so custom ids are the way to list
+ * models that aren't in the baked catalog).
+ */
+async function vertexModels(cfg: {
+  keys: string[];
+  settings?: Record<string, unknown>;
+}): Promise<CatalogEntry[]> {
+  const baked = catalogModels("google-vertex");
+  const api = baked[0]?.api ?? "google-vertex";
+
+  let live: CatalogEntry[] = [];
+  if (cfg.settings?.authMode === "service-account") {
+    try {
+      const vertex = parseVertexConfig({
+        settings: cfg.settings,
+        keys: cfg.keys,
+      });
+      const headers = await resolveVertexHeaders(vertex);
+      const url = `${vertexBaseUrl(vertex.settings.location)}${vertexModelsPath(
+        vertex.settings.projectId,
+        vertex.settings.location,
+      )}`;
+      const json = await fetchJson(url, headers);
+      const data =
+        json && Array.isArray((json as { data?: unknown }).data)
+          ? (json as { data: { id?: string }[] }).data
+          : [];
+      live = data
+        .map((m) => m.id)
+        .filter((id): id is string => typeof id === "string")
+        .map((id) =>
+          entry(
+            normalizeProviderModelId(id, "google-vertex"),
+            "google-vertex",
+            synthesizedMetadata(id),
+          ),
+        );
+    } catch {
+      live = [];
+    }
   }
+
+  const customIds = Array.isArray(cfg.settings?.customModels)
+    ? (cfg.settings.customModels as unknown[]).filter(
+        (c): c is string => typeof c === "string",
+      )
+    : [];
+  const custom = customIds
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .map((id) => entry(id, api, synthesizedMetadata(id)));
+
+  return mergeModels(baked, mergeModels(live, custom));
 }
 
 export async function modelsV2(input: ModelsInput): Promise<Response> {
@@ -96,8 +214,12 @@ export async function modelsV2(input: ModelsInput): Promise<Response> {
     enabled.map(async (cfg) => {
       const provider = canonicalProviderName(cfg.provider);
       let models: CatalogEntry[] = [];
-      if (PI_AI_PROVIDER_NAMES.includes(provider)) {
-        models = piBuiltinModels(provider);
+      if (provider === "google-vertex") {
+        models = await vertexModels(cfg);
+      } else if (provider === "google-ai-studio") {
+        models = await aiStudioModels(cfg);
+      } else if (PI_AI_PROVIDER_NAMES.includes(provider)) {
+        models = catalogModels(provider);
       } else if (V1_PROVIDER_NAMES.includes(provider)) {
         models = await fetchV1Models(provider, cfg.keys, cfg.settings);
       }

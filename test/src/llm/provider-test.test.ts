@@ -4,6 +4,12 @@ import {
   testProviderConnection,
 } from "~/src/llm/provider-test";
 
+vi.mock("~/src/llm/google-oauth", () => ({
+  getGoogleAccessToken: vi.fn(async () => "fake-oauth-token"),
+  parseServiceAccount: vi.fn(),
+  clearGoogleTokenCache: vi.fn(),
+}));
+
 describe("resolveTestTarget", () => {
   it("uses x-api-key + anthropic-version for Anthropic", () => {
     const out = resolveTestTarget({
@@ -144,7 +150,33 @@ describe("testProviderConnection", () => {
     vi.unstubAllGlobals();
   });
 
-  it("probes Google Vertex AI through the OpenAI-compatible endpoint", async () => {
+  it("probes Google Vertex AI Express Mode (api-key) via generateContent", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ candidates: [{ content: {} }] }), {
+        status: 200,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await testProviderConnection({
+      provider: "google-vertex",
+      keys: ["AIza-vertex"],
+      settings: { authMode: "api-key" },
+    });
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:generateContent",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "content-type": "application/json",
+          "x-goog-api-key": "AIza-vertex",
+        }),
+      }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("probes Google Vertex AI service-account mode through the OpenAI-compatible endpoint", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ data: [{ id: "gemini-2.5-flash" }] }), {
         status: 200,
@@ -153,14 +185,23 @@ describe("testProviderConnection", () => {
     vi.stubGlobal("fetch", fetchMock);
     const result = await testProviderConnection({
       provider: "google-vertex",
-      keys: ["AIza-vertex"],
-      settings: { authMode: "api-key", projectId: "p", location: "global" },
+      keys: ["{service-account-json}"],
+      settings: {
+        authMode: "service-account",
+        projectId: "p",
+        location: "global",
+      },
     });
     expect(result.ok).toBe(true);
     expect(result.modelCount).toBe(1);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://aiplatform.googleapis.com/v1/projects/p/locations/global/endpoints/openapi/models",
-      expect.objectContaining({ headers: { "x-goog-api-key": "AIza-vertex" } }),
+      expect.objectContaining({
+        headers: {
+          authorization: "Bearer fake-oauth-token",
+          "x-goog-user-project": "p",
+        },
+      }),
     );
     vi.unstubAllGlobals();
   });

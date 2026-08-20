@@ -30,6 +30,7 @@ flowchart
 | ---------------- | ----------------- | ------ | ------------------ |
 | OpenAI           | ✅                | ✅     | `openai`           |
 | Google AI Studio | ✅                | ✅     | `google-ai-studio` |
+| Google Vertex AI | ✅¹               | ✅     | `google-vertex`    |
 | Anthropic        | ✅                | ✅     | `anthropic`        |
 | Cerebras         | ✅                | ✅     | `cerebras`         |
 | Cohere           | ✅                | ✅     | `cohere`           |
@@ -45,6 +46,11 @@ flowchart
 | Ollama           | ✅                | ✅     | `ollama`           |
 
 Provider API keys are managed from the dashboard (stored encrypted in D1) — no environment variables are required.
+
+¹ Google Vertex AI supports two auth modes (chosen in the dashboard):
+
+- **Service account** — uses the OpenAI-compatible endpoint (`/v1/chat/completions`-style) with a minted OAuth2 bearer token. Requires a GCP project ID and location.
+- **API key (Vertex AI Express Mode)** — only a Google Cloud/Gemini API key is needed, no project setup. Requests use the native `generateContent` API against the global endpoint.
 
 **Note**: Providers marked with ⚠️ have limited support for certain features (e.g., Tool Use, multimodal capabilities).
 
@@ -167,6 +173,30 @@ response = client.chat.completions.create(
 
 print(response.choices[0].message.content)
 ```
+
+## Model Discovery & Passing Through New Models
+
+The proxy is **not** a model allowlist — the model id you send is forwarded to
+the upstream API as-is (modulo the `google/` publisher prefix for Vertex AI).
+If a newly released model isn't listed yet, you can still call it with
+`provider/model-id` in `/v1/chat/completions`.
+
+`/v1/models` is built by merging, per provider:
+
+- **Baked catalog** — pi-ai ships a generated catalog of current models (id,
+  context window, max tokens, pricing). This is the base list.
+- **Live discovery** — merged in on each `/v1/models` call (falls back to baked
+  on any error):
+  - **Google AI Studio**: the live `generativelanguage` model list.
+  - **Google Vertex AI (service account)**: the live OpenAI-compatible model
+    list of the configured GCP project.
+- **Custom model ids** — Vertex AI **Express Mode** has no model-list endpoint,
+  so the dashboard's _Custom model IDs_ field on the Vertex provider lets you pin
+  model ids (one per line, e.g. `gemini-5.0`) that are merged into `/v1/models`.
+- **Metadata fallbacks** — ids that are neither baked nor pinned get synthesized
+  metadata (Gemini-family ids default to `reasoning: true`, a 1M-token context
+  window and heuristic pricing) so cost accounting and the model picker keep
+  working for brand-new models.
 
 ## Documentation
 

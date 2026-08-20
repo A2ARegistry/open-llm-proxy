@@ -1,5 +1,10 @@
 import { createTenantCredentialStore } from "./credential-store";
 import {
+  builtinModels,
+  registeredProviderId,
+  synthesizedMetadata,
+} from "./model-catalog";
+import {
   buildPiAiProvider,
   getPiAiProviderSpec,
   type RegisteredProvider,
@@ -12,19 +17,21 @@ import type {
   Model,
 } from "@earendil-works/pi-ai";
 
+export type PiModelApi =
+  | "openai-completions"
+  | "anthropic-messages"
+  | "google-generative-ai"
+  | "google-vertex";
+
 export interface StreamResult {
   registered: RegisteredProvider[];
   complete(input: {
-    model: Model<
-      "openai-completions" | "anthropic-messages" | "google-generative-ai"
-    >;
+    model: Model<PiModelApi>;
     context: Context;
     signal?: AbortSignal;
   }): Promise<AssistantMessage>;
   stream(input: {
-    model: Model<
-      "openai-completions" | "anthropic-messages" | "google-generative-ai"
-    >;
+    model: Model<PiModelApi>;
     context: Context;
     signal?: AbortSignal;
   }): AsyncIterable<AssistantMessageEvent>;
@@ -76,20 +83,28 @@ const FALLBACK_MAX_TOKENS = 8192;
 export function modelFor(
   provider: string,
   modelId: string,
-  api: "openai-completions" | "anthropic-messages" | "google-generative-ai",
-): Model<"openai-completions" | "anthropic-messages" | "google-generative-ai"> {
+  api: PiModelApi,
+): Model<PiModelApi> {
+  // The id pi-ai actually registers (spec.id) — NOT the registry name, which can
+  // differ (e.g. "google-ai-studio" registers as "google").
+  const providerId = registeredProviderId(provider);
+  const baked = builtinModels(provider).find(
+    (m) => (m as { id?: string }).id === modelId,
+  ) as Model<PiModelApi> | undefined;
+  if (baked) {
+    return { ...baked, api, provider: providerId } as Model<PiModelApi>;
+  }
+  const meta = synthesizedMetadata(modelId);
   return {
     id: modelId,
     name: modelId,
     api,
-    provider,
+    provider: providerId,
     baseUrl: getPiAiProviderSpec(provider)?.baseUrl ?? "",
-    reasoning: false,
-    input: ["text"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: FALLBACK_CONTEXT_WINDOW,
-    maxTokens: FALLBACK_MAX_TOKENS,
-  } as Model<
-    "openai-completions" | "anthropic-messages" | "google-generative-ai"
-  >;
+    reasoning: meta.reasoning ?? false,
+    input: ["text", "image"],
+    cost: meta.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: meta.contextWindow ?? FALLBACK_CONTEXT_WINDOW,
+    maxTokens: meta.maxTokens ?? FALLBACK_MAX_TOKENS,
+  } as Model<PiModelApi>;
 }

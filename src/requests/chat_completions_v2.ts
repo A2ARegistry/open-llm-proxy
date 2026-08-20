@@ -198,6 +198,12 @@ export async function chatCompletionsV2(
 
   const stream = chatBody.stream === true;
   const signal = request.signal;
+  // Google Vertex AI in "api-key" mode is Express Mode: no project/location, and
+  // requests go through the pi-ai @google/genai adapter (native generateContent).
+  // "service-account" mode keeps the OpenAI-compatible endpoint + OAuth2 path.
+  const vertexOpenAiCompat =
+    isVertexProvider(providerName) &&
+    config.settings?.authMode === "service-account";
   const piSpec = getPiAiProviderSpec(providerName);
 
   const maxTokens = numberParam(
@@ -287,7 +293,7 @@ export async function chatCompletionsV2(
     }
   };
 
-  if (piSpec) {
+  if (piSpec && !vertexOpenAiCompat) {
     const models = createTenantModels({
       env,
       organizationId,

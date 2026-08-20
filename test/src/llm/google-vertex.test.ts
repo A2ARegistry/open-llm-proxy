@@ -36,6 +36,17 @@ describe("google-vertex helpers", () => {
     });
   });
 
+  it("accepts an api-key config without project/location (Express Mode)", () => {
+    const out = parseVertexConfig({
+      settings: { authMode: "api-key" },
+      keys: ["AIza-key"],
+    });
+    expect(out).toEqual({
+      settings: { authMode: "api-key", projectId: "", location: "" },
+      credential: "AIza-key",
+    });
+  });
+
   it("rejects an invalid authMode", () => {
     expect(() =>
       parseVertexConfig({
@@ -45,19 +56,33 @@ describe("google-vertex helpers", () => {
     ).toThrow(/authMode/);
   });
 
-  it("requires a project ID and location", () => {
+  it("requires a project ID and location for service-account mode only", () => {
     expect(() =>
       parseVertexConfig({
-        settings: { authMode: "api-key", projectId: "", location: "us" },
+        settings: {
+          authMode: "service-account",
+          projectId: "",
+          location: "us",
+        },
         keys: ["k"],
       }),
     ).toThrow(/project ID/);
     expect(() =>
       parseVertexConfig({
-        settings: { authMode: "api-key", projectId: "p", location: " " },
+        settings: {
+          authMode: "service-account",
+          projectId: "p",
+          location: " ",
+        },
         keys: ["k"],
       }),
     ).toThrow(/location/);
+    expect(() =>
+      parseVertexConfig({
+        settings: { authMode: "api-key", projectId: "", location: "" },
+        keys: ["k"],
+      }),
+    ).not.toThrow();
   });
 
   it("requires a credential in both modes", () => {
@@ -77,6 +102,35 @@ describe("google-vertex helpers", () => {
         keys: [],
       }),
     ).toThrow(/service account/);
+  });
+
+  it("normalizes customModels to trimmed non-empty ids", () => {
+    const out = parseVertexConfig({
+      settings: {
+        authMode: "api-key",
+        customModels: [" gemini-2.5-flash-lite ", "gemini-5.0", "", " "],
+      },
+      keys: ["k"],
+    });
+    expect(out.settings.customModels).toEqual([
+      "gemini-2.5-flash-lite",
+      "gemini-5.0",
+    ]);
+  });
+
+  it("rejects a non-array or non-string customModels", () => {
+    expect(() =>
+      parseVertexConfig({
+        settings: { authMode: "api-key", customModels: "gemini-5.0" },
+        keys: ["k"],
+      }),
+    ).toThrow(/customModels/);
+    expect(() =>
+      parseVertexConfig({
+        settings: { authMode: "api-key", customModels: ["gemini-5.0", 42] },
+        keys: ["k"],
+      }),
+    ).toThrow(/customModels/);
   });
 
   it("builds the correct regional/global base URLs", () => {

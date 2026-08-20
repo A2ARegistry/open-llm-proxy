@@ -7,6 +7,7 @@ export interface VertexSettings {
   authMode: "api-key" | "service-account";
   projectId: string;
   location: string;
+  customModels?: string[];
 }
 
 /** Whether a provider id refers to the Google Vertex AI provider. */
@@ -17,6 +18,11 @@ export function isVertexProvider(name: string): boolean {
 /**
  * Validate + normalize the per-tenant Vertex settings and the stored
  * credential(s). Throws a descriptive Error on invalid input.
+ *
+ * - `service-account`: needs a GCP project ID + location + the SA JSON. Requests
+ *   go to the OpenAI-compatible endpoint with a minted OAuth2 bearer token.
+ * - `api-key`: Express Mode — only an API key is required; no project/location.
+ *   Requests use the native generateContent API (pi-ai @google/genai adapter).
  */
 export function parseVertexConfig(input: {
   settings?: Record<string, unknown>;
@@ -32,12 +38,28 @@ export function parseVertexConfig(input: {
   const projectId =
     typeof raw.projectId === "string" ? raw.projectId.trim() : "";
   const location = typeof raw.location === "string" ? raw.location.trim() : "";
-  if (!projectId)
-    throw new Error("Vertex AI requires a Google Cloud project ID");
-  if (!location)
+  if (authMode === "service-account") {
+    if (!projectId)
+      throw new Error("Vertex AI requires a Google Cloud project ID");
+    if (!location)
+      throw new Error(
+        "Vertex AI requires a location (e.g. us-central1 or global)",
+      );
+  }
+
+  const customModelsRaw = raw.customModels;
+  if (
+    customModelsRaw !== undefined &&
+    (!Array.isArray(customModelsRaw) ||
+      customModelsRaw.some((c) => typeof c !== "string"))
+  ) {
     throw new Error(
-      "Vertex AI requires a location (e.g. us-central1 or global)",
+      "Vertex AI customModels must be an array of model id strings",
     );
+  }
+  const customModels = Array.isArray(customModelsRaw)
+    ? customModelsRaw.map((c) => c.trim()).filter(Boolean)
+    : undefined;
 
   const credential =
     (input.keys ?? []).find(
@@ -52,7 +74,7 @@ export function parseVertexConfig(input: {
   }
 
   return {
-    settings: { authMode, projectId, location },
+    settings: { authMode, projectId, location, customModels },
     credential,
   };
 }

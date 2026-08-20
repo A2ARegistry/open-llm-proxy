@@ -1,6 +1,7 @@
 import { createProvider } from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generative-ai.lazy";
+import { googleVertexApi } from "@earendil-works/pi-ai/api/google-vertex.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 
 export type LlmMode = "pi-ai" | "v1" | "vertex";
@@ -23,12 +24,15 @@ interface PiAiProviderSpec {
   baseUrl: string;
   api:
     | ReturnType<typeof openAICompletionsApi>
-    | ReturnType<typeof anthropicMessagesApi>;
+    | ReturnType<typeof anthropicMessagesApi>
+    | ReturnType<typeof googleGenerativeAIApi>
+    | ReturnType<typeof googleVertexApi>;
 }
 
 const OPENAI_COMPAT_API = openAICompletionsApi();
 const ANTHROPIC_API = anthropicMessagesApi();
 const GOOGLE_API = googleGenerativeAIApi();
+const VERTEX_API = googleVertexApi();
 
 /**
  * pi-ai-covered providers, mapped to their OpenAI-compatible (or native) API.
@@ -58,6 +62,16 @@ const PI_AI_PROVIDERS: Record<string, PiAiProviderSpec> = {
     name: "Google AI Studio",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     api: GOOGLE_API,
+  },
+  // Google Vertex AI (Express Mode): an API key is the only credential needed.
+  // Requests use the native @google/genai generateContent API against the global
+  // `aiplatform.googleapis.com` host; the `{location}` placeholder tells the
+  // pi-ai vertex adapter to keep the SDK's own Express-mode base URL.
+  "google-vertex": {
+    id: "google-vertex",
+    name: "Google Vertex AI",
+    baseUrl: "https://{location}-aiplatform.googleapis.com",
+    api: VERTEX_API,
   },
   deepseek: {
     id: "deepseek",
@@ -197,9 +211,14 @@ export const V1_PROVIDER_NAMES = Object.keys(V1_FALLBACK_PROVIDERS);
 /** pi-ai API name used for request building, per provider id. */
 export function providerApiId(
   name: string,
-): "openai-completions" | "anthropic-messages" | "google-generative-ai" {
+):
+  | "openai-completions"
+  | "anthropic-messages"
+  | "google-generative-ai"
+  | "google-vertex" {
   const spec = getPiAiProviderSpec(name);
   if (spec?.api === ANTHROPIC_API) return "anthropic-messages";
   if (spec?.api === GOOGLE_API) return "google-generative-ai";
+  if (spec?.api === VERTEX_API) return "google-vertex";
   return "openai-completions";
 }

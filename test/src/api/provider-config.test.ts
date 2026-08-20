@@ -230,17 +230,13 @@ describe("PUT /api/providers/:provider", () => {
     expect(call.settings).toEqual({ timeout: 30 });
   });
 
-  it("accepts a valid Google Vertex AI config", async () => {
+  it("accepts a valid Google Vertex AI Express Mode config (api-key only)", async () => {
     mockSaveProviderConfig.mockResolvedValue(
       config({
         provider: "google-vertex",
         keys: ["AIza-x"],
         enabled: true,
-        settings: {
-          authMode: "api-key",
-          projectId: "p",
-          location: "us-central1",
-        },
+        settings: { authMode: "api-key" },
       }),
     );
     const { status } = await fetchJson(
@@ -251,18 +247,14 @@ describe("PUT /api/providers/:provider", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           keys: ["AIza-x"],
-          settings: {
-            authMode: "api-key",
-            projectId: "p",
-            location: "us-central1",
-          },
+          settings: { authMode: "api-key" },
         }),
       },
     );
     expect(status).toBe(200);
   });
 
-  it("rejects a Google Vertex AI config missing required settings", async () => {
+  it("rejects a Google Vertex AI service-account config missing project/location", async () => {
     const { status, body } = await fetchJson(
       buildApp(),
       "/api/providers/google-vertex",
@@ -270,8 +262,8 @@ describe("PUT /api/providers/:provider", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          keys: ["AIza-x"],
-          settings: { authMode: "api-key" },
+          keys: ["{sa-json}"],
+          settings: { authMode: "service-account" },
         }),
       },
     );
