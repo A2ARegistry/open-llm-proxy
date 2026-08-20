@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import {
+  maskSecret,
   resolveTestTarget,
   testProviderConnection,
 } from "~/src/llm/provider-test";
@@ -23,6 +24,30 @@ describe("resolveTestTarget", () => {
         headers: { "x-api-key": "sk-ant", "anthropic-version": "2023-06-01" },
       },
       needsKey: true,
+    });
+  });
+
+  it("includes a masked key hint in the resolved target", () => {
+    const out = resolveTestTarget({
+      provider: "openai",
+      keys: ["sk-oai-abcdef"],
+      settings: {},
+    });
+    expect(out).toMatchObject({
+      keyHint: "sk-oai…cdef",
+    });
+  });
+
+  it("marks local providers (no key) with a clear hint", () => {
+    const out = resolveTestTarget({
+      provider: "ollama",
+      keys: [],
+      settings: {},
+    });
+    expect(out).toMatchObject({
+      keyHint: "none (local provider)",
+      target: { headers: {} },
+      needsKey: false,
     });
   });
 
@@ -214,5 +239,128 @@ describe("testProviderConnection", () => {
     });
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/authMode/);
+    expect(result.details).toMatchObject({
+      provider: "google-vertex",
+      error: expect.stringMatching(/authMode/),
+    });
+  });
+});
+
+describe("maskSecret", () => {
+  it("shows only the first 6 + last 4 characters of a key", () => {
+    expect(maskSecret("AIza1234567890abcdef")).toBe("AIza12…cdef");
+    expect(maskSecret("sk-abc")).toBe("sk…");
+  });
+
+  it("summarizes service-account JSON blobs by size", () => {
+    expect(
+      maskSecret('{"type":"service_account","client_email":"x"}'),
+    ).toMatch(/^service-account JSON \(\d+ bytes\)$/);
+  });
+});
+
+describe("testProviderConnection diagnostics", () => {
+  it("returns endpoint, masked key, latency and response snippet on success", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ data: [{ id: "a" }, { id: "b" }] }), {
+          status: 200,
+        }),
+      ),
+    );
+    const result = await testProviderConnection({
+      provider: "openai",
+      keys: ["sk-oai-abcdef"],
+      settings: {},
+    });
+    expect(result.ok).toBe(true);
+    expect(result.details).toMatchObject({
+      provider: "openai",
+      method: "GET",
+      endpoint: expect.stringMatching(/\/models$/),
+      keyHint: "sk-oai…cdef",
+      authHeader: "authorization=Bearer sk-oai…cdef",
+      responseStatus: 200,
+      latencyMs: expect.any(Number),
+      modelCount: 2,
+    });
+    expect(result.details?.responseSnippet).toContain('"id":"a"');
+    vi.unstubAllGlobals();
+  });
+
+  it("attaches masked auth, status and error details on upstream failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { message: "bad key" } }), {
+          status: 401,
+        }),
+      ),
+    );
+    const result = await testProviderConnection({
+      provider: "anthropic",
+      keys: ["sk-ant-xyz"],
+      settings: {},
+    });
+    expect(result.ok).toBe(false);
+    expect(result.details).toMatchObject({
+      provider: "anthropic",
+      keyHint: "sk-ant…-xyz",
+      authHeader: "x-api-key=sk-ant…-xyz",
+      responseStatus: 401,
+      error: "bad key",
+    });
+    expect(result.details?.responseSnippet).toContain("bad key");
+    vi.unstubAllGlobals();
+  });
+
+  it("reports request/response details on network failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("fetch failed")),
+    );
+    const result = await testProviderConnection({
+      provider: "openai",
+      keys: ["sk-oai-abcdef"],
+      settings: {},
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("fetch failed");
+    expect(result.details).toMatchObject({
+      provider: "openai",
+      method: "GET",
+      keyHint: "sk-oai…cdef",
+      error: "fetch failed",
+    });
+    expect(result.details?.endpoint).toMatch(/\/models$/);
+    vi.unstubAllGlobals();
+  });
+
+  it("includes the request body snippet for the Vertex Express probe", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ candidates: [{ content: {} }] }), {
+          status: 200,
+        }),
+      ),
+    );
+    const result = await testProviderConnection({
+      provider: "google-vertex",
+      keys: ["AIza-vertex"],
+      settings: { authMode: "api-key" },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.details).toMatchObject({
+      provider: "google-vertex",
+      method: "POST",
+      endpoint:
+        "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:generateContent",
+      keyHint: "AIza-v…rtex",
+      authHeader: "x-goog-api-key=AIza-v…rtex",
+    });
+    expect(result.details?.requestSnippet).toContain('"text":"ping"');
+    vi.unstubAllGlobals();
   });
 });

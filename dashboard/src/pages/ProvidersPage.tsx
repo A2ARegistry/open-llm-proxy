@@ -9,7 +9,13 @@ import {
   Select,
   Spinner,
 } from "../components/ui";
-import { apiGet, apiSend, ProviderTestResult, ProviderView } from "../lib/api";
+import {
+  apiGet,
+  apiSend,
+  ProviderTestResult,
+  ProviderTestDetails,
+  ProviderView,
+} from "../lib/api";
 import { fmtDate } from "../lib/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -263,20 +269,79 @@ function TestResultNote({
   }
   const r = testing.result;
   return (
-    <p
-      className={`mt-3 flex items-start gap-1 text-xs ${r.ok ? "text-green-600" : "text-red-600"}`}
-    >
-      {r.ok ? (
-        <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
-      ) : (
-        <XCircle size={13} className="mt-0.5 shrink-0" />
-      )}
-      <span>
-        {r.ok
-          ? `Connection OK${r.modelCount != null ? ` — ${r.modelCount} models available` : ""}`
-          : `Connection failed${r.status ? ` (HTTP ${r.status})` : ""}${r.error ? `: ${r.error}` : ""}`}
-      </span>
-    </p>
+    <div className="mt-3">
+      <p
+        className={`flex items-start gap-1 text-xs ${r.ok ? "text-green-600" : "text-red-600"}`}
+      >
+        {r.ok ? (
+          <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
+        ) : (
+          <XCircle size={13} className="mt-0.5 shrink-0" />
+        )}
+        <span>
+          {r.ok
+            ? `Connection OK${r.modelCount != null ? ` — ${r.modelCount} models available` : ""}`
+            : `Connection failed${r.status ? ` (HTTP ${r.status})` : ""}${r.error ? `: ${r.error}` : ""}`}
+        </span>
+      </p>
+      <TestResultDiagnostics details={r.details} />
+    </div>
+  );
+}
+
+function TestResultDiagnostics({
+  details,
+}: {
+  details?: ProviderTestDetails | null;
+}) {
+  if (!details) return null;
+  const rows: [string, string][] = [
+    ["Provider", details.provider],
+    ["Method", details.method ?? "-"],
+    ["Endpoint", details.endpoint ?? "-"],
+    ["Key", details.keyHint ?? "-"],
+    ["Auth header", details.authHeader ?? "-"],
+    [
+      "Status",
+      details.responseStatus != null ? String(details.responseStatus) : "-",
+    ],
+    ["Latency", details.latencyMs != null ? `${details.latencyMs}ms` : "-"],
+    ["Models", details.modelCount != null ? String(details.modelCount) : "-"],
+  ];
+  return (
+    <details className="mt-2 text-[11px] text-gray-500">
+      <summary className="cursor-pointer select-none">Diagnostics</summary>
+      <dl className="mt-1 space-y-0.5">
+        {rows.map(([k, v]) => (
+          <div key={k} className="flex gap-2">
+            <dt className="w-24 shrink-0 text-gray-400">{k}</dt>
+            <dd className="break-all font-mono">{v}</dd>
+          </div>
+        ))}
+        {details.error && (
+          <div className="flex gap-2">
+            <dt className="w-24 shrink-0 text-gray-400">Error</dt>
+            <dd className="break-all font-mono">{details.error}</dd>
+          </div>
+        )}
+        {details.requestSnippet && (
+          <div className="flex gap-2">
+            <dt className="w-24 shrink-0 text-gray-400">Request</dt>
+            <dd className="break-all whitespace-pre-wrap font-mono">
+              {details.requestSnippet}
+            </dd>
+          </div>
+        )}
+        {details.responseSnippet && (
+          <div className="flex gap-2">
+            <dt className="w-24 shrink-0 text-gray-400">Response</dt>
+            <dd className="break-all whitespace-pre-wrap font-mono">
+              {details.responseSnippet}
+            </dd>
+          </div>
+        )}
+      </dl>
+    </details>
   );
 }
 
@@ -575,20 +640,23 @@ function ProviderFormModal({
         )}
 
         {testResult && (
-          <p
-            className={`flex items-start gap-1 text-xs ${testResult.ok ? "text-green-600" : "text-red-600"}`}
-          >
-            {testResult.ok ? (
-              <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
-            ) : (
-              <XCircle size={13} className="mt-0.5 shrink-0" />
-            )}
-            <span>
-              {testResult.ok
-                ? `Connection OK${testResult.modelCount != null ? ` — ${testResult.modelCount} models available` : ""}. You can save this provider.`
-                : `Connection failed${testResult.status ? ` (HTTP ${testResult.status})` : ""}${testResult.error ? `: ${testResult.error}` : ""}`}
-            </span>
-          </p>
+          <div>
+            <p
+              className={`flex items-start gap-1 text-xs ${testResult.ok ? "text-green-600" : "text-red-600"}`}
+            >
+              {testResult.ok ? (
+                <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
+              ) : (
+                <XCircle size={13} className="mt-0.5 shrink-0" />
+              )}
+              <span>
+                {testResult.ok
+                  ? `Connection OK${testResult.modelCount != null ? ` — ${testResult.modelCount} models available` : ""}. You can save this provider.`
+                  : `Connection failed${testResult.status ? ` (HTTP ${testResult.status})` : ""}${testResult.error ? `: ${testResult.error}` : ""}`}
+              </span>
+            </p>
+            <TestResultDiagnostics details={testResult.details} />
+          </div>
         )}
         {error && <p className="text-xs text-red-600">{error}</p>}
       </div>

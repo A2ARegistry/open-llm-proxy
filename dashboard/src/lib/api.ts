@@ -26,11 +26,26 @@ export interface ProviderView {
   updatedAt: number | null;
 }
 
+export interface ProviderTestDetails {
+  provider: string;
+  method?: string;
+  endpoint?: string;
+  keyHint?: string;
+  authHeader?: string;
+  requestSnippet?: string;
+  responseStatus?: number;
+  responseSnippet?: string;
+  latencyMs?: number;
+  modelCount?: number;
+  error?: string;
+}
+
 export interface ProviderTestResult {
   ok: boolean;
   status?: number | null;
   error?: string | null;
   modelCount?: number | null;
+  details?: ProviderTestDetails | null;
 }
 
 export interface MemberView {
