@@ -279,33 +279,30 @@ function VertexAuthModePicker({
   value: "api-key" | "service-account";
   onChange: (v: "api-key" | "service-account") => void;
 }) {
-  const options: { id: "api-key" | "service-account"; label: string; hint: string }[] = [
-    { id: "api-key", label: "API key", hint: "Project-scoped Google Cloud API key" },
-    {
-      id: "service-account",
-      label: "Service account",
-      hint: "OAuth2 token minted from service-account JSON",
-    },
+  const options: { id: "api-key" | "service-account"; label: string }[] = [
+    { id: "service-account", label: "Service Account" },
+    { id: "api-key", label: "API Key" },
   ];
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="flex items-center gap-6">
       {options.map((o) => (
-        <button
+        <label
           key={o.id}
-          type="button"
-          onClick={() => onChange(o.id)}
-          aria-pressed={value === o.id}
-          className={`rounded-md border px-3 py-2 text-left transition ${
-            value === o.id
-              ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500"
-              : "border-gray-300 bg-white hover:bg-gray-50"
-          }`}
+          className="flex cursor-pointer items-center gap-2 text-sm"
         >
-          <p className={`text-sm font-medium ${value === o.id ? "text-indigo-700" : "text-gray-700"}`}>
+          <input
+            type="radio"
+            name="vertex-auth-mode"
+            checked={value === o.id}
+            onChange={() => onChange(o.id)}
+            className="h-4 w-4 accent-indigo-600"
+          />
+          <span
+            className={`font-medium ${value === o.id ? "text-indigo-700" : "text-gray-700"}`}
+          >
             {o.label}
-          </p>
-          <p className="mt-0.5 text-[11px] text-gray-500">{o.hint}</p>
-        </button>
+          </span>
+        </label>
       ))}
     </div>
   );
@@ -334,7 +331,7 @@ function ProviderFormModal({
     isVertex ? String(initialSettings?.location ?? "") : "",
   );
   const [authMode, setAuthMode] = useState<"api-key" | "service-account">(
-    initialSettings?.authMode === "service-account" ? "service-account" : "api-key",
+    initialSettings?.authMode === "api-key" ? "api-key" : "service-account",
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
