@@ -9,12 +9,13 @@ import {
   vertexModelsPath,
   vertexModelId,
 } from "../llm/google-vertex";
+import { resolveDefaultModel } from "../llm/model-catalog";
 import { createTenantModels, modelFor } from "../llm/models-factory";
 import {
   assistantToOpenAI,
   encodeSse,
   eventToOpenAIChunks,
-  resolveModel,
+  resolveRequestModel,
   toPiContext,
 } from "../llm/openai-adapter";
 import {
@@ -129,38 +130,27 @@ export async function chatCompletionsV2(
   }
 
   const body = parseBody(await request.text());
-  if (!body || typeof body.model !== "string") {
-    return errorBody(
-      "invalid_model",
-      "Invalid request: 'model' must be a string",
-    );
+  if (!body) {
+    return errorBody("invalid_model", "Invalid request body");
   }
   const chatBody = body as unknown as ChatCompletionsRequest;
 
-  const { provider: providerHint, model: bareModel } = resolveModel(
-    chatBody.model as string,
-    typeof settings.defaultModel === "string"
-      ? settings.defaultModel
-      : undefined,
-  );
+  const resolvedModel = resolveRequestModel({
+    rawModel: typeof body.model === "string" ? (body.model as string) : "",
+    tenantDefaultModel:
+      typeof settings.defaultModel === "string"
+        ? settings.defaultModel
+        : undefined,
+  });
+  const providerName = canonicalProviderName(resolvedModel.provider);
+  let modelId = resolvedModel.model;
 
-  const defaultModelInfo =
-    typeof settings.defaultModel === "string"
-      ? resolveModel(settings.defaultModel, undefined)
-      : undefined;
-  const providerName = canonicalProviderName(
-    providerHint || (defaultModelInfo?.provider ?? ""),
-  );
-  let modelId = bareModel || defaultModelInfo?.model;
-
-  if (!providerName || !modelId) {
+  if (!providerName) {
     return errorBody(
       "not_configured",
       "Model must be formatted as 'provider/model' (or set a tenant default model)",
     );
   }
-  modelId =
-    modelId === "default" ? (defaultModelInfo?.model ?? modelId) : modelId;
 
   const scoped = assertProviderAllowed(
     settings,
@@ -168,13 +158,6 @@ export async function chatCompletionsV2(
     providerName,
   );
   if (scoped) return errorBody(scoped.code, scoped.message);
-  const modelBlocked = assertModelAllowed(
-    settings,
-    apiKeyAuth.scopes,
-    providerName,
-    modelId,
-  );
-  if (modelBlocked) return errorBody(modelBlocked.code, modelBlocked.message);
 
   const config = await getProviderConfig(env, organizationId, providerName);
   if (!config) {
@@ -195,6 +178,28 @@ export async function chatCompletionsV2(
       `Provider '${providerName}' has no API keys configured`,
     );
   }
+
+  // A missing/partial model id falls back to the provider's default model
+  // (tenant-configured `settings.defaultModel` or the built-in per-provider
+  // default), so `model: "openai"`, `model: "openai/"` or a missing model all
+  // resolve to a real upstream model id.
+  if (!modelId) {
+    const providerDefault = resolveDefaultModel(config.settings, providerName);
+    if (!providerDefault) {
+      return errorBody(
+        "not_configured",
+        `Provider '${providerName}' has no default model configured`,
+      );
+    }
+    modelId = providerDefault;
+  }
+  const modelBlocked = assertModelAllowed(
+    settings,
+    apiKeyAuth.scopes,
+    providerName,
+    modelId,
+  );
+  if (modelBlocked) return errorBody(modelBlocked.code, modelBlocked.message);
 
   const stream = chatBody.stream === true;
   const signal = request.signal;

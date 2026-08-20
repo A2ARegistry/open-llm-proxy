@@ -119,12 +119,15 @@ describe("resolveTestTarget", () => {
 });
 
 describe("testProviderConnection", () => {
-  it("returns ok with model count on a successful probe", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ data: [{ id: "a" }, { id: "b" }] }), {
-        status: 200,
-      }),
-    );
+  it("posts a tiny chat call with the built-in default model on success", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: "pong" } }] }),
+          { status: 200 },
+        ),
+      );
     vi.stubGlobal("fetch", fetchMock);
     const result = await testProviderConnection({
       provider: "openai",
@@ -132,31 +135,57 @@ describe("testProviderConnection", () => {
       settings: {},
     });
     expect(result.ok).toBe(true);
-    expect(result.modelCount).toBe(2);
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringMatching(/\/models$/),
-      expect.objectContaining({ headers: { authorization: "Bearer sk" } }),
+      "https://api.openai.com/v1/chat/completions",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          authorization: "Bearer sk",
+          "content-type": "application/json",
+        },
+        body: expect.stringContaining('"model":"gpt-4o-mini"'),
+      }),
     );
     vi.unstubAllGlobals();
   });
 
-  it("reports upstream errors", async () => {
+  it("uses the configured default model when provided", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ choices: [] }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await testProviderConnection({
+      provider: "openai",
+      keys: ["sk"],
+      settings: { defaultModel: "gpt-5" },
+    });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body)).toMatchObject({ model: "gpt-5" });
+    vi.unstubAllGlobals();
+  });
+
+  it("reports upstream errors from a wrong/denied model id", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: { message: "bad key" } }), {
-          status: 401,
-        }),
+        new Response(
+          JSON.stringify({ error: { message: "model not found" } }),
+          {
+            status: 404,
+          },
+        ),
       ),
     );
     const result = await testProviderConnection({
       provider: "anthropic",
       keys: ["sk-ant"],
-      settings: {},
+      settings: { defaultModel: "claude-nonexistent" },
     });
     expect(result.ok).toBe(false);
-    expect(result.status).toBe(401);
-    expect(result.error).toBe("bad key");
+    expect(result.status).toBe(404);
+    expect(result.error).toBe("model not found");
     vi.unstubAllGlobals();
   });
 
@@ -175,7 +204,28 @@ describe("testProviderConnection", () => {
     vi.unstubAllGlobals();
   });
 
-  it("probes Google Vertex AI Express Mode (api-key) via generateContent", async () => {
+  it("falls back to a models-list probe when no default model exists", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data: [{ id: "a" }] }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await testProviderConnection({
+      provider: "custom-openai",
+      keys: ["sk"],
+      settings: { baseUrl: "https://gw.example.com", modelsPath: "/v1/models" },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.modelCount).toBe(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://gw.example.com/v1/models",
+      expect.objectContaining({ method: "GET" }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("probes Google Vertex AI Express Mode (api-key) via generateContent with the default model", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ candidates: [{ content: {} }] }), {
         status: 200,
@@ -201,12 +251,30 @@ describe("testProviderConnection", () => {
     vi.unstubAllGlobals();
   });
 
-  it("probes Google Vertex AI service-account mode through the OpenAI-compatible endpoint", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ data: [{ id: "gemini-2.5-flash" }] }), {
-        status: 200,
-      }),
+  it("uses a custom default model id in the Express probe URL", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ candidates: [] }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await testProviderConnection({
+      provider: "google-vertex",
+      keys: ["AIza-vertex"],
+      settings: { authMode: "api-key", defaultModel: "gemini-5.0" },
+    });
+    expect(fetchMock.mock.calls[0][0]).toContain(
+      "/models/gemini-5.0:generateContent",
     );
+    vi.unstubAllGlobals();
+  });
+
+  it("probes Google Vertex AI service-account mode through the OpenAI-compatible chat endpoint", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ choices: [] }), { status: 200 }),
+      );
     vi.stubGlobal("fetch", fetchMock);
     const result = await testProviderConnection({
       provider: "google-vertex",
@@ -218,16 +286,20 @@ describe("testProviderConnection", () => {
       },
     });
     expect(result.ok).toBe(true);
-    expect(result.modelCount).toBe(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://aiplatform.googleapis.com/v1/projects/p/locations/global/endpoints/openapi/models",
-      expect.objectContaining({
-        headers: {
-          authorization: "Bearer fake-oauth-token",
-          "x-goog-user-project": "p",
-        },
-      }),
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(
+      "https://aiplatform.googleapis.com/v1/projects/p/locations/global/endpoints/openapi/chat/completions",
     );
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: {
+        authorization: "Bearer fake-oauth-token",
+        "x-goog-user-project": "p",
+      },
+    });
+    expect(JSON.parse(init.body)).toMatchObject({
+      model: "google/gemini-2.5-flash",
+    });
     vi.unstubAllGlobals();
   });
 
@@ -253,9 +325,9 @@ describe("maskSecret", () => {
   });
 
   it("summarizes service-account JSON blobs by size", () => {
-    expect(
-      maskSecret('{"type":"service_account","client_email":"x"}'),
-    ).toMatch(/^service-account JSON \(\d+ bytes\)$/);
+    expect(maskSecret('{"type":"service_account","client_email":"x"}')).toMatch(
+      /^service-account JSON \(\d+ bytes\)$/,
+    );
   });
 });
 
@@ -263,11 +335,14 @@ describe("testProviderConnection diagnostics", () => {
   it("returns endpoint, masked key, latency and response snippet on success", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ data: [{ id: "a" }, { id: "b" }] }), {
-          status: 200,
-        }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ choices: [{ message: { content: "pong" } }] }),
+            { status: 200 },
+          ),
+        ),
     );
     const result = await testProviderConnection({
       provider: "openai",
@@ -277,15 +352,15 @@ describe("testProviderConnection diagnostics", () => {
     expect(result.ok).toBe(true);
     expect(result.details).toMatchObject({
       provider: "openai",
-      method: "GET",
-      endpoint: expect.stringMatching(/\/models$/),
+      method: "POST",
+      endpoint: "https://api.openai.com/v1/chat/completions",
       keyHint: "sk-oai…cdef",
       authHeader: "authorization=Bearer sk-oai…cdef",
       responseStatus: 200,
       latencyMs: expect.any(Number),
-      modelCount: 2,
     });
-    expect(result.details?.responseSnippet).toContain('"id":"a"');
+    expect(result.details?.requestSnippet).toContain('"model":"gpt-4o-mini"');
+    expect(result.details?.responseSnippet).toContain('"content":"pong"');
     vi.unstubAllGlobals();
   });
 
@@ -329,11 +404,13 @@ describe("testProviderConnection diagnostics", () => {
     expect(result.error).toBe("fetch failed");
     expect(result.details).toMatchObject({
       provider: "openai",
-      method: "GET",
+      method: "POST",
       keyHint: "sk-oai…cdef",
       error: "fetch failed",
     });
-    expect(result.details?.endpoint).toMatch(/\/models$/);
+    expect(result.details?.endpoint).toBe(
+      "https://api.openai.com/v1/chat/completions",
+    );
     vi.unstubAllGlobals();
   });
 
@@ -360,7 +437,9 @@ describe("testProviderConnection diagnostics", () => {
       keyHint: "AIza-v…rtex",
       authHeader: "x-goog-api-key=AIza-v…rtex",
     });
-    expect(result.details?.requestSnippet).toContain('"text":"ping"');
+    expect(result.details?.requestSnippet).toContain(
+      '"text":"echo pong for this ping request"',
+    );
     vi.unstubAllGlobals();
   });
 });

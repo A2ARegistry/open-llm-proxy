@@ -8,6 +8,7 @@ export interface VertexSettings {
   projectId: string;
   location: string;
   customModels?: string[];
+  defaultModel?: string;
 }
 
 /** Whether a provider id refers to the Google Vertex AI provider. */
@@ -61,6 +62,15 @@ export function parseVertexConfig(input: {
     ? customModelsRaw.map((c) => c.trim()).filter(Boolean)
     : undefined;
 
+  const defaultModelRaw = raw.defaultModel;
+  if (defaultModelRaw !== undefined && typeof defaultModelRaw !== "string") {
+    throw new Error("Vertex AI defaultModel must be a string");
+  }
+  const defaultModel =
+    typeof defaultModelRaw === "string" && defaultModelRaw.trim()
+      ? defaultModelRaw.trim()
+      : undefined;
+
   const credential =
     (input.keys ?? []).find(
       (k) => typeof k === "string" && k.trim().length > 0,
@@ -74,7 +84,7 @@ export function parseVertexConfig(input: {
   }
 
   return {
-    settings: { authMode, projectId, location, customModels },
+    settings: { authMode, projectId, location, customModels, defaultModel },
     credential,
   };
 }

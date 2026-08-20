@@ -198,6 +198,17 @@ If a newly released model isn't listed yet, you can still call it with
   window and heuristic pricing) so cost accounting and the model picker keep
   working for brand-new models.
 
+## Default Models
+
+Each provider has a built-in default model id (e.g. Gemini Flash for Google,
+`gpt-4o-mini` for OpenAI, `claude-haiku-4-5` for Anthropic) used when a request
+omits the model id or sends a provider-only id like `model: "openai"`. The
+dashboard's provider form prefills this from the server's provider catalog; you
+can override it per provider with the _Default model_ field. The connection test
+uses that default model id to send a tiny chat probe instead of just listing
+models. Custom OpenAI-compatible providers have no curated default, so leave the
+field empty (or set your own model id).
+
 ## Documentation
 
 For detailed architectural and design information, please refer to the [Design Documentation](docs/design/overview.md).

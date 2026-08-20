@@ -2,10 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   builtinCatalogId,
   builtinModels,
+  defaultModelFor,
   isGeminiFamily,
   mergeModels,
   normalizeProviderModelId,
   registeredProviderId,
+  resolveDefaultModel,
   synthesizedMetadata,
 } from "~/src/llm/model-catalog";
 
@@ -80,5 +82,36 @@ describe("model-catalog", () => {
     expect(normalizeProviderModelId("gemini-2.5-pro", "google-vertex")).toBe(
       "gemini-2.5-pro",
     );
+  });
+
+  it("curates a default model id per covered provider", () => {
+    expect(defaultModelFor("google-ai-studio")).toBe("gemini-2.5-flash");
+    expect(defaultModelFor("google-vertex")).toBe("gemini-2.5-flash");
+    expect(defaultModelFor("openai")).toBe("gpt-4o-mini");
+    expect(defaultModelFor("anthropic")).toBe("claude-haiku-4-5");
+    expect(defaultModelFor("xai")).toBe("grok-4.6");
+    expect(defaultModelFor("ollama")).toBe("llama3.1");
+  });
+
+  it("falls back to a flash-class model for covered providers without a curated id", () => {
+    expect(defaultModelFor("google")).toMatch(/flash/i);
+  });
+
+  it("returns undefined when no baked models exist", () => {
+    expect(defaultModelFor("custom-openai")).toBeUndefined();
+  });
+
+  it("lets settings.defaultModel win over the built-in default", () => {
+    expect(
+      resolveDefaultModel({ defaultModel: "gemini-5.0" }, "google-vertex"),
+    ).toBe("gemini-5.0");
+    expect(
+      resolveDefaultModel({ defaultModel: "  gemini-5.0  " }, "google-vertex"),
+    ).toBe("gemini-5.0");
+    expect(resolveDefaultModel({ defaultModel: "" }, "google-vertex")).toBe(
+      "gemini-2.5-flash",
+    );
+    expect(resolveDefaultModel({}, "openai")).toBe("gpt-4o-mini");
+    expect(resolveDefaultModel(undefined, "custom-openai")).toBeUndefined();
   });
 });

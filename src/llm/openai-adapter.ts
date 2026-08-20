@@ -1,4 +1,8 @@
 import { newUuid } from "../utils/crypto";
+import {
+  canonicalProviderName,
+  isKnownProviderName,
+} from "./provider-registry";
 import type {
   AssistantMessage,
   AssistantMessageEvent,
@@ -23,6 +27,39 @@ export function resolveModel(
 ): ParsedModel {
   const resolved = model === "default" ? (defaultModel ?? model) : model;
   return parseModelString(resolved);
+}
+
+/**
+ * Resolve a raw request model string into a provider + model id, being tolerant
+ * of missing/partial models so a per-provider default model can fill in:
+ *
+ * - `""`/missing/`"default"` → the tenant default model (provider + id).
+ * - `"provider/model"` → that provider and model (id may be empty: `"provider/"`).
+ * - `"provider"` (no slash) → that provider with an empty id (default fills in).
+ * - any other bare id → the tenant default provider (if any) + that id.
+ */
+export function resolveRequestModel(input: {
+  rawModel: string;
+  tenantDefaultModel?: string;
+}): ParsedModel {
+  const tenant = input.tenantDefaultModel
+    ? parseModelString(input.tenantDefaultModel)
+    : undefined;
+  const raw = input.rawModel.trim();
+  if (!raw || raw === "default") {
+    return { provider: tenant?.provider ?? "", model: tenant?.model ?? "" };
+  }
+  const parsed = parseModelString(raw);
+  if (parsed.provider) {
+    return {
+      provider: canonicalProviderName(parsed.provider),
+      model: parsed.model,
+    };
+  }
+  if (isKnownProviderName(parsed.model)) {
+    return { provider: canonicalProviderName(parsed.model), model: "" };
+  }
+  return { provider: tenant?.provider ?? "", model: parsed.model };
 }
 
 interface OpenAiMessage {

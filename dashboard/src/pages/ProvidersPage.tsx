@@ -12,6 +12,7 @@ import {
 import {
   apiGet,
   apiSend,
+  CatalogProvider,
   ProviderTestResult,
   ProviderTestDetails,
   ProviderView,
@@ -28,7 +29,9 @@ import {
   Wifi,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
+const KEY_MASK = "••••••••••••";
 
 const PROVIDER_CATALOG: { id: string; name: string; needsKey: boolean }[] = [
   { id: "openai", name: "OpenAI", needsKey: true },
@@ -57,6 +60,8 @@ export function ProvidersPage() {
     provider: string;
     name: string;
     settings?: Record<string, unknown>;
+    defaultModel?: string | null;
+    keyCount?: number;
   } | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -64,6 +69,20 @@ export function ProvidersPage() {
     queryKey: ["providers"],
     queryFn: () => apiGet<{ providers: ProviderView[] }>("/api/providers"),
   });
+
+  const catalog = useQuery({
+    queryKey: ["providers-catalog"],
+    queryFn: () =>
+      apiGet<{ providers: CatalogProvider[] }>("/api/providers/catalog"),
+  });
+
+  const catalogById = useMemo(
+    () =>
+      new Map<string, CatalogProvider>(
+        (catalog.data?.providers ?? []).map((p) => [p.provider, p]),
+      ),
+    [catalog.data],
+  );
 
   const toggle = useMutation({
     mutationFn: (p: ProviderView) =>
@@ -175,6 +194,8 @@ export function ProvidersPage() {
                         provider: p.provider,
                         name: p.name,
                         settings: p.settings,
+                        defaultModel: p.defaultModel,
+                        keyCount: p.keyCount,
                       })
                     }
                   >
@@ -233,6 +254,7 @@ export function ProvidersPage() {
       {adding && (
         <ProviderFormModal
           provider={null}
+          catalogById={catalogById}
           onClose={() => setAdding(false)}
           onSaved={() => {
             setAdding(false);
@@ -244,6 +266,9 @@ export function ProvidersPage() {
         <ProviderFormModal
           provider={editing.provider}
           initialSettings={editing.settings}
+          catalogById={catalogById}
+          initialDefaultModel={editing.defaultModel}
+          initialKeyCount={editing.keyCount}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -384,17 +409,26 @@ function VertexAuthModePicker({
 function ProviderFormModal({
   provider,
   initialSettings,
+  catalogById,
+  initialDefaultModel,
+  initialKeyCount,
   onClose,
   onSaved,
 }: {
   provider: string | null;
   initialSettings?: Record<string, unknown>;
+  catalogById: Map<string, CatalogProvider>;
+  initialDefaultModel?: string | null;
+  initialKeyCount?: number;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const isVertex = provider === "google-vertex";
   const [selected, setSelected] = useState(provider ?? PROVIDER_CATALOG[0].id);
-  const [keysText, setKeysText] = useState("");
+  const hasExistingKeys = (initialKeyCount ?? 0) > 0;
+  const [keysText, setKeysText] = useState(
+    hasExistingKeys ? KEY_MASK : "",
+  );
   const [projectId, setProjectId] = useState(
     isVertex ? String(initialSettings?.projectId ?? "") : "",
   );
@@ -409,21 +443,30 @@ function ProviderFormModal({
       ? (initialSettings.customModels as string[]).join("\n")
       : "",
   );
+  const [defaultModel, setDefaultModel] = useState(
+    provider
+      ? String(initialSettings?.defaultModel ?? initialDefaultModel ?? "")
+      : (catalogById.get(PROVIDER_CATALOG[0].id)?.defaultModel ?? ""),
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
   const [testing, setTesting] = useState(false);
 
-  const catalogName =
-    PROVIDER_CATALOG.find((p) => p.id === selected)?.name ?? selected;
-  const needsKey =
-    PROVIDER_CATALOG.find((p) => p.id === selected)?.needsKey ?? true;
+  const catalogEntry = catalogById.get(selected);
+  const catalogName = catalogEntry?.name ?? selected;
+  const needsKey = catalogEntry?.needsKey ?? true;
+
+  const isMaskedKey = (v: string) =>
+    v.trim() === "" || v.trim() === KEY_MASK;
 
   const enteredKeys = () =>
-    keysText
-      .split("\n")
-      .map((k) => k.trim())
-      .filter(Boolean);
+    isMaskedKey(keysText)
+      ? []
+      : keysText
+          .split("\n")
+          .map((k) => k.trim())
+          .filter(Boolean);
 
   const parseCustomModels = () =>
     customModelsText
@@ -432,42 +475,54 @@ function ProviderFormModal({
       .filter(Boolean);
 
   const canTest = () => {
+    const hasRealKey = !isMaskedKey(keysText);
     if (selected === "google-vertex") {
       if (authMode === "service-account") {
-        return projectId.trim() && location.trim() && keysText.trim();
+        return (
+          projectId.trim() &&
+          location.trim() &&
+          (hasRealKey || hasExistingKeys)
+        );
       }
-      return !!keysText.trim();
+      return hasRealKey || hasExistingKeys;
     }
-    return !(needsKey && !keysText.trim());
+    return !(needsKey && !hasRealKey && !hasExistingKeys);
   };
 
   const buildBody = (): {
     keys?: string[];
     settings?: Record<string, unknown>;
   } => {
+    const defaultModelSetting =
+      defaultModel.trim() !== ""
+        ? { defaultModel: defaultModel.trim() }
+        : {};
+    const keys = enteredKeys();
+    const keysSetting = keys.length ? { keys } : {};
     if (selected === "google-vertex") {
       if (authMode === "service-account") {
         return {
-          keys: [keysText.trim()],
+          ...keysSetting,
           settings: {
             authMode,
             projectId: projectId.trim(),
             location: location.trim(),
+            ...defaultModelSetting,
           },
         };
       }
       return {
-        keys: [keysText.trim()],
+        ...keysSetting,
         settings: {
           authMode,
           customModels: parseCustomModels(),
+          ...defaultModelSetting,
         },
       };
     }
-    const keys = enteredKeys();
     return {
-      keys: keys.length ? keys : undefined,
-      settings: {},
+      ...keysSetting,
+      settings: defaultModelSetting,
     };
   };
 
@@ -534,7 +589,11 @@ function ProviderFormModal({
             <Label>Provider</Label>
             <Select
               value={selected}
-              onChange={(v) => setSelected(v as string)}
+              onChange={(v) => {
+                setSelected(v as string);
+                if (!provider)
+                  setDefaultModel(catalogById.get(v as string)?.defaultModel ?? "");
+              }}
               options={PROVIDER_CATALOG.map((p) => ({
                 value: p.id,
                 label: p.name,
@@ -585,17 +644,25 @@ function ProviderFormModal({
                 <Input
                   value={keysText}
                   onChange={(e) => setKeysText(e.target.value)}
-                  placeholder="AIza…"
+                  onFocus={() => isMaskedKey(keysText) && setKeysText("")}
+                  placeholder={
+                    hasExistingKeys
+                      ? "Key already set — type to replace it"
+                      : "AIza…"
+                  }
                 />
               ) : (
                 <textarea
                   className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   rows={6}
                   placeholder={
-                    '{\n  "type": "service_account",\n  "client_email": "…",\n  "private_key": "-----BEGIN PRIVATE KEY-----…"\n}'
+                    hasExistingKeys
+                      ? "Service account already set — type to replace it"
+                      : '{\n  "type": "service_account",\n  "client_email": "…",\n  "private_key": "-----BEGIN PRIVATE KEY-----…"\n}'
                   }
                   value={keysText}
                   onChange={(e) => setKeysText(e.target.value)}
+                  onFocus={() => isMaskedKey(keysText) && setKeysText("")}
                 />
               )}
               <p className="mt-1 text-[11px] text-gray-400">
@@ -628,16 +695,36 @@ function ProviderFormModal({
               className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               rows={3}
               placeholder={
-                needsKey === false ? "(optional for local providers)" : "sk-…"
+                hasExistingKeys
+                  ? "Key already set — type to replace it"
+                  : needsKey === false
+                    ? "(optional for local providers)"
+                    : "sk-…"
               }
               value={keysText}
               onChange={(e) => setKeysText(e.target.value)}
+              onFocus={() => isMaskedKey(keysText) && setKeysText("")}
             />
             <p className="mt-1 text-[11px] text-gray-400">
-              One key per line. Keys are encrypted at rest.
+              {hasExistingKeys
+                ? `${initialKeyCount} key${initialKeyCount === 1 ? "" : "s"} already stored (encrypted at rest). Leave as-is to keep them, or type new key(s) to replace them.`
+                : "One key per line. Keys are encrypted at rest."}
             </p>
           </div>
         )}
+
+        <div>
+          <Label>Default model</Label>
+          <Input
+            value={defaultModel}
+            onChange={(e) => setDefaultModel(e.target.value)}
+            placeholder="e.g. gemini-2.5-flash"
+          />
+          <p className="mt-1 text-[11px] text-gray-400">
+            Used when a request omits the model id, and by the connection test.
+            Leave empty to use the built-in default.
+          </p>
+        </div>
 
         {testResult && (
           <div>

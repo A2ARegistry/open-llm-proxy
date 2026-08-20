@@ -23,7 +23,16 @@ export interface ProviderView {
   enabled: boolean;
   settings: Record<string, unknown>;
   keyCount: number;
+  defaultModel?: string | null;
   updatedAt: number | null;
+}
+
+export interface CatalogProvider {
+  provider: string;
+  name: string;
+  mode: string;
+  needsKey: boolean;
+  defaultModel: string | null;
 }
 
 export interface ProviderTestDetails {

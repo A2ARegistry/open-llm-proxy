@@ -8,9 +8,11 @@ import {
   SaveProviderConfigInput,
 } from "../llm/credential-store";
 import { parseVertexConfig } from "../llm/google-vertex";
+import { defaultModelFor, resolveDefaultModel } from "../llm/model-catalog";
 import {
   getPiAiProviderSpec,
   getV1ProviderSpec,
+  listBuiltinProviders,
   resolveProviderMode,
 } from "../llm/provider-registry";
 import { testProviderConnection } from "../llm/provider-test";
@@ -37,6 +39,7 @@ function publicProviderView(input: {
     enabled: input.enabled,
     settings: input.settings,
     keyCount: input.keyCount,
+    defaultModel: resolveDefaultModel(input.settings, input.provider) ?? null,
     updatedAt: input.updatedAt ?? null,
   };
 }
@@ -63,6 +66,16 @@ function validateSettings(settings: unknown): Record<string, unknown> {
 }
 
 export const providerConfigRouter = new Hono<AppBindings>();
+
+// GET /api/providers/catalog — built-in providers with their default models,
+// so the dashboard can prefill config forms (custom providers are excluded).
+providerConfigRouter.get("/catalog", async (c) => {
+  const rows = listBuiltinProviders().map((entry) => ({
+    ...entry,
+    defaultModel: defaultModelFor(entry.provider) ?? null,
+  }));
+  return c.json({ providers: rows });
+});
 
 // GET /api/providers — list configured providers for the tenant.
 providerConfigRouter.get("/", async (c) => {
@@ -149,8 +162,11 @@ providerConfigRouter.put("/:provider", async (c) => {
     settings = validateSettings(body.settings);
     if (provider === "google-vertex") {
       // Vertex settings carry the auth mode + GCP project/location; validate
-      // them together with the credential before persisting anything.
-      parseVertexConfig({ settings, keys });
+      // them together with the credential before persisting anything. When no
+      // new key is supplied (dashboard mask), the stored key validates.
+      const existing = await getProviderConfig(c.env, orgId, provider);
+      const effectiveKeys = keys ?? existing?.keys ?? [];
+      parseVertexConfig({ settings, keys: effectiveKeys });
     }
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400);

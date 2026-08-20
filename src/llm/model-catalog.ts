@@ -103,3 +103,50 @@ export function normalizeProviderModelId(id: string, provider: string): string {
     out = out.replace(/^google\//, "");
   return out;
 }
+
+/** Sensible per-provider default model ids (verified against the baked catalog). */
+const CURATED_DEFAULT_MODELS: Record<string, string> = {
+  "google-ai-studio": "gemini-2.5-flash",
+  "google-vertex": "gemini-2.5-flash",
+  openai: "gpt-4o-mini",
+  anthropic: "claude-haiku-4-5",
+  deepseek: "deepseek-v4-flash",
+  mistral: "mistral-small-latest",
+  groq: "llama-3.3-70b-versatile",
+  grok: "grok-4.6",
+  xai: "grok-4.6",
+  cerebras: "gpt-oss-120b",
+  openrouter: "bytedance-seed/seed-1.6-flash",
+  ollama: "llama3.1",
+  cohere: "command-r-plus",
+  "perplexity-ai": "sonar",
+};
+
+/**
+ * The default model id for a provider: curated where known, otherwise the first
+ * flash-class model in the baked catalog, otherwise the first catalog model.
+ */
+export function defaultModelFor(provider: string): string | undefined {
+  const canonical = canonicalProviderName(provider);
+  const curated = CURATED_DEFAULT_MODELS[canonical];
+  if (curated) return curated;
+  const models = builtinModels(provider);
+  if (models.length) {
+    const flash = models.find((m) => /flash/i.test(String(m.id ?? "")));
+    return String((flash ?? models[0]).id ?? "");
+  }
+  return undefined;
+}
+
+/**
+ * Effective default model id for a provider: the tenant-configured
+ * `settings.defaultModel` wins, otherwise the built-in per-provider default.
+ */
+export function resolveDefaultModel(
+  settings: { defaultModel?: unknown } | undefined,
+  provider: string,
+): string | undefined {
+  const custom = settings?.defaultModel;
+  if (typeof custom === "string" && custom.trim()) return custom.trim();
+  return defaultModelFor(provider);
+}

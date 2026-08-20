@@ -96,10 +96,68 @@ describe("GET /api/providers", () => {
       configured: true,
       enabled: true,
       keyCount: 2,
+      defaultModel: "gpt-4o-mini",
     });
     const serialized = JSON.stringify(body);
     expect(serialized).not.toContain("secret-");
     expect(serialized).not.toContain("keys");
+  });
+
+  it("reports the configured defaultModel when settings override the curated one", async () => {
+    mockListProviderConfigs.mockResolvedValue([
+      config({
+        provider: "google-vertex",
+        keys: ["k"],
+        settings: { authMode: "api-key", defaultModel: "gemini-5.0" },
+      }),
+    ]);
+    const { body } = await fetchJson(buildApp(), "/api/providers");
+    expect(body.providers[0].defaultModel).toBe("gemini-5.0");
+  });
+
+  it("reports null defaultModel for custom providers without one", async () => {
+    mockListProviderConfigs.mockResolvedValue([
+      config({
+        provider: "custom-openai",
+        keys: ["k"],
+        settings: { baseUrl: "https://gw.example.com" },
+      }),
+    ]);
+    const { body } = await fetchJson(buildApp(), "/api/providers");
+    expect(body.providers[0].defaultModel).toBeNull();
+  });
+});
+
+describe("GET /api/providers/catalog", () => {
+  it("lists built-in providers with default models, deduped by canonical id", async () => {
+    const { status, body } = await fetchJson(
+      buildApp(),
+      "/api/providers/catalog",
+    );
+    expect(status).toBe(200);
+    const openai = body.providers.find(
+      (p: { provider: string }) => p.provider === "openai",
+    );
+    const studio = body.providers.find(
+      (p: { provider: string }) => p.provider === "google-ai-studio",
+    );
+    const grok = body.providers.find(
+      (p: { provider: string }) => p.provider === "grok",
+    );
+    const ollama = body.providers.find(
+      (p: { provider: string }) => p.provider === "ollama",
+    );
+    expect(openai.defaultModel).toBe("gpt-4o-mini");
+    expect(studio.defaultModel).toBe("gemini-2.5-flash");
+    expect(grok).toBeDefined();
+    expect(ollama.needsKey).toBe(false);
+    // alias ids are skipped
+    expect(
+      body.providers.find((p: { provider: string }) => p.provider === "google"),
+    ).toBeUndefined();
+    expect(
+      body.providers.find((p: { provider: string }) => p.provider === "xai"),
+    ).toBeUndefined();
   });
 });
 
@@ -269,6 +327,51 @@ describe("PUT /api/providers/:provider", () => {
     );
     expect(status).toBe(400);
     expect(body.error).toMatch(/project ID/);
+  });
+
+  it("validates Vertex settings against the stored key when no new key is supplied", async () => {
+    mockGetProviderConfig.mockResolvedValue(
+      config({
+        provider: "google-vertex",
+        keys: ["AIza-stored"],
+        settings: { authMode: "api-key" },
+      }),
+    );
+    mockSaveProviderConfig.mockResolvedValue(
+      config({
+        provider: "google-vertex",
+        keys: ["AIza-stored"],
+        settings: { authMode: "api-key", defaultModel: "gemini-5.0" },
+      }),
+    );
+    const { status } = await fetchJson(
+      buildApp(),
+      "/api/providers/google-vertex",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          settings: { authMode: "api-key", defaultModel: "gemini-5.0" },
+        }),
+      },
+    );
+    expect(status).toBe(200);
+    expect(mockSaveProviderConfig.mock.calls[0][3].keys).toBeUndefined();
+  });
+
+  it("still rejects a Vertex api-key save when no key exists anywhere", async () => {
+    mockGetProviderConfig.mockResolvedValue(null);
+    const { status, body } = await fetchJson(
+      buildApp(),
+      "/api/providers/google-vertex",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ settings: { authMode: "api-key" } }),
+      },
+    );
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/API key/);
   });
 });
 

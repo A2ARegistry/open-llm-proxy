@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  VERTEX_PROVIDER_ID,
   isVertexProvider,
   parseVertexConfig,
   vertexBaseUrl,
@@ -131,6 +130,36 @@ describe("google-vertex helpers", () => {
         keys: ["k"],
       }),
     ).toThrow(/customModels/);
+  });
+
+  it("normalizes defaultModel to a trimmed string or omits it", () => {
+    expect(
+      parseVertexConfig({
+        settings: { authMode: "api-key", defaultModel: " gemini-5.0 " },
+        keys: ["k"],
+      }).settings.defaultModel,
+    ).toBe("gemini-5.0");
+    expect(
+      parseVertexConfig({
+        settings: { authMode: "api-key", defaultModel: "" },
+        keys: ["k"],
+      }).settings.defaultModel,
+    ).toBeUndefined();
+    expect(
+      parseVertexConfig({
+        settings: { authMode: "api-key" },
+        keys: ["k"],
+      }).settings.defaultModel,
+    ).toBeUndefined();
+  });
+
+  it("rejects a non-string defaultModel", () => {
+    expect(() =>
+      parseVertexConfig({
+        settings: { authMode: "api-key", defaultModel: 42 },
+        keys: ["k"],
+      }),
+    ).toThrow(/defaultModel/);
   });
 
   it("builds the correct regional/global base URLs", () => {

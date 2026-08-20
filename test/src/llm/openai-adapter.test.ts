@@ -1,3 +1,7 @@
+import type {
+  AssistantMessage,
+  AssistantMessageEvent,
+} from "@earendil-works/pi-ai";
 import { describe, it, expect } from "vitest";
 import {
   assistantToOpenAI,
@@ -5,11 +9,13 @@ import {
   eventToOpenAIChunks,
   parseModelString,
   resolveModel,
+  resolveRequestModel,
   toPiContext,
 } from "~/src/llm/openai-adapter";
-import type { AssistantMessage, AssistantMessageEvent } from "@earendil-works/pi-ai";
 
-function baseAssistant(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
+function baseAssistant(
+  overrides: Partial<AssistantMessage> = {},
+): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text: "Hello" }],
@@ -53,6 +59,85 @@ describe("parseModelString / resolveModel", () => {
   });
 });
 
+describe("resolveRequestModel", () => {
+  it("uses the tenant default when the model is missing or 'default'", () => {
+    expect(
+      resolveRequestModel({
+        rawModel: "",
+        tenantDefaultModel: "openai/gpt-4o",
+      }),
+    ).toEqual({
+      provider: "openai",
+      model: "gpt-4o",
+    });
+    expect(
+      resolveRequestModel({
+        rawModel: "default",
+        tenantDefaultModel: "openai/gpt-4o",
+      }),
+    ).toEqual({
+      provider: "openai",
+      model: "gpt-4o",
+    });
+  });
+
+  it("canonicalizes provider/model strings", () => {
+    expect(
+      resolveRequestModel({ rawModel: "google-ai-studio/gemini-2.5-flash" }),
+    ).toEqual({
+      provider: "google-ai-studio",
+      model: "gemini-2.5-flash",
+    });
+    expect(
+      resolveRequestModel({ rawModel: "google/gemini-2.5-flash" }),
+    ).toEqual({
+      provider: "google-ai-studio",
+      model: "gemini-2.5-flash",
+    });
+    expect(
+      resolveRequestModel({ rawModel: "google-vertex/gemini-2.5-pro" }),
+    ).toEqual({
+      provider: "google-vertex",
+      model: "gemini-2.5-pro",
+    });
+    expect(resolveRequestModel({ rawModel: "xai/grok-4.6" })).toEqual({
+      provider: "grok",
+      model: "grok-4.6",
+    });
+  });
+
+  it("turns a provider-only string into a provider with an empty model", () => {
+    expect(resolveRequestModel({ rawModel: "anthropic" })).toEqual({
+      provider: "anthropic",
+      model: "",
+    });
+    expect(resolveRequestModel({ rawModel: "google-ai-studio" })).toEqual({
+      provider: "google-ai-studio",
+      model: "",
+    });
+    expect(resolveRequestModel({ rawModel: "google" })).toEqual({
+      provider: "google-ai-studio",
+      model: "",
+    });
+    expect(resolveRequestModel({ rawModel: "xai" })).toEqual({
+      provider: "grok",
+      model: "",
+    });
+  });
+
+  it("resolves a bare id against the tenant default provider", () => {
+    expect(
+      resolveRequestModel({
+        rawModel: "gpt-5",
+        tenantDefaultModel: "openai/gpt-4o",
+      }),
+    ).toEqual({
+      provider: "openai",
+      model: "gpt-5",
+    });
+  });
+});
+
 describe("toPiContext", () => {
   it("extracts system + user + assistant + tool messages", () => {
     const context = toPiContext({
@@ -85,7 +170,11 @@ describe("toPiContext", () => {
     );
     expect(calls).toHaveLength(1);
     expect(tool.role).toBe("toolResult");
-    const toolResult = tool as { toolCallId: string; toolName: string; content: { text: string }[] };
+    const toolResult = tool as {
+      toolCallId: string;
+      toolName: string;
+      content: { text: string }[];
+    };
     expect(toolResult.toolCallId).toBe("call_1");
     expect(toolResult.toolName).toBe("lookup");
     expect(toolResult.content[0].text).toBe("42");
@@ -113,13 +202,20 @@ describe("assistantToOpenAI", () => {
   it("maps tool calls and tool-use finish reason", () => {
     const message = baseAssistant({
       content: [
-        { type: "toolCall", id: "call_1", name: "lookup", arguments: { q: "x" } },
+        {
+          type: "toolCall",
+          id: "call_1",
+          name: "lookup",
+          arguments: { q: "x" },
+        },
       ],
       stopReason: "toolUse",
     });
     const out = assistantToOpenAI(message, "m");
     expect(out.choices[0].finish_reason).toBe("tool_calls");
-    expect(out.choices[0].message.tool_calls[0].function.arguments).toBe('{"q":"x"}');
+    expect(out.choices[0].message.tool_calls[0].function.arguments).toBe(
+      '{"q":"x"}',
+    );
   });
 });
 

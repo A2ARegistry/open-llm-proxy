@@ -201,8 +201,44 @@ export function getPiAiProviderSpec(
   return PI_AI_PROVIDERS[name];
 }
 
+/** Whether a name refers to a known provider (canonical id in the registry). */
+export function isKnownProviderName(name: string): boolean {
+  const canonical = canonicalProviderName(name);
+  return canonical in PI_AI_PROVIDERS || canonical in V1_FALLBACK_PROVIDERS;
+}
+
 export function getV1ProviderSpec(name: string) {
   return V1_FALLBACK_PROVIDERS[name];
+}
+
+export interface BuiltinProviderCatalogEntry {
+  provider: string;
+  name: string;
+  mode: LlmMode;
+  needsKey: boolean;
+}
+
+/** All built-in providers, deduped by canonical id (aliases like `google`/`xai` skipped). */
+export function listBuiltinProviders(): BuiltinProviderCatalogEntry[] {
+  const rows: BuiltinProviderCatalogEntry[] = [];
+  for (const key of Object.keys(PI_AI_PROVIDERS)) {
+    if (canonicalProviderName(key) !== key) continue;
+    rows.push({
+      provider: key,
+      name: PI_AI_PROVIDERS[key].name,
+      mode: resolveProviderMode(key),
+      needsKey: true,
+    });
+  }
+  for (const key of Object.keys(V1_FALLBACK_PROVIDERS)) {
+    rows.push({
+      provider: key,
+      name: V1_FALLBACK_PROVIDERS[key].name,
+      mode: resolveProviderMode(key),
+      needsKey: V1_FALLBACK_PROVIDERS[key].needsKey,
+    });
+  }
+  return rows;
 }
 
 export const PI_AI_PROVIDER_NAMES = Object.keys(PI_AI_PROVIDERS);
