@@ -26,6 +26,7 @@ import {
 import {
   canonicalProviderName,
   getPiAiProviderSpec,
+  isCustomProviderName,
   isKnownProviderName,
   providerApiId,
 } from "../llm/provider-registry";
@@ -209,7 +210,7 @@ export async function chatCompletionsV2(
       `Provider '${providerName}' is disabled`,
     );
   }
-  if (config.keys.length === 0) {
+  if (!isCustomProviderName(providerName) && config.keys.length === 0) {
     return errorBody(
       "not_configured",
       `Provider '${providerName}' has no API keys configured`,

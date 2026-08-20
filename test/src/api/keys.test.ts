@@ -107,7 +107,7 @@ describe("POST /api/keys", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: "scoped",
-        scopes: { defaultProvider: "no-such-provider" },
+        scopes: { defaultProvider: "No-Such" },
       }),
     });
     expect(status).toBe(400);

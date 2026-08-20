@@ -2,6 +2,7 @@ import type { AppBindings } from "../app";
 import { auditLog } from "../audit/audit-logger";
 import {
   canonicalProviderName,
+  isCustomProviderName,
   isKnownProviderName,
 } from "../llm/provider-registry";
 import { reconcileKeyDisable } from "../metrics/spend-guard";
@@ -62,9 +63,12 @@ function validateScopes(scopes: unknown): ApiKeyScopes {
   if (input.defaultProvider !== undefined) {
     if (
       typeof input.defaultProvider !== "string" ||
-      !isKnownProviderName(input.defaultProvider)
+      (!isKnownProviderName(input.defaultProvider) &&
+        !isCustomProviderName(input.defaultProvider))
     ) {
-      throw new Error("scopes.defaultProvider must be a known provider id");
+      throw new Error(
+        "scopes.defaultProvider must be a known provider id or a custom provider id",
+      );
     }
     out.defaultProvider = canonicalProviderName(input.defaultProvider);
   }

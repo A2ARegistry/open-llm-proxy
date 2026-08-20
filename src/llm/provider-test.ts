@@ -14,8 +14,10 @@ import {
   canonicalProviderName,
   getPiAiProviderSpec,
   getV1ProviderSpec,
+  isCustomProviderName,
   providerApiId,
 } from "./provider-registry";
+import { V1OpenAICompatibleClient } from "./v1-provider";
 
 export interface ProviderTestResult {
   ok: boolean;
@@ -157,7 +159,11 @@ export function resolveTestTarget(input: {
 
   const v1Spec = getV1ProviderSpec(provider);
   const settings = input.settings ?? {};
-  const needsKey = v1Spec?.needsKey ?? true;
+  // Custom OpenAI-compatible endpoints may be local (Ollama/LM Studio) and
+  // keyless; the upstream returns 401 when a key is actually required.
+  const needsKey = isCustomProviderName(provider)
+    ? false
+    : (v1Spec?.needsKey ?? true);
   const baseUrl =
     (settings.baseUrl as string | undefined) ?? v1Spec?.baseUrl ?? "";
   const modelsPath =
@@ -238,7 +244,9 @@ export function resolveChatProbe(input: {
 
   const v1Spec = getV1ProviderSpec(provider);
   const settings = input.settings ?? {};
-  const needsKey = v1Spec?.needsKey ?? true;
+  const needsKey = isCustomProviderName(provider)
+    ? false
+    : (v1Spec?.needsKey ?? true);
   const baseUrl =
     (settings.baseUrl as string | undefined) ?? v1Spec?.baseUrl ?? "";
   const chatCompletionPath =
@@ -483,4 +491,109 @@ function extractErrorMessage(body: string): string | undefined {
   }
   const trimmed = body.trim();
   return trimmed ? trimmed.slice(0, 300) : undefined;
+}
+
+export interface ProviderModelsResult {
+  ok: boolean;
+  models?: { id: string; api: string }[];
+  status?: number;
+  error?: string;
+}
+
+/**
+ * Fetch the model ids a provider actually exposes, so custom endpoints can be
+ * configured from the live list instead of typing ids by hand. Works for pi-ai
+ * built-ins (models-list endpoint) and V1/custom OpenAI-compatible endpoints
+ * (their `modelsPath`). Vertex Express Mode has no model list, so it errors.
+ */
+export async function fetchProviderModels(input: {
+  provider: string;
+  keys: string[];
+  settings?: ProviderSettings;
+}): Promise<ProviderModelsResult> {
+  const provider = canonicalProviderName(input.provider);
+  if (isVertexProvider(provider)) {
+    return {
+      ok: false,
+      error: "Vertex AI has no model-list endpoint (Express Mode)",
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+  try {
+    const piSpec = getPiAiProviderSpec(provider);
+    if (piSpec) {
+      const resolved = resolveTestTarget(input);
+      if ("error" in resolved) return { ok: false, error: resolved.error };
+      const res = await fetch(resolved.target.url, {
+        headers: resolved.target.headers,
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        return {
+          ok: false,
+          status: res.status,
+          error: extractErrorMessage(await res.text()) || `HTTP ${res.status}`,
+        };
+      }
+      const json = (await res.json()) as {
+        data?: { id?: string }[];
+        models?: { name?: string }[];
+      };
+      const ids = (json.data ?? [])
+        .map((m) => m.id)
+        .filter((id): id is string => typeof id === "string")
+        .concat(
+          (json.models ?? [])
+            .map((m) => m.name)
+            .filter((n): n is string => typeof n === "string"),
+        );
+      return {
+        ok: true,
+        models: ids.map((id) => ({ id, api: "openai-completions" })),
+      };
+    }
+
+    const client = new V1OpenAICompatibleClient({
+      provider,
+      keys: input.keys,
+      custom: input.settings?.baseUrl
+        ? {
+            baseUrl: input.settings.baseUrl as string,
+            chatCompletionPath: input.settings.chatCompletionPath as
+              string | undefined,
+            modelsPath: input.settings.modelsPath as string | undefined,
+          }
+        : undefined,
+    });
+    const res = await client.models({ signal: controller.signal });
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: res.status,
+        error: extractErrorMessage(await res.text()) || `HTTP ${res.status}`,
+      };
+    }
+    const json = (await res.json()) as { data?: { id?: string }[] };
+    const ids = (json.data ?? [])
+      .map((m) => m.id)
+      .filter((id): id is string => typeof id === "string");
+    return {
+      ok: true,
+      models: ids.map((id) => ({ id, api: "openai-completions" })),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error && err.name === "AbortError"
+          ? "Request timed out"
+          : err instanceof Error
+            ? err.message
+            : String(err),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }

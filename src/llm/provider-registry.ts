@@ -157,12 +157,32 @@ const V1_FALLBACK_PROVIDERS: Record<
   },
 };
 
-/** Names a provider may use internally in requests, mapped to a canonical id. */
+/** A provider id may use in requests, mapped to a canonical id. */
 export function canonicalProviderName(name: string): string {
   if (name === "google") return "google-ai-studio";
   if (name === "xai") return "grok";
   if (name === "vertex" || name === "google-vertex") return "google-vertex";
   return name;
+}
+
+/** Valid ids for provider configs (built-in canonical ids or custom slugs). */
+export const PROVIDER_ID_RE = /^[a-z][a-z0-9-]{0,47}$/;
+
+/** Whether a name refers to a known provider (canonical id in the registry). */
+export function isKnownProviderName(name: string): boolean {
+  const canonical = canonicalProviderName(name);
+  return canonical in PI_AI_PROVIDERS || canonical in V1_FALLBACK_PROVIDERS;
+}
+
+/**
+ * Whether a name is a user-defined OpenAI-compatible provider: not a built-in,
+ * but a syntactically valid id. Such providers route through the V1 client with
+ * a user-supplied `baseUrl` (and optionally paths + default model).
+ */
+export function isCustomProviderName(name: string): boolean {
+  if (!PROVIDER_ID_RE.test(name)) return false;
+  if (isKnownProviderName(name)) return false;
+  return true;
 }
 
 export function resolveProviderMode(name: string): LlmMode {
@@ -199,12 +219,6 @@ export function getPiAiProviderSpec(
   name: string,
 ): PiAiProviderSpec | undefined {
   return PI_AI_PROVIDERS[name];
-}
-
-/** Whether a name refers to a known provider (canonical id in the registry). */
-export function isKnownProviderName(name: string): boolean {
-  const canonical = canonicalProviderName(name);
-  return canonical in PI_AI_PROVIDERS || canonical in V1_FALLBACK_PROVIDERS;
 }
 
 export function getV1ProviderSpec(name: string) {

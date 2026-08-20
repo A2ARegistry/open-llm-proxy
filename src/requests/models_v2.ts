@@ -16,6 +16,7 @@ import { isModelAllowed } from "../llm/policy";
 import {
   V1_PROVIDER_NAMES,
   canonicalProviderName,
+  isCustomProviderName,
   PI_AI_PROVIDER_NAMES,
 } from "../llm/provider-registry";
 import { V1OpenAICompatibleClient } from "../llm/v1-provider";
@@ -222,6 +223,22 @@ export async function modelsV2(input: ModelsInput): Promise<Response> {
         models = catalogModels(provider);
       } else if (V1_PROVIDER_NAMES.includes(provider)) {
         models = await fetchV1Models(provider, cfg.keys, cfg.settings);
+      } else if (isCustomProviderName(provider)) {
+        // Custom OpenAI-compatible endpoints: live model list + tenant-pinned
+        // custom model ids (the live list may be absent for local endpoints).
+        models = await fetchV1Models(provider, cfg.keys, cfg.settings);
+        const customIds = Array.isArray(cfg.settings.customModels)
+          ? (cfg.settings.customModels as unknown[]).filter(
+              (c): c is string => typeof c === "string",
+            )
+          : [];
+        const custom = customIds
+          .map((c) => c.trim())
+          .filter(Boolean)
+          .map((id) =>
+            entry(id, "openai-completions", synthesizedMetadata(id)),
+          );
+        models = mergeModels(models, custom);
       }
       // api key may pin providers already (provider scope only allows some), but
       // the request must reflect the *effective* list for this key. A key bound

@@ -52,6 +52,7 @@ const PROVIDER_CATALOG: { id: string; name: string; needsKey: boolean }[] = [
   { id: "ollama", name: "Ollama", needsKey: false },
   { id: "cohere", name: "Cohere", needsKey: true },
   { id: "perplexity-ai", name: "Perplexity AI", needsKey: true },
+  { id: "custom", name: "Custom OpenAI-compatible", needsKey: true },
 ];
 
 export function ProvidersPage() {
@@ -424,8 +425,24 @@ function ProviderFormModal({
   onSaved: () => void;
 }) {
   const isVertex = provider === "google-vertex";
+  const isCustom = provider != null && !catalogById.has(provider) && provider !== "google-vertex";
   const [selected, setSelected] = useState(provider ?? PROVIDER_CATALOG[0].id);
   const hasExistingKeys = (initialKeyCount ?? 0) > 0;
+  const [customId, setCustomId] = useState(
+    provider && isCustom ? provider : "",
+  );
+  const [customName, setCustomName] = useState(
+    isCustom ? String(initialSettings?.name ?? "") : "",
+  );
+  const [baseUrl, setBaseUrl] = useState(
+    isCustom ? String(initialSettings?.baseUrl ?? "") : "",
+  );
+  const [chatPath, setChatPath] = useState(
+    isCustom ? String(initialSettings?.chatCompletionPath ?? "") : "",
+  );
+  const [modelsPath, setModelsPath] = useState(
+    isCustom ? String(initialSettings?.modelsPath ?? "") : "",
+  );
   const [keysText, setKeysText] = useState(
     hasExistingKeys ? KEY_MASK : "",
   );
@@ -439,7 +456,7 @@ function ProviderFormModal({
     initialSettings?.authMode === "api-key" ? "api-key" : "service-account",
   );
   const [customModelsText, setCustomModelsText] = useState(
-    isVertex && Array.isArray(initialSettings?.customModels)
+    (isVertex || isCustom) && Array.isArray(initialSettings?.customModels)
       ? (initialSettings.customModels as string[]).join("\n")
       : "",
   );
@@ -452,10 +469,16 @@ function ProviderFormModal({
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
   const [testing, setTesting] = useState(false);
+  const [fetchingModels, setFetchingModels] = useState(false);
 
   const catalogEntry = catalogById.get(selected);
-  const catalogName = catalogEntry?.name ?? selected;
+  const catalogName =
+    catalogEntry?.name ?? (isCustom && customName ? customName : selected);
   const needsKey = catalogEntry?.needsKey ?? true;
+  const isCustomSelected = selected === "custom";
+  const targetProvider =
+    isCustomSelected && provider == null ? customId.trim() : selected;
+  const showCustomFields = isCustomSelected || isCustom;
 
   const isMaskedKey = (v: string) =>
     v.trim() === "" || v.trim() === KEY_MASK;
@@ -475,6 +498,11 @@ function ProviderFormModal({
       .filter(Boolean);
 
   const canTest = () => {
+    if (isCustomSelected) {
+      if (provider == null && !customId.trim()) return false;
+      if (!baseUrl.trim()) return false;
+      return true;
+    }
     const hasRealKey = !isMaskedKey(keysText);
     if (selected === "google-vertex") {
       if (authMode === "service-account") {
@@ -520,6 +548,21 @@ function ProviderFormModal({
         },
       };
     }
+    if (selected === "custom") {
+      return {
+        ...keysSetting,
+        settings: {
+          ...(customName.trim() ? { name: customName.trim() } : {}),
+          baseUrl: baseUrl.trim(),
+          ...(chatPath.trim()
+            ? { chatCompletionPath: chatPath.trim() }
+            : {}),
+          ...(modelsPath.trim() ? { modelsPath: modelsPath.trim() } : {}),
+          customModels: parseCustomModels(),
+          ...defaultModelSetting,
+        },
+      };
+    }
     return {
       ...keysSetting,
       settings: defaultModelSetting,
@@ -530,7 +573,7 @@ function ProviderFormModal({
     setError(null);
     setSaving(true);
     try {
-      await apiSend("PUT", `/api/providers/${selected}`, {
+      await apiSend("PUT", `/api/providers/${targetProvider}`, {
         ...buildBody(),
         enabled: true,
       });
@@ -548,7 +591,7 @@ function ProviderFormModal({
     try {
       const result = await apiSend<ProviderTestResult>(
         "POST",
-        `/api/providers/${selected}/test`,
+        `/api/providers/${targetProvider}/test`,
         buildBody(),
       );
       setTestResult(result);
@@ -556,6 +599,38 @@ function ProviderFormModal({
       setTestResult({ ok: false, error: (err as Error).message });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const runFetchModels = async () => {
+    setError(null);
+    setFetchingModels(true);
+    setTestResult(null);
+    try {
+      const result = await apiSend<{
+        ok: boolean;
+        models?: { id: string; api: string }[];
+        error?: string;
+      }>("POST", `/api/providers/${targetProvider}/models`, buildBody());
+      if (result.ok && result.models?.length) {
+        const ids = result.models.map((m) => m.id);
+        setCustomModelsText(ids.join("\n"));
+        if (!defaultModel.trim()) setDefaultModel(ids[0]);
+        setTestResult({
+          ok: true,
+          modelCount: ids.length,
+          details: { provider: targetProvider, modelCount: ids.length },
+        });
+      } else {
+        setTestResult({
+          ok: false,
+          error: result.error ?? "No models returned",
+        });
+      }
+    } catch (err) {
+      setTestResult({ ok: false, error: (err as Error).message });
+    } finally {
+      setFetchingModels(false);
     }
   };
 
@@ -688,6 +763,103 @@ function ProviderFormModal({
               </div>
             )}
           </>
+        ) : showCustomFields ? (
+          <>
+            {provider == null && (
+              <div>
+                <Label>Provider id (used in requests as `id/model`)</Label>
+                <Input
+                  value={customId}
+                  onChange={(e) => setCustomId(e.target.value)}
+                  placeholder="my-llm"
+                />
+                <p className="mt-1 text-[11px] text-gray-400">
+                  Lowercase letters, digits and dashes. This is the id you will
+                  reference as <code>my-llm/model-id</code>.
+                </p>
+              </div>
+            )}
+            <div>
+              <Label>Display name (optional)</Label>
+              <Input
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="My internal gateway"
+              />
+            </div>
+            <div>
+              <Label>Base URL (required)</Label>
+              <Input
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="https://gateway.example.com/v1 or http://localhost:11434/v1"
+              />
+              <p className="mt-1 text-[11px] text-gray-400">
+                Chat and model-list paths are appended to the base URL, e.g.{" "}
+                <code>{baseUrl || "https://host/v1"}
+                  {chatPath.trim() || "/chat/completions"}</code>.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Chat path (optional)</Label>
+                <Input
+                  value={chatPath}
+                  onChange={(e) => setChatPath(e.target.value)}
+                  placeholder="/chat/completions"
+                />
+              </div>
+              <div>
+                <Label>Models path (optional)</Label>
+                <Input
+                  value={modelsPath}
+                  onChange={(e) => setModelsPath(e.target.value)}
+                  placeholder="/models"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>API key(s) — optional for local endpoints</Label>
+              <textarea
+                className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                rows={2}
+                placeholder={
+                  hasExistingKeys
+                    ? "Key already set — type to replace it"
+                    : "sk-… (leave empty for keyless local servers)"
+                }
+                value={keysText}
+                onChange={(e) => setKeysText(e.target.value)}
+                onFocus={() => isMaskedKey(keysText) && setKeysText("")}
+              />
+            </div>
+            <div>
+              <Label>Custom model IDs (optional)</Label>
+              <textarea
+                className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                rows={2}
+                placeholder={"my-model-1\nmy-model-2"}
+                value={customModelsText}
+                onChange={(e) => setCustomModelsText(e.target.value)}
+              />
+              <div className="mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={runFetchModels}
+                  loading={fetchingModels}
+                  disabled={!baseUrl.trim() || (provider == null && !customId.trim())}
+                >
+                  <Wifi size={13} /> Fetch models from endpoint
+                </Button>
+              </div>
+              <p className="mt-1 text-[11px] text-gray-400">
+                One model id per line. Use "Fetch models" to pull the live list
+                from the endpoint, or enter ids by hand. Any model id works at
+                request time even without listing it here.
+              </p>
+            </div>
+          </>
         ) : (
           <div>
             <Label>API key(s)</Label>
@@ -721,8 +893,9 @@ function ProviderFormModal({
             placeholder="e.g. gemini-2.5-flash"
           />
           <p className="mt-1 text-[11px] text-gray-400">
-            Used when a request omits the model id, and by the connection test.
-            Leave empty to use the built-in default.
+            {showCustomFields
+              ? "Required for the connection test and for requests that omit the model id. Set it to one of the model ids above."
+              : "Used when a request omits the model id, and by the connection test. Leave empty to use the built-in default."}
           </p>
         </div>
 

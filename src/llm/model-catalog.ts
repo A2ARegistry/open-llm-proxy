@@ -143,7 +143,7 @@ export function defaultModelFor(provider: string): string | undefined {
  * `settings.defaultModel` wins, otherwise the built-in per-provider default.
  */
 export function resolveDefaultModel(
-  settings: { defaultModel?: unknown } | undefined,
+  settings: ({ defaultModel?: unknown } & Record<string, unknown>) | undefined,
   provider: string,
 ): string | undefined {
   const custom = settings?.defaultModel;

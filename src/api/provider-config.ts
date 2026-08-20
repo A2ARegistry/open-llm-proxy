@@ -12,14 +12,20 @@ import { defaultModelFor, resolveDefaultModel } from "../llm/model-catalog";
 import {
   getPiAiProviderSpec,
   getV1ProviderSpec,
+  isCustomProviderName,
   listBuiltinProviders,
+  PROVIDER_ID_RE,
   resolveProviderMode,
 } from "../llm/provider-registry";
-import { testProviderConnection } from "../llm/provider-test";
+import {
+  fetchProviderModels,
+  testProviderConnection,
+} from "../llm/provider-test";
 import { Hono } from "hono";
 
-const PROVIDER_ID_RE = /^[a-z][a-z0-9-]{0,47}$/;
 const MAX_KEYS_PER_PROVIDER = 20;
+
+const BASE_URL_RE = /^https?:\/\/.+/;
 
 function publicProviderView(input: {
   provider: string;
@@ -31,9 +37,13 @@ function publicProviderView(input: {
 }) {
   const spec = getPiAiProviderSpec(input.provider);
   const v1Spec = getV1ProviderSpec(input.provider);
+  const displayName =
+    typeof input.settings?.name === "string" && input.settings.name.trim()
+      ? input.settings.name.trim()
+      : (spec?.name ?? v1Spec?.name ?? input.provider);
   return {
     provider: input.provider,
-    name: spec?.name ?? v1Spec?.name ?? input.provider,
+    name: displayName,
     mode: resolveProviderMode(input.provider),
     configured: input.configured,
     enabled: input.enabled,
@@ -59,6 +69,27 @@ function validateSettings(settings: unknown): Record<string, unknown> {
       if (typeof value !== "string" || !value.startsWith("/")) {
         throw new Error(`settings.${key} must be an absolute path`);
       }
+    } else if (key === "baseUrl") {
+      if (typeof value !== "string" || !BASE_URL_RE.test(value.trim())) {
+        throw new Error("settings.baseUrl must be an http(s) URL");
+      }
+      out[key] = value.trim();
+      continue;
+    } else if (key === "name") {
+      if (typeof value !== "string" || value.trim().length === 0) {
+        throw new Error("settings.name must be a non-empty string");
+      }
+      out[key] = value.trim();
+      continue;
+    } else if (key === "customModels") {
+      if (
+        !Array.isArray(value) ||
+        value.some((m) => typeof m !== "string" || m.trim().length === 0)
+      ) {
+        throw new Error("settings.customModels must be an array of strings");
+      }
+      out[key] = (value as string[]).map((m) => m.trim());
+      continue;
     }
     out[key] = value;
   }
@@ -68,12 +99,20 @@ function validateSettings(settings: unknown): Record<string, unknown> {
 export const providerConfigRouter = new Hono<AppBindings>();
 
 // GET /api/providers/catalog — built-in providers with their default models,
-// so the dashboard can prefill config forms (custom providers are excluded).
+// so the dashboard can prefill config forms, plus the generic custom
+// OpenAI-compatible option (no curated default model).
 providerConfigRouter.get("/catalog", async (c) => {
   const rows = listBuiltinProviders().map((entry) => ({
     ...entry,
     defaultModel: defaultModelFor(entry.provider) ?? null,
   }));
+  rows.push({
+    provider: "custom",
+    name: "Custom OpenAI-compatible",
+    mode: "v1",
+    needsKey: true,
+    defaultModel: null,
+  });
   return c.json({ providers: rows });
 });
 
@@ -167,6 +206,12 @@ providerConfigRouter.put("/:provider", async (c) => {
       const existing = await getProviderConfig(c.env, orgId, provider);
       const effectiveKeys = keys ?? existing?.keys ?? [];
       parseVertexConfig({ settings, keys: effectiveKeys });
+    }
+    if (isCustomProviderName(provider)) {
+      // A custom OpenAI-compatible endpoint is only meaningful with a base URL.
+      if (typeof settings.baseUrl !== "string" || !settings.baseUrl) {
+        throw new Error("settings.baseUrl is required for custom providers");
+      }
     }
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400);
@@ -275,6 +320,69 @@ providerConfigRouter.post("/:provider/test", async (c) => {
   }
 
   const result = await testProviderConnection({
+    provider,
+    keys: testKeys,
+    settings: testSettings,
+  });
+  return c.json(result);
+});
+
+// POST /api/providers/:provider/models — fetch the live model list for a
+// provider with candidate keys/settings (unsaved or stored), so custom
+// endpoints can be configured from their real model ids.
+providerConfigRouter.post("/:provider/models", async (c) => {
+  const orgId = c.get("session")!.organizationId!;
+  const provider = c.req.param("provider");
+
+  if (!PROVIDER_ID_RE.test(provider)) {
+    return c.json({ error: "Invalid provider id" }, 400);
+  }
+
+  const body = (await c.req.json().catch(() => null)) as {
+    keys?: unknown;
+    settings?: unknown;
+  } | null;
+  if (!body) return c.json({ error: "Invalid JSON body" }, 400);
+
+  let keys: string[] | undefined;
+  if (body.keys !== undefined) {
+    if (
+      !Array.isArray(body.keys) ||
+      body.keys.some((k) => typeof k !== "string" || k.trim().length === 0) ||
+      body.keys.length > MAX_KEYS_PER_PROVIDER
+    ) {
+      return c.json(
+        {
+          error: `keys must be a non-empty array of strings (max ${MAX_KEYS_PER_PROVIDER})`,
+        },
+        400,
+      );
+    }
+    keys = (body.keys as string[]).map((k) => k.trim());
+  }
+
+  let settings: Record<string, unknown>;
+  try {
+    settings = validateSettings(body.settings);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+
+  let testKeys = keys;
+  let testSettings = settings;
+  if (testKeys === undefined) {
+    const cfg = await getProviderConfig(c.env, orgId, provider);
+    if (!cfg) {
+      return c.json(
+        { error: "Provider is not configured. Save it first or provide keys." },
+        404,
+      );
+    }
+    testKeys = cfg.keys;
+    testSettings = { ...cfg.settings, ...settings };
+  }
+
+  const result = await fetchProviderModels({
     provider,
     keys: testKeys,
     settings: testSettings,

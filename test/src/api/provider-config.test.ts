@@ -9,7 +9,10 @@ import {
   saveProviderConfig,
   deleteProviderConfig,
 } from "~/src/llm/credential-store";
-import { testProviderConnection } from "~/src/llm/provider-test";
+import {
+  fetchProviderModels,
+  testProviderConnection,
+} from "~/src/llm/provider-test";
 import type { SessionAuth } from "~/src/types";
 
 vi.mock("~/src/llm/credential-store", () => ({
@@ -25,6 +28,7 @@ vi.mock("~/src/audit/audit-logger", () => ({
 
 vi.mock("~/src/llm/provider-test", () => ({
   testProviderConnection: vi.fn(),
+  fetchProviderModels: vi.fn(),
 }));
 
 const mockGetProviderConfig = vi.mocked(getProviderConfig);
@@ -32,6 +36,7 @@ const mockListProviderConfigs = vi.mocked(listProviderConfigs);
 const mockSaveProviderConfig = vi.mocked(saveProviderConfig);
 const mockDeleteProviderConfig = vi.mocked(deleteProviderConfig);
 const mockTestProviderConnection = vi.mocked(testProviderConnection);
+const mockFetchProviderModels = vi.mocked(fetchProviderModels);
 
 const session: SessionAuth = {
   userId: "user_1",
@@ -126,6 +131,23 @@ describe("GET /api/providers", () => {
     const { body } = await fetchJson(buildApp(), "/api/providers");
     expect(body.providers[0].defaultModel).toBeNull();
   });
+
+  it("uses settings.name as the display name for custom providers", async () => {
+    mockListProviderConfigs.mockResolvedValue([
+      config({
+        provider: "my-gw",
+        keys: ["k"],
+        settings: {
+          baseUrl: "https://gw.example.com",
+          name: "My gateway",
+          defaultModel: "local-model",
+        },
+      }),
+    ]);
+    const { body } = await fetchJson(buildApp(), "/api/providers");
+    expect(body.providers[0].name).toBe("My gateway");
+    expect(body.providers[0].defaultModel).toBe("local-model");
+  });
 });
 
 describe("GET /api/providers/catalog", () => {
@@ -158,6 +180,23 @@ describe("GET /api/providers/catalog", () => {
     expect(
       body.providers.find((p: { provider: string }) => p.provider === "xai"),
     ).toBeUndefined();
+  });
+
+  it("includes a generic custom OpenAI-compatible entry with no default model", async () => {
+    const { status, body } = await fetchJson(
+      buildApp(),
+      "/api/providers/catalog",
+    );
+    expect(status).toBe(200);
+    const custom = body.providers.find(
+      (p: { provider: string }) => p.provider === "custom",
+    );
+    expect(custom).toMatchObject({
+      provider: "custom",
+      mode: "v1",
+      needsKey: true,
+      defaultModel: null,
+    });
   });
 });
 
@@ -373,6 +412,78 @@ describe("PUT /api/providers/:provider", () => {
     expect(status).toBe(400);
     expect(body.error).toMatch(/API key/);
   });
+
+  it("rejects a custom provider without a base URL", async () => {
+    const { status, body } = await putJson(
+      "/api/providers/my-gw",
+      JSON.stringify({
+        keys: ["sk-a"],
+        settings: { name: "My gateway", defaultModel: "m" },
+      }),
+    );
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/baseUrl/);
+  });
+
+  it("rejects a custom provider with a non-http(s) base URL", async () => {
+    const { status, body } = await putJson(
+      "/api/providers/my-gw",
+      JSON.stringify({ settings: { baseUrl: "ftp://gw.example.com" } }),
+    );
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/baseUrl/);
+  });
+
+  it("accepts a keyless custom provider with a base URL", async () => {
+    mockSaveProviderConfig.mockResolvedValue(
+      config({
+        provider: "my-gw",
+        keys: [],
+        enabled: true,
+        settings: {
+          baseUrl: "http://localhost:11434/v1",
+          customModels: ["llama3"],
+          defaultModel: "llama3",
+        },
+      }),
+    );
+    const { status, body } = await putJson(
+      "/api/providers/my-gw",
+      JSON.stringify({
+        settings: {
+          baseUrl: "http://localhost:11434/v1",
+          customModels: ["llama3"],
+          defaultModel: "llama3",
+        },
+      }),
+    );
+    expect(status).toBe(200);
+    expect(body.provider).toBe("my-gw");
+    expect(mockSaveProviderConfig.mock.calls[0][3].keys).toBeUndefined();
+    expect(mockSaveProviderConfig.mock.calls[0][3].settings).toMatchObject({
+      baseUrl: "http://localhost:11434/v1",
+      customModels: ["llama3"],
+    });
+  });
+
+  it("rejects non-string customModels entries", async () => {
+    const { status, body } = await putJson(
+      "/api/providers/my-gw",
+      JSON.stringify({
+        settings: { baseUrl: "https://gw.example.com", customModels: [42] },
+      }),
+    );
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/customModels/);
+  });
+
+  it("rejects an invalid custom provider id", async () => {
+    const { status } = await putJson(
+      "/api/providers/NotValid",
+      JSON.stringify({ settings: { baseUrl: "https://gw.example.com" } }),
+    );
+    expect(status).toBe(400);
+  });
 });
 
 describe("POST /api/providers/:provider/test", () => {
@@ -467,6 +578,94 @@ describe("POST /api/providers/:provider/test", () => {
       "/api/providers/openai/test",
       JSON.stringify({ settings: "nope" }),
     );
+    expect(status).toBe(400);
+  });
+});
+
+describe("POST /api/providers/:provider/models", () => {
+  const postJson = (path: string, payload: string) =>
+    fetchJson(buildApp(), path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: payload,
+    });
+
+  beforeEach(() => {
+    mockFetchProviderModels.mockResolvedValue({
+      ok: true,
+      models: [{ id: "gpt-4o", api: "openai-completions" }],
+    });
+  });
+
+  it("fetches the live model list with candidate settings", async () => {
+    const { status, body } = await postJson(
+      "/api/providers/my-gw/models",
+      JSON.stringify({
+        keys: ["sk-cand"],
+        settings: { baseUrl: "http://localhost:11434/v1" },
+      }),
+    );
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.models).toEqual([{ id: "gpt-4o", api: "openai-completions" }]);
+    expect(mockFetchProviderModels).toHaveBeenCalledWith({
+      provider: "my-gw",
+      keys: ["sk-cand"],
+      settings: { baseUrl: "http://localhost:11434/v1" },
+    });
+  });
+
+  it("falls back to stored keys and merges stored settings", async () => {
+    mockGetProviderConfig.mockResolvedValue(
+      config({
+        provider: "my-gw",
+        keys: ["sk-stored"],
+        settings: { baseUrl: "https://gw.example.com", timeout: 30 },
+      }),
+    );
+    const { status } = await postJson("/api/providers/my-gw/models", "{}");
+    expect(status).toBe(200);
+    expect(mockFetchProviderModels).toHaveBeenCalledWith({
+      provider: "my-gw",
+      keys: ["sk-stored"],
+      settings: { baseUrl: "https://gw.example.com", timeout: 30 },
+    });
+  });
+
+  it("returns 404 when nothing is configured and no keys given", async () => {
+    mockGetProviderConfig.mockResolvedValue(undefined);
+    const { status, body } = await postJson(
+      "/api/providers/my-gw/models",
+      "{}",
+    );
+    expect(status).toBe(404);
+    expect(body.error).toContain("not configured");
+    expect(mockFetchProviderModels).not.toHaveBeenCalled();
+  });
+
+  it("passes through a failed fetch", async () => {
+    mockFetchProviderModels.mockResolvedValue({
+      ok: false,
+      status: 401,
+      error: "unauthorized",
+    });
+    const { status, body } = await postJson(
+      "/api/providers/my-gw/models",
+      JSON.stringify({
+        keys: ["bad"],
+        settings: { baseUrl: "https://gw.example.com" },
+      }),
+    );
+    expect(status).toBe(200);
+    expect(body).toMatchObject({
+      ok: false,
+      status: 401,
+      error: "unauthorized",
+    });
+  });
+
+  it("rejects an invalid provider id", async () => {
+    const { status } = await postJson("/api/providers/NotValid/models", "{}");
     expect(status).toBe(400);
   });
 });
