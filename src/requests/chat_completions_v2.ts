@@ -15,7 +15,7 @@ import {
   assistantToOpenAI,
   encodeSse,
   eventToOpenAIChunks,
-  resolveRequestModel,
+  parseModelString,
   toPiContext,
 } from "../llm/openai-adapter";
 import {
@@ -26,6 +26,7 @@ import {
 import {
   canonicalProviderName,
   getPiAiProviderSpec,
+  isKnownProviderName,
   providerApiId,
 } from "../llm/provider-registry";
 import { checkRateLimits, settleTokenUsage } from "../llm/rate-limit";
@@ -135,15 +136,51 @@ export async function chatCompletionsV2(
   }
   const chatBody = body as unknown as ChatCompletionsRequest;
 
-  const resolvedModel = resolveRequestModel({
-    rawModel: typeof body.model === "string" ? (body.model as string) : "",
-    tenantDefaultModel:
-      typeof settings.defaultModel === "string"
-        ? settings.defaultModel
-        : undefined,
-  });
-  const providerName = canonicalProviderName(resolvedModel.provider);
-  let modelId = resolvedModel.model;
+  const rawModel = typeof body.model === "string" ? body.model.trim() : "";
+  // An API key may be bound to a provider (scopes.defaultProvider): the key
+  // then only ever routes to that provider and users can send bare model ids.
+  // Unbound keys must name the provider explicitly (`provider/model`).
+  const boundProvider = apiKeyAuth.scopes.defaultProvider
+    ? canonicalProviderName(apiKeyAuth.scopes.defaultProvider)
+    : undefined;
+
+  let providerName: string;
+  let modelId: string;
+
+  if (boundProvider) {
+    const parsed = parseModelString(rawModel);
+    if (
+      parsed.provider &&
+      canonicalProviderName(parsed.provider) !== boundProvider
+    ) {
+      return errorBody(
+        "provider_mismatch",
+        `API key is bound to provider '${boundProvider}'; cannot use '${parsed.provider}'`,
+      );
+    }
+    providerName = boundProvider;
+    modelId = parsed.model;
+  } else {
+    if (!rawModel) {
+      return errorBody(
+        "not_configured",
+        "Model must be formatted as 'provider/model' (or set a default provider on the API key)",
+      );
+    }
+    const parsed = parseModelString(rawModel);
+    if (parsed.provider) {
+      providerName = canonicalProviderName(parsed.provider);
+      modelId = parsed.model;
+    } else if (isKnownProviderName(parsed.model)) {
+      providerName = canonicalProviderName(parsed.model);
+      modelId = "";
+    } else {
+      return errorBody(
+        "not_configured",
+        "Model must be formatted as 'provider/model' (e.g. 'openai/gpt-4o') or set a default provider on the API key",
+      );
+    }
+  }
 
   if (!providerName) {
     return errorBody(

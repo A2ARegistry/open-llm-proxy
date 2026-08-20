@@ -76,7 +76,7 @@ async function fetchJson(
 
 beforeAll(async () => {
   await env.DB.exec(`
-CREATE TABLE IF NOT EXISTS organizations (id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE, logo TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER, metadata TEXT);
+CREATE TABLE IF NOT EXISTS organizations (id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE, logo TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER, metadata TEXT, system_prefix TEXT UNIQUE, custom_prefix TEXT UNIQUE, is_root_tenant INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, emailVerified INTEGER NOT NULL, image TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, expiresAt INTEGER NOT NULL, token TEXT NOT NULL UNIQUE, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, ipAddress TEXT, userAgent TEXT, userId TEXT NOT NULL, activeOrganizationId TEXT);
 CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, organizationId TEXT NOT NULL, userId TEXT NOT NULL, role TEXT NOT NULL, createdAt INTEGER NOT NULL);
@@ -122,7 +122,11 @@ describe("GET /api/team/members", () => {
       (m: { email: string }) => m.email === "member@acme.test",
     );
     expect(self.self).toBe(true);
-    expect(body.members.find((m: { email: string }) => m.email !== "member@acme.test").self).toBe(false);
+    expect(
+      body.members.find(
+        (m: { email: string }) => m.email !== "member@acme.test",
+      ).self,
+    ).toBe(false);
   });
 });
 
@@ -132,23 +136,38 @@ describe("GET /api/team/invitations", () => {
     const { status, body } = await fetchJson(app, "/api/team/invitations");
     expect(status).toBe(200);
     expect(body.invitations).toHaveLength(2);
-    const stale = body.invitations.find((i: { email: string }) => i.email === "stale@acme.test");
+    const stale = body.invitations.find(
+      (i: { email: string }) => i.email === "stale@acme.test",
+    );
     expect(stale.expired).toBe(true);
-    const live = body.invitations.find((i: { email: string }) => i.email === "sam@acme.test");
+    const live = body.invitations.find(
+      (i: { email: string }) => i.email === "sam@acme.test",
+    );
     expect(live.expired).toBe(false);
-    expect(body.invitations.some((i: { id: string }) => i.id === "inv_3")).toBe(false);
+    expect(body.invitations.some((i: { id: string }) => i.id === "inv_3")).toBe(
+      false,
+    );
   });
 });
 
 describe("POST /api/team/invitations", () => {
   it("rejects a malformed email and an invalid role", async () => {
     const app = buildApp(ownerSession);
-    expect((await fetchJson(app, "/api/team/invitations", { method: "POST", body: JSON.stringify({ email: "nope" }) })).status).toBe(400);
     expect(
-      (await fetchJson(app, "/api/team/invitations", {
-        method: "POST",
-        body: JSON.stringify({ email: "sam@acme.test", role: "owner" }),
-      })).status,
+      (
+        await fetchJson(app, "/api/team/invitations", {
+          method: "POST",
+          body: JSON.stringify({ email: "nope" }),
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await fetchJson(app, "/api/team/invitations", {
+          method: "POST",
+          body: JSON.stringify({ email: "sam@acme.test", role: "owner" }),
+        })
+      ).status,
     ).toBe(400);
   });
 
@@ -165,17 +184,25 @@ describe("POST /api/team/invitations", () => {
     const audit = await env.DB.prepare(
       "SELECT action, resource_type, resource_id FROM audit_logs WHERE organization_id = 'org_1'",
     ).all<{ action: string; resource_type: string; resource_id: string }>();
-    expect(audit.results.some((r) => r.action === "invite" && r.resource_id === "pat@acme.test")).toBe(true);
+    expect(
+      audit.results.some(
+        (r) => r.action === "invite" && r.resource_id === "pat@acme.test",
+      ),
+    ).toBe(true);
   });
 });
 
 describe("POST /api/team/invitations/:id/cancel", () => {
   it("cancels a pending invitation and audits it", async () => {
     const app = buildApp(adminSession);
-    const { status, body } = await fetchJson(app, "/api/team/invitations/inv_1/cancel", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
+    const { status, body } = await fetchJson(
+      app,
+      "/api/team/invitations/inv_1/cancel",
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+      },
+    );
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
     const audit = await env.DB.prepare(
@@ -197,10 +224,14 @@ describe("PATCH /api/team/members/:id/role", () => {
 
   it("returns 404 for a member not in the org", async () => {
     const app = buildApp(ownerSession);
-    const { status } = await fetchJson(app, "/api/team/members/nonexistent/role", {
-      method: "PATCH",
-      body: JSON.stringify({ role: "admin" }),
-    });
+    const { status } = await fetchJson(
+      app,
+      "/api/team/members/nonexistent/role",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ role: "admin" }),
+      },
+    );
     expect(status).toBe(404);
   });
 
@@ -215,10 +246,14 @@ describe("PATCH /api/team/members/:id/role", () => {
 
   it("updates a member role and audits it (admin)", async () => {
     const app = buildApp(adminSession);
-    const { status, body } = await fetchJson(app, "/api/team/members/m_member/role", {
-      method: "PATCH",
-      body: JSON.stringify({ role: "admin" }),
-    });
+    const { status, body } = await fetchJson(
+      app,
+      "/api/team/members/m_member/role",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ role: "admin" }),
+      },
+    );
     expect(status).toBe(200);
     expect(body.member.role).toBe("admin");
     const audit = await env.DB.prepare(
@@ -231,25 +266,33 @@ describe("PATCH /api/team/members/:id/role", () => {
 describe("DELETE /api/team/members/:id", () => {
   it("returns 404 for a member not in the org", async () => {
     const app = buildApp(ownerSession);
-    const { status } = await fetchJson(app, "/api/team/members/nope", { method: "DELETE" });
+    const { status } = await fetchJson(app, "/api/team/members/nope", {
+      method: "DELETE",
+    });
     expect(status).toBe(404);
   });
 
   it("blocks removing yourself", async () => {
     const app = buildApp(adminSession);
-    const { status } = await fetchJson(app, "/api/team/members/m_admin", { method: "DELETE" });
+    const { status } = await fetchJson(app, "/api/team/members/m_admin", {
+      method: "DELETE",
+    });
     expect(status).toBe(400);
   });
 
   it("only the owner can remove the owner", async () => {
     const app = buildApp(adminSession);
-    const { status } = await fetchJson(app, "/api/team/members/m_owner", { method: "DELETE" });
+    const { status } = await fetchJson(app, "/api/team/members/m_owner", {
+      method: "DELETE",
+    });
     expect(status).toBe(403);
   });
 
   it("removes a member via the plugin and audits it", async () => {
     const app = buildApp(ownerSession);
-    const { status, body } = await fetchJson(app, "/api/team/members/m_admin", { method: "DELETE" });
+    const { status, body } = await fetchJson(app, "/api/team/members/m_admin", {
+      method: "DELETE",
+    });
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
     const audit = await env.DB.prepare(
@@ -272,25 +315,33 @@ describe("POST /api/team/transfer-ownership", () => {
   it("returns 404 for unknown members and 409 if already owner", async () => {
     const app = buildApp(ownerSession);
     expect(
-      (await fetchJson(app, "/api/team/transfer-ownership", {
-        method: "POST",
-        body: JSON.stringify({ memberId: "ghost" }),
-      })).status,
+      (
+        await fetchJson(app, "/api/team/transfer-ownership", {
+          method: "POST",
+          body: JSON.stringify({ memberId: "ghost" }),
+        })
+      ).status,
     ).toBe(404);
     expect(
-      (await fetchJson(app, "/api/team/transfer-ownership", {
-        method: "POST",
-        body: JSON.stringify({ memberId: "m_owner" }),
-      })).status,
+      (
+        await fetchJson(app, "/api/team/transfer-ownership", {
+          method: "POST",
+          body: JSON.stringify({ memberId: "m_owner" }),
+        })
+      ).status,
     ).toBe(409);
   });
 
   it("atomically swaps owner and previous owner to admin", async () => {
     const app = buildApp(ownerSession);
-    const { status, body } = await fetchJson(app, "/api/team/transfer-ownership", {
-      method: "POST",
-      body: JSON.stringify({ memberId: "m_member" }),
-    });
+    const { status, body } = await fetchJson(
+      app,
+      "/api/team/transfer-ownership",
+      {
+        method: "POST",
+        body: JSON.stringify({ memberId: "m_member" }),
+      },
+    );
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
 

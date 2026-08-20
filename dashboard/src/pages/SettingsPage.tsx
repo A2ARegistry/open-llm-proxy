@@ -8,10 +8,10 @@ import {
   Select,
   Spinner,
 } from "../components/ui";
-import { apiGet, apiSend } from "../lib/api";
+import { apiGet, apiSend, TenantInfo } from "../lib/api";
 import { fmtUsd } from "../lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { BellRing, ShieldAlert, Zap } from "lucide-react";
+import { BellRing, Globe, ShieldAlert, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface AlertSettings {
@@ -92,6 +92,39 @@ export function SettingsPage() {
 
   const [daily, setDaily] = useState("");
   const [monthly, setMonthly] = useState("");
+
+  const tenant = useQuery({
+    queryKey: ["tenant"],
+    queryFn: () => apiGet<TenantInfo>("/api/tenant"),
+  });
+  const [customPrefix, setCustomPrefix] = useState("");
+  const [prefixMsg, setPrefixMsg] = useState<string | null>(null);
+  const [prefixErr, setPrefixErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (tenant.data) setCustomPrefix(tenant.data.customPrefix ?? "");
+  }, [tenant.data]);
+
+  const savePrefix = useMutation({
+    mutationFn: () =>
+      apiSend<{ ok: boolean; customPrefix: string | null }>(
+        "PUT",
+        "/api/tenant/prefix",
+        {
+          customPrefix: customPrefix.trim() === "" ? null : customPrefix.trim(),
+        },
+      ),
+    onSuccess: (data) => {
+      setCustomPrefix(data.customPrefix ?? "");
+      setPrefixMsg("Base URL prefix saved.");
+      setPrefixErr(null);
+      tenant.refetch();
+    },
+    onError: (err: Error) => {
+      setPrefixErr(err.message);
+      setPrefixMsg(null);
+    },
+  });
 
   const [alertsForm, setAlertsForm] = useState<AlertSettings>(EMPTY_ALERTS);
   const [message, setMessage] = useState<string | null>(null);
@@ -223,9 +256,83 @@ export function SettingsPage() {
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Settings</h1>
         <p className="text-sm text-gray-500">
-          Spend limits and alerting for this organization.
+          Spend limits, alerting and your tenant base URL for this organization.
         </p>
       </div>
+
+      <Card
+        title="Tenant base URL"
+        subtitle="Your OpenAI-compatible proxy endpoint. Non-root tenants must use their prefix; the root tenant uses the plain path."
+        actions={<Globe size={16} className="text-gray-400" />}
+      >
+        {tenant.isLoading ? (
+          <Spinner label="Loading tenant…" />
+        ) : tenant.data ? (
+          <div className="space-y-4">
+            {!tenant.data.isRoot && tenant.data.systemPrefix && (
+              <div>
+                <Label>System prefix (assigned, read-only)</Label>
+                <code className="block w-fit rounded-md bg-gray-100 px-3 py-2 font-mono text-xs text-gray-700">
+                  /{tenant.data.systemPrefix}/v1/chat/completions
+                </code>
+              </div>
+            )}
+            <div className="max-w-md">
+              <Label>Custom prefix</Label>
+              <Input
+                placeholder={
+                  tenant.data.isRoot
+                    ? "empty (root path)"
+                    : `e.g. ${tenant.data.systemPrefix ?? "myorg"}`
+                }
+                value={customPrefix}
+                onChange={(e) => setCustomPrefix(e.target.value)}
+              />
+              <p className="mt-1 text-[11px] text-gray-400">
+                {tenant.data.isRoot
+                  ? "Leave empty to use the plain path (your org owns it)."
+                  : "Lowercase letters, digits and dashes (min 6 chars). Setting it overrides the system prefix."}
+              </p>
+            </div>
+            {prefixErr && <p className="text-sm text-red-600">{prefixErr}</p>}
+            {prefixMsg && <p className="text-sm text-green-700">{prefixMsg}</p>}
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => savePrefix.mutate()}
+                loading={savePrefix.isPending}
+              >
+                Save prefix
+              </Button>
+              {tenant.data.isRoot && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setCustomPrefix("");
+                    setPrefixErr(null);
+                  }}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+            <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3">
+              <p className="text-xs font-medium text-gray-500">
+                Effective endpoint
+              </p>
+              <code className="mt-1 block break-all font-mono text-xs text-gray-800">
+                {window.location.origin}
+                {tenant.data.basePath ? `/${tenant.data.basePath}` : ""}
+                /v1/chat/completions
+              </code>
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="Could not load tenant"
+            description={tenant.error?.message ?? "Unknown error"}
+          />
+        )}
+      </Card>
 
       <Card
         title="Spend limits"

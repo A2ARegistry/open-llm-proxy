@@ -1,5 +1,9 @@
 import type { AppBindings } from "../app";
 import { auditLog } from "../audit/audit-logger";
+import {
+  canonicalProviderName,
+  isKnownProviderName,
+} from "../llm/provider-registry";
 import { reconcileKeyDisable } from "../metrics/spend-guard";
 import { newId } from "../tenants/encryption";
 import { ApiKeyScopes } from "../types";
@@ -54,6 +58,15 @@ function validateScopes(scopes: unknown): ApiKeyScopes {
       throw new Error("scopes.ipAllowlist must be an array of strings");
     }
     out.ipAllowlist = input.ipAllowlist as string[];
+  }
+  if (input.defaultProvider !== undefined) {
+    if (
+      typeof input.defaultProvider !== "string" ||
+      !isKnownProviderName(input.defaultProvider)
+    ) {
+      throw new Error("scopes.defaultProvider must be a known provider id");
+    }
+    out.defaultProvider = canonicalProviderName(input.defaultProvider);
   }
   return out;
 }

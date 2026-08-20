@@ -5,6 +5,7 @@ import { keysRouter } from "./api/keys";
 import { metricsRouter } from "./api/metrics";
 import { providerConfigRouter } from "./api/provider-config";
 import { teamRouter } from "./api/team";
+import { tenantRouter } from "./api/tenant";
 import { usageRouter } from "./api/usage";
 import { getAuthFor } from "./auth/setup";
 import { ensureBootstrapped } from "./bootstrap";
@@ -13,6 +14,10 @@ import {
   sessionAuthMiddleware,
 } from "./middlewares/auth-required";
 import { requireAdmin, requireOrgMember } from "./middlewares/rbac";
+import {
+  tenantPrefixGuardMiddleware,
+  tenantPrefixMiddleware,
+} from "./middlewares/tenant-prefix";
 import { chatCompletionsV2 } from "./requests/chat_completions_v2";
 import { modelsV2 } from "./requests/models_v2";
 import { AppVariables } from "./types";
@@ -115,8 +120,18 @@ export function createApp(): Hono<AppBindings> {
   app.route("/api/metrics", metricsRouter);
   app.route("/api/usage", usageRouter);
 
+  // Tenant URL prefix (base URL) management: reads are member+, writes admin.
+  app.use(
+    "/api/tenant/*",
+    sessionAuthMiddleware,
+    requireOrgMember,
+    adminWriteGuard,
+  );
+  app.route("/api/tenant", tenantRouter);
+
   // Tenant Open LLM Proxy — OpenAI-compatible endpoints (Phase 1 acceptance).
-  // Authenticated with tenant programmatic API keys (api_keys table).
+  // Authenticated with tenant programmatic API keys (api_keys table). Each
+  // endpoint accepts an optional leading tenant URL prefix (`/proxy_xxx/v1/...`).
   const chatCompletions = (c: import("hono").Context<AppBindings>) => {
     const apiKeyAuth = c.get("apiKeyAuth")!;
     return chatCompletionsV2({
@@ -133,10 +148,24 @@ export function createApp(): Hono<AppBindings> {
     });
   };
 
-  app.post("/v1/chat/completions", apiKeyAuthMiddleware, chatCompletions);
-  app.post("/chat/completions", apiKeyAuthMiddleware, chatCompletions);
-  app.get("/v1/models", apiKeyAuthMiddleware, listModels);
-  app.get("/models", apiKeyAuthMiddleware, listModels);
+  const proxyChain = [
+    tenantPrefixMiddleware,
+    apiKeyAuthMiddleware,
+    tenantPrefixGuardMiddleware,
+  ];
+
+  app.post("/v1/chat/completions", ...proxyChain, chatCompletions);
+  app.post(
+    "/:tenantPrefix/v1/chat/completions",
+    ...proxyChain,
+    chatCompletions,
+  );
+  app.post("/chat/completions", ...proxyChain, chatCompletions);
+  app.post("/:tenantPrefix/chat/completions", ...proxyChain, chatCompletions);
+  app.get("/v1/models", ...proxyChain, listModels);
+  app.get("/:tenantPrefix/v1/models", ...proxyChain, listModels);
+  app.get("/models", ...proxyChain, listModels);
+  app.get("/:tenantPrefix/models", ...proxyChain, listModels);
 
   return app;
 }

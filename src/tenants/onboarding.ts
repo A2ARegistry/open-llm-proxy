@@ -1,6 +1,7 @@
 import { Env } from "../../worker-configuration.d";
 import { auditLog } from "../audit/audit-logger";
 import { newId, nowSeconds } from "../utils/crypto";
+import { assignTenantPrefixes } from "./prefixes";
 
 export interface SignupUser {
   id: string;
@@ -39,6 +40,8 @@ export async function handleSignup(env: Env, user: SignupUser): Promise<void> {
        VALUES (?, ?, ?, 'owner', ?)`,
     ).bind(newId("mem"), orgId, user.id, now),
   ]);
+
+  await assignTenantPrefixes(env, orgId);
 
   await auditLog(env, {
     organizationId: orgId,

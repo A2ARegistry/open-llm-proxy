@@ -84,7 +84,10 @@ CREATE TABLE IF NOT EXISTS organizations (
     logo TEXT,
     createdAt TIMESTAMP NOT NULL,
     updatedAt TIMESTAMP,  -- onboarding / org plugin writes this
-    metadata TEXT  -- JSON: Use for custom org data (e.g., billing, verification status)
+    metadata TEXT,  -- JSON: Use for custom org data (e.g., billing, verification status)
+    system_prefix TEXT UNIQUE,  -- immutable tenant URL prefix `proxy_<6 alnum>` (NULL for the root tenant)
+    custom_prefix TEXT UNIQUE,  -- optional user-chosen URL prefix (>= 6 chars, [a-z0-9-], not `proxy_`-prefixed, not reserved)
+    is_root_tenant INTEGER NOT NULL DEFAULT 0  -- the very first org: empty (root) path resolves to it
 );
 
 -- Organization Members

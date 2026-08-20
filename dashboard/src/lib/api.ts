@@ -8,11 +8,20 @@ export interface ApiKeyView {
     models?: string[];
     spendCapUsd?: number;
     ipAllowlist?: string[];
+    defaultProvider?: string;
   };
   createdAt: number;
   expiresAt: number | null;
   lastUsedAt: number | null;
   createdBy: string;
+}
+
+export interface TenantInfo {
+  organizationId: string;
+  isRoot: boolean;
+  systemPrefix: string | null;
+  customPrefix: string | null;
+  basePath: string;
 }
 
 export interface ProviderView {

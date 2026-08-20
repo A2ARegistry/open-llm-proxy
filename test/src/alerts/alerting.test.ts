@@ -82,7 +82,9 @@ async function setAlertSetting(key: string, value: unknown) {
     `INSERT INTO tenant_settings (organization_id, key, value, updated_at)
      VALUES (?, 'alerts', ?, ?)
      ON CONFLICT(organization_id, key) DO UPDATE SET value = excluded.value`,
-  ).bind(ORG, JSON.stringify(merged), nowSeconds()).run();
+  )
+    .bind(ORG, JSON.stringify(merged), nowSeconds())
+    .run();
 }
 
 async function alertEvents() {
@@ -111,7 +113,7 @@ async function countEvents() {
 
 beforeAll(async () => {
   await env.DB.exec(`
-CREATE TABLE IF NOT EXISTS organizations (id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE, logo TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER, metadata TEXT);
+CREATE TABLE IF NOT EXISTS organizations (id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE, logo TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER, metadata TEXT, system_prefix TEXT UNIQUE, custom_prefix TEXT UNIQUE, is_root_tenant INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, emailVerified INTEGER NOT NULL, image TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, organizationId TEXT NOT NULL, userId TEXT NOT NULL, role TEXT NOT NULL, createdAt INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS tenant_settings (organization_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (organization_id, key));
@@ -134,18 +136,23 @@ CREATE TABLE IF NOT EXISTS system_email_logs (id TEXT PRIMARY KEY DEFAULT (lower
       `INSERT OR REPLACE INTO members (id, organizationId, userId, role, createdAt)
        VALUES ('m_owner', ?, 'user_owner', 'owner', 1),
               ('m_admin', ?, 'user_admin', 'admin', 2)`,
-    )
-      .bind(ORG, ORG),
+    ).bind(ORG, ORG),
   ]);
   await seedTemplates(env);
 });
 
 beforeEach(async () => {
   await env.DB.batch([
-    env.DB.prepare("DELETE FROM alert_events WHERE organization_id = ?").bind(ORG),
-    env.DB.prepare("DELETE FROM request_metrics WHERE organization_id = ?").bind(ORG),
+    env.DB.prepare("DELETE FROM alert_events WHERE organization_id = ?").bind(
+      ORG,
+    ),
+    env.DB.prepare(
+      "DELETE FROM request_metrics WHERE organization_id = ?",
+    ).bind(ORG),
     env.DB.prepare("DELETE FROM webhooks WHERE organization_id = ?").bind(ORG),
-    env.DB.prepare("DELETE FROM tenant_settings WHERE organization_id = ?").bind(ORG),
+    env.DB.prepare(
+      "DELETE FROM tenant_settings WHERE organization_id = ?",
+    ).bind(ORG),
   ]);
   vi.unstubAllGlobals();
 });
@@ -159,7 +166,9 @@ describe("runAlertChecks — spend alerts", () => {
     await env.DB.prepare(
       `INSERT INTO tenant_settings (organization_id, key, value, updated_at)
        VALUES (?, 'spendLimits', ?, ?)`,
-    ).bind(ORG, JSON.stringify({ dailyUsd: 100 }), nowSeconds()).run();
+    )
+      .bind(ORG, JSON.stringify({ dailyUsd: 100 }), nowSeconds())
+      .run();
 
     const now = nowSeconds() - 10;
     await seedRequest("openai", 200, 80, now);
@@ -200,7 +209,9 @@ describe("runAlertChecks — spend alerts", () => {
     await env.DB.prepare(
       `INSERT INTO tenant_settings (organization_id, key, value, updated_at)
        VALUES (?, 'spendLimits', ?, ?)`,
-    ).bind(ORG, JSON.stringify({ dailyUsd: 100 }), nowSeconds()).run();
+    )
+      .bind(ORG, JSON.stringify({ dailyUsd: 100 }), nowSeconds())
+      .run();
     await seedRequest("openai", 200, 79, nowSeconds() - 10);
     const result = await runAlertChecks(env);
     expect(result.alertsSent).toBe(0);
@@ -254,7 +265,11 @@ describe("runAlertChecks — webhook delivery + HMAC", () => {
       .bind(ORG, JSON.stringify(["quota_exceeded"]), nowSeconds())
       .run();
 
-    const sent: { url: string; headers: Record<string, string>; body: string }[] = [];
+    const sent: {
+      url: string;
+      headers: Record<string, string>;
+      body: string;
+    }[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
@@ -270,7 +285,9 @@ describe("runAlertChecks — webhook delivery + HMAC", () => {
     await env.DB.prepare(
       `INSERT INTO tenant_settings (organization_id, key, value, updated_at)
        VALUES (?, 'spendLimits', ?, ?)`,
-    ).bind(ORG, JSON.stringify({ dailyUsd: 100 }), nowSeconds()).run();
+    )
+      .bind(ORG, JSON.stringify({ dailyUsd: 100 }), nowSeconds())
+      .run();
     await seedRequest("openai", 200, 80, nowSeconds() - 10);
 
     const result = await runAlertChecks(env);
@@ -283,7 +300,9 @@ describe("runAlertChecks — webhook delivery + HMAC", () => {
     expect(body.level).toBe(80);
 
     const expectedSig = await signWebhookPayload("s3cret", sent[0].body);
-    expect(sent[0].headers["x-open-llm-proxy-signature"]).toBe(`sha256=${expectedSig}`);
+    expect(sent[0].headers["x-open-llm-proxy-signature"]).toBe(
+      `sha256=${expectedSig}`,
+    );
 
     const events = await alertEvents();
     expect(
@@ -315,7 +334,9 @@ describe("runAlertChecks — webhook delivery + HMAC", () => {
     await env.DB.prepare(
       `INSERT INTO tenant_settings (organization_id, key, value, updated_at)
        VALUES (?, 'spendLimits', ?, ?)`,
-    ).bind(ORG, JSON.stringify({ dailyUsd: 100 }), nowSeconds()).run();
+    )
+      .bind(ORG, JSON.stringify({ dailyUsd: 100 }), nowSeconds())
+      .run();
     await seedRequest("openai", 200, 80, nowSeconds() - 10);
     await runAlertChecks(env);
     expect(sent).toHaveLength(0);
@@ -328,7 +349,9 @@ describe("runAlertChecks — disabled org", () => {
     await env.DB.prepare(
       `INSERT INTO tenant_settings (organization_id, key, value, updated_at)
        VALUES (?, 'spendLimits', ?, ?)`,
-    ).bind(ORG, JSON.stringify({ dailyUsd: 100 }), nowSeconds()).run();
+    )
+      .bind(ORG, JSON.stringify({ dailyUsd: 100 }), nowSeconds())
+      .run();
     await seedRequest("openai", 200, 90, nowSeconds() - 10);
     const result = await runAlertChecks(env);
     expect(result.alertsSent).toBe(0);
@@ -390,7 +413,10 @@ describe("webhook subscription CRUD", () => {
 
     const unknownEvent = await fetchJson(app, "/api/alerts/webhooks", {
       method: "POST",
-      body: JSON.stringify({ url: "https://hooks.acme.test/x", events: ["bogus"] }),
+      body: JSON.stringify({
+        url: "https://hooks.acme.test/x",
+        events: ["bogus"],
+      }),
     });
     expect(unknownEvent.status).toBe(400);
 

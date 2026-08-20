@@ -1,6 +1,7 @@
 import { Env } from "../../worker-configuration.d";
 import { auditLog } from "../audit/audit-logger";
 import { setSetting } from "../db/settings";
+import { assignTenantPrefixes } from "../tenants/prefixes";
 import {
   fromBase64,
   newId,
@@ -99,6 +100,8 @@ export async function ensureInitialAdmin(env: Env): Promise<boolean> {
        VALUES (?, ?, ?, 'owner', ?)`,
     ).bind(newId("mem"), organizationId, userId, now),
   ]);
+
+  await assignTenantPrefixes(env, organizationId);
 
   await Promise.all([
     setSetting(

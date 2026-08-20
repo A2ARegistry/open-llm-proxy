@@ -86,12 +86,31 @@ describe("POST /api/keys", () => {
       body: JSON.stringify({
         name: "scoped",
         expiresAt: 9999999999,
-        scopes: { providers: ["openai"], models: ["gpt-4o"], spendCapUsd: 25 },
+        scopes: {
+          providers: ["openai"],
+          models: ["gpt-4o"],
+          spendCapUsd: 25,
+          defaultProvider: "google",
+        },
       }),
     });
     expect(status).toBe(201);
     expect(body.scopes.providers).toEqual(["openai"]);
+    expect(body.scopes.defaultProvider).toBe("google-ai-studio");
     expect(body.expiresAt).toBe(9999999999);
+  });
+
+  it("rejects an unknown scopes.defaultProvider", async () => {
+    const app = buildApp();
+    const { status } = await fetchJson(app, "/api/keys", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "scoped",
+        scopes: { defaultProvider: "no-such-provider" },
+      }),
+    });
+    expect(status).toBe(400);
   });
 
   it.each([

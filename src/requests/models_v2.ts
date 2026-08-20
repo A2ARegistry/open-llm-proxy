@@ -224,8 +224,15 @@ export async function modelsV2(input: ModelsInput): Promise<Response> {
         models = await fetchV1Models(provider, cfg.keys, cfg.settings);
       }
       // api key may pin providers already (provider scope only allows some), but
-      // the request must reflect the *effective* list for this key.
-      if (
+      // the request must reflect the *effective* list for this key. A key bound
+      // to a provider (scopes.defaultProvider) only ever lists that provider.
+      if (apiKeyAuth.scopes?.defaultProvider) {
+        if (
+          canonicalProviderName(apiKeyAuth.scopes.defaultProvider) !== provider
+        ) {
+          return;
+        }
+      } else if (
         apiKeyAuth.scopes?.providers &&
         !apiKeyAuth.scopes.providers.includes(provider)
       ) {

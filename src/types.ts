@@ -7,6 +7,8 @@ export interface ApiKeyScopes {
   models?: string[];
   spendCapUsd?: number;
   ipAllowlist?: string[];
+  /** Optional: bind the key to a single provider (bare model ids use it). */
+  defaultProvider?: string;
 }
 
 export interface ApiKeyAuth {
@@ -38,4 +40,6 @@ export interface AppVariables {
   apiKeyAuth?: ApiKeyAuth;
   tenantSettings?: TenantSettings;
   requestId?: string;
+  /** Org resolved from a leading tenant URL prefix (null when absent). */
+  urlPrefixOrgId?: string | null;
 }
