@@ -25,6 +25,7 @@ import {
   Loader2,
   Plus,
   Power,
+  Sparkles,
   Trash2,
   Wifi,
   XCircle,
@@ -54,6 +55,26 @@ const PROVIDER_CATALOG: { id: string; name: string; needsKey: boolean }[] = [
   { id: "perplexity-ai", name: "Perplexity AI", needsKey: true },
   { id: "custom", name: "Custom OpenAI-compatible", needsKey: true },
 ];
+
+const CUSTOM_PRESETS: { name: string; id: string; baseUrl: string }[] = [
+  { name: "Ollama", id: "ollama", baseUrl: "http://localhost:11434/v1" },
+  { name: "LM Studio", id: "lm-studio", baseUrl: "http://localhost:1234/v1" },
+  { name: "vLLM", id: "vllm", baseUrl: "http://localhost:8000/v1" },
+  {
+    name: "Together AI",
+    id: "together-ai",
+    baseUrl: "https://api.together.xyz/v1",
+  },
+];
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
 
 export function ProvidersPage() {
   const qc = useQueryClient();
@@ -431,6 +452,9 @@ function ProviderFormModal({
   const [customId, setCustomId] = useState(
     provider && isCustom ? provider : "",
   );
+  const [customIdManuallyEdited, setCustomIdManuallyEdited] = useState(
+    Boolean(provider && isCustom),
+  );
   const [customName, setCustomName] = useState(
     isCustom ? String(initialSettings?.name ?? "") : "",
   );
@@ -460,6 +484,11 @@ function ProviderFormModal({
       ? (initialSettings.customModels as string[]).join("\n")
       : "",
   );
+  const [detectedModels, setDetectedModels] = useState<string[]>(
+    (isVertex || isCustom) && Array.isArray(initialSettings?.customModels)
+      ? (initialSettings.customModels as string[])
+      : [],
+  );
   const [defaultModel, setDefaultModel] = useState(
     provider
       ? String(initialSettings?.defaultModel ?? initialDefaultModel ?? "")
@@ -471,14 +500,32 @@ function ProviderFormModal({
   const [testing, setTesting] = useState(false);
   const [fetchingModels, setFetchingModels] = useState(false);
 
+  const applyPreset = (preset: {
+    name: string;
+    id: string;
+    baseUrl: string;
+  }) => {
+    setCustomName(preset.name);
+    setCustomId(preset.id);
+    setBaseUrl(preset.baseUrl);
+    setCustomIdManuallyEdited(true);
+  };
+
+  const handleCustomNameChange = (name: string) => {
+    setCustomName(name);
+    if (!customIdManuallyEdited && provider == null) {
+      setCustomId(slugify(name));
+    }
+  };
+
   const catalogEntry = catalogById.get(selected);
   const catalogName =
     catalogEntry?.name ?? (isCustom && customName ? customName : selected);
   const needsKey = catalogEntry?.needsKey ?? true;
   const isCustomSelected = selected === "custom";
-  const targetProvider =
-    isCustomSelected && provider == null ? customId.trim() : selected;
   const showCustomFields = isCustomSelected || isCustom;
+  const targetProvider =
+    provider != null ? provider : (isCustomSelected ? customId.trim() : selected);
 
   const isMaskedKey = (v: string) =>
     v.trim() === "" || v.trim() === KEY_MASK;
@@ -498,7 +545,7 @@ function ProviderFormModal({
       .filter(Boolean);
 
   const canTest = () => {
-    if (isCustomSelected) {
+    if (showCustomFields) {
       if (provider == null && !customId.trim()) return false;
       if (!baseUrl.trim()) return false;
       return true;
@@ -548,7 +595,7 @@ function ProviderFormModal({
         },
       };
     }
-    if (selected === "custom") {
+    if (showCustomFields) {
       return {
         ...keysSetting,
         settings: {
@@ -614,6 +661,7 @@ function ProviderFormModal({
       }>("POST", `/api/providers/${targetProvider}/models`, buildBody());
       if (result.ok && result.models?.length) {
         const ids = result.models.map((m) => m.id);
+        setDetectedModels(ids);
         setCustomModelsText(ids.join("\n"));
         if (!defaultModel.trim()) setDefaultModel(ids[0]);
         setTestResult({
@@ -767,98 +815,156 @@ function ProviderFormModal({
           <>
             {provider == null && (
               <div>
-                <Label>Provider id (used in requests as `id/model`)</Label>
-                <Input
-                  value={customId}
-                  onChange={(e) => setCustomId(e.target.value)}
-                  placeholder="my-llm"
-                />
-                <p className="mt-1 text-[11px] text-gray-400">
-                  Lowercase letters, digits and dashes. This is the id you will
-                  reference as <code>my-llm/model-id</code>.
-                </p>
+                <Label>Quick Presets</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {CUSTOM_PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => applyPreset(p)}
+                      className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 transition"
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
+
             <div>
-              <Label>Display name (optional)</Label>
+              <Label>Provider Name</Label>
               <Input
                 value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                placeholder="My internal gateway"
+                onChange={(e) => handleCustomNameChange(e.target.value)}
+                placeholder="e.g. My Local Ollama or Together AI"
               />
             </div>
+
             <div>
-              <Label>Base URL (required)</Label>
+              <Label>Base URL</Label>
               <Input
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="https://gateway.example.com/v1 or http://localhost:11434/v1"
+                placeholder="http://localhost:11434/v1 or https://api.together.xyz/v1"
               />
               <p className="mt-1 text-[11px] text-gray-400">
-                Chat and model-list paths are appended to the base URL, e.g.{" "}
-                <code>{baseUrl || "https://host/v1"}
-                  {chatPath.trim() || "/chat/completions"}</code>.
+                The root OpenAI-compatible API endpoint.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Chat path (optional)</Label>
-                <Input
-                  value={chatPath}
-                  onChange={(e) => setChatPath(e.target.value)}
-                  placeholder="/chat/completions"
-                />
-              </div>
-              <div>
-                <Label>Models path (optional)</Label>
-                <Input
-                  value={modelsPath}
-                  onChange={(e) => setModelsPath(e.target.value)}
-                  placeholder="/models"
-                />
-              </div>
-            </div>
+
             <div>
-              <Label>API key(s) — optional for local endpoints</Label>
-              <textarea
-                className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                rows={2}
+              <Label>API Key (optional for local servers)</Label>
+              <Input
+                type="password"
                 placeholder={
                   hasExistingKeys
-                    ? "Key already set — type to replace it"
-                    : "sk-… (leave empty for keyless local servers)"
+                    ? "Key already stored — type to replace"
+                    : "sk-… (leave empty for Ollama / LM Studio)"
                 }
                 value={keysText}
                 onChange={(e) => setKeysText(e.target.value)}
                 onFocus={() => isMaskedKey(keysText) && setKeysText("")}
               />
             </div>
+
             <div>
-              <Label>Custom model IDs (optional)</Label>
-              <textarea
-                className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                rows={2}
-                placeholder={"my-model-1\nmy-model-2"}
-                value={customModelsText}
-                onChange={(e) => setCustomModelsText(e.target.value)}
-              />
-              <div className="mt-2">
+              <div className="flex items-center justify-between mb-1">
+                <Label>Default Model</Label>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={runFetchModels}
                   loading={fetchingModels}
-                  disabled={!baseUrl.trim() || (provider == null && !customId.trim())}
+                  disabled={!baseUrl.trim() || (provider == null && !targetProvider)}
                 >
-                  <Wifi size={13} /> Fetch models from endpoint
+                  <Sparkles size={13} className="text-indigo-600" /> Auto-Detect Models
                 </Button>
               </div>
-              <p className="mt-1 text-[11px] text-gray-400">
-                One model id per line. Use "Fetch models" to pull the live list
-                from the endpoint, or enter ids by hand. Any model id works at
-                request time even without listing it here.
-              </p>
+              <Input
+                value={defaultModel}
+                onChange={(e) => setDefaultModel(e.target.value)}
+                placeholder="e.g. llama3.2:latest or mistral-7b"
+              />
+              {detectedModels.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5 items-center">
+                  <span className="text-[11px] text-gray-400">Detected:</span>
+                  {detectedModels.slice(0, 8).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setDefaultModel(m)}
+                      className={`rounded-full px-2 py-0.5 text-[11px] border transition ${
+                        defaultModel === m
+                          ? "bg-indigo-600 text-white border-indigo-600"
+                          : "bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200"
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                  {detectedModels.length > 8 && (
+                    <span className="text-[11px] text-gray-400">
+                      +{detectedModels.length - 8} more
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
+
+            <details className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 text-xs">
+              <summary className="cursor-pointer font-medium text-gray-700 select-none">
+                Advanced Settings (Slug ID & Paths)
+              </summary>
+              <div className="mt-3 space-y-3 border-t border-gray-200/60 pt-3">
+                {provider == null && (
+                  <div>
+                    <Label>Provider Slug ID (used in requests as `slug/model`)</Label>
+                    <Input
+                      value={customId}
+                      onChange={(e) => {
+                        setCustomId(e.target.value);
+                        setCustomIdManuallyEdited(true);
+                      }}
+                      placeholder="e.g. my-ollama"
+                    />
+                    <p className="mt-1 text-[11px] text-gray-400">
+                      Request format: <code>{customId ? `${customId}/model-id` : "slug/model-id"}</code>
+                    </p>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Chat Completion Path</Label>
+                    <Input
+                      value={chatPath}
+                      onChange={(e) => setChatPath(e.target.value)}
+                      placeholder="/chat/completions"
+                    />
+                  </div>
+                  <div>
+                    <Label>Models List Path</Label>
+                    <Input
+                      value={modelsPath}
+                      onChange={(e) => setModelsPath(e.target.value)}
+                      placeholder="/models"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label>Pinned Custom Model IDs (one per line, optional)</Label>
+                  <textarea
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    rows={2}
+                    placeholder={"my-model-1\nmy-model-2"}
+                    value={customModelsText}
+                    onChange={(e) => setCustomModelsText(e.target.value)}
+                  />
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    Explicitly list model IDs to expose in /v1/models if the endpoint has no /models route.
+                  </p>
+                </div>
+              </div>
+            </details>
           </>
         ) : (
           <div>
@@ -885,19 +991,19 @@ function ProviderFormModal({
           </div>
         )}
 
-        <div>
-          <Label>Default model</Label>
-          <Input
-            value={defaultModel}
-            onChange={(e) => setDefaultModel(e.target.value)}
-            placeholder="e.g. gemini-2.5-flash"
-          />
-          <p className="mt-1 text-[11px] text-gray-400">
-            {showCustomFields
-              ? "Required for the connection test and for requests that omit the model id. Set it to one of the model ids above."
-              : "Used when a request omits the model id, and by the connection test. Leave empty to use the built-in default."}
-          </p>
-        </div>
+        {!showCustomFields && (
+          <div>
+            <Label>Default model</Label>
+            <Input
+              value={defaultModel}
+              onChange={(e) => setDefaultModel(e.target.value)}
+              placeholder="e.g. gemini-2.5-flash"
+            />
+            <p className="mt-1 text-[11px] text-gray-400">
+              Used when a request omits the model id, and by the connection test. Leave empty to use the built-in default.
+            </p>
+          </div>
+        )}
 
         {testResult && (
           <div>
