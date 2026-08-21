@@ -9,7 +9,7 @@ import {
   Select,
   Spinner,
 } from "../components/ui";
-import { apiGet, apiSend, ApiKeyView, CatalogProvider } from "../lib/api";
+import { apiGet, apiSend, ApiKeyView, ProviderView } from "../lib/api";
 import { fmtDate } from "../lib/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, KeyRound, Plus, RotateCcw, Trash2 } from "lucide-react";
@@ -30,14 +30,14 @@ export function ApiKeysPage() {
     queryFn: () => apiGet<{ keys: ApiKeyView[] }>("/api/keys"),
   });
 
-  const catalog = useQuery({
-    queryKey: ["providers-catalog"],
-    queryFn: () =>
-      apiGet<{ providers: CatalogProvider[] }>("/api/providers/catalog"),
+  // Fetch configured providers instead of the full catalog
+  const providers = useQuery({
+    queryKey: ["providers"],
+    queryFn: () => apiGet<{ providers: ProviderView[] }>("/api/providers"),
   });
 
   const providerOptions =
-    catalog.data?.providers.map((p) => ({
+    providers.data?.providers.map((p) => ({
       value: p.provider,
       label: p.name,
     })) ?? [];

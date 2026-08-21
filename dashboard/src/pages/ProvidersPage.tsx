@@ -566,6 +566,7 @@ function ProviderFormModal({
 
   const buildBody = (): {
     keys?: string[];
+    name?: string;
     settings?: Record<string, unknown>;
   } => {
     const defaultModelSetting =
@@ -574,10 +575,17 @@ function ProviderFormModal({
         : {};
     const keys = enteredKeys();
     const keysSetting = keys.length ? { keys } : {};
+    
+    // For custom providers, send name as top-level field
+    const nameSetting = showCustomFields && customName.trim()
+      ? { name: customName.trim() }
+      : {};
+    
     if (selected === "google-vertex") {
       if (authMode === "service-account") {
         return {
           ...keysSetting,
+          ...nameSetting,
           settings: {
             authMode,
             projectId: projectId.trim(),
@@ -588,6 +596,7 @@ function ProviderFormModal({
       }
       return {
         ...keysSetting,
+        ...nameSetting,
         settings: {
           authMode,
           ...defaultModelSetting,
@@ -597,8 +606,8 @@ function ProviderFormModal({
     if (showCustomFields) {
       return {
         ...keysSetting,
+        ...nameSetting,
         settings: {
-          ...(customName.trim() ? { name: customName.trim() } : {}),
           baseUrl: baseUrl.trim(),
           ...(chatPath.trim()
             ? { chatCompletionPath: chatPath.trim() }
@@ -611,6 +620,7 @@ function ProviderFormModal({
     }
     return {
       ...keysSetting,
+      ...nameSetting,
       settings: defaultModelSetting,
     };
   };

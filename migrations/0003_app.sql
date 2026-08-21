@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS provider_configs (
     id TEXT PRIMARY KEY,
     organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     provider TEXT NOT NULL, -- 'openai', 'anthropic', 'custom-openai', ...
+    name TEXT NOT NULL DEFAULT '', -- display name (e.g., 'Google Vertex Provider 2')
     enabled INTEGER NOT NULL DEFAULT 1,
     config TEXT NOT NULL,   -- JSON: encrypted keys (envelope), settings
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),

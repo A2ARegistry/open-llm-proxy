@@ -27,8 +27,37 @@ const MAX_KEYS_PER_PROVIDER = 20;
 
 const BASE_URL_RE = /^https?:\/\/.+/;
 
+/**
+ * Generate a default display name for a provider based on its catalog name
+ * and the existing providers of the same type.
+ * Example: "Google Vertex AI Provider", "Google Vertex AI Provider 2"
+ */
+function generateDefaultProviderName(
+  provider: string,
+  existingProviders: Array<{ provider: string; name: string }>,
+): string {
+  const spec = getPiAiProviderSpec(provider);
+  const v1Spec = getV1ProviderSpec(provider);
+  const baseName = spec?.name ?? v1Spec?.name ?? provider;
+
+  // Count how many providers of the same base name already exist
+  const sameTypeCount = existingProviders.filter((p) => {
+    const pSpec = getPiAiProviderSpec(p.provider);
+    const pV1Spec = getV1ProviderSpec(p.provider);
+    const pBaseName = pSpec?.name ?? pV1Spec?.name ?? p.provider;
+    return pBaseName === baseName;
+  }).length;
+
+  if (sameTypeCount === 0) {
+    return `${baseName} Provider`;
+  } else {
+    return `${baseName} Provider ${sameTypeCount + 1}`;
+  }
+}
+
 function publicProviderView(input: {
   provider: string;
+  name?: string;
   configured: boolean;
   enabled: boolean;
   settings: Record<string, unknown>;
@@ -37,10 +66,20 @@ function publicProviderView(input: {
 }) {
   const spec = getPiAiProviderSpec(input.provider);
   const v1Spec = getV1ProviderSpec(input.provider);
-  const displayName =
-    typeof input.settings?.name === "string" && input.settings.name.trim()
-      ? input.settings.name.trim()
-      : (spec?.name ?? v1Spec?.name ?? input.provider);
+
+  // Resolution priority: DB name column > settings.name > registry name > provider slug
+  let displayName: string;
+  if (input.name && input.name.trim()) {
+    displayName = input.name.trim();
+  } else if (
+    typeof input.settings?.name === "string" &&
+    input.settings.name.trim()
+  ) {
+    displayName = input.settings.name.trim();
+  } else {
+    displayName = spec?.name ?? v1Spec?.name ?? input.provider;
+  }
+
   return {
     provider: input.provider,
     name: displayName,
@@ -123,6 +162,7 @@ providerConfigRouter.get("/", async (c) => {
   const rows = configs.map((cfg) =>
     publicProviderView({
       provider: cfg.provider,
+      name: cfg.name,
       configured: true,
       enabled: cfg.enabled,
       settings: cfg.settings,
@@ -156,6 +196,7 @@ providerConfigRouter.get("/:provider", async (c) => {
   return c.json(
     publicProviderView({
       provider: cfg.provider,
+      name: cfg.name,
       configured: true,
       enabled: cfg.enabled,
       settings: cfg.settings,
@@ -217,9 +258,32 @@ providerConfigRouter.put("/:provider", async (c) => {
     return c.json({ error: (err as Error).message }, 400);
   }
 
+  // Validate the name field (top-level, not in settings)
+  let name: string | undefined;
+  if (body.name !== undefined) {
+    if (typeof body.name !== "string" || body.name.trim().length === 0) {
+      return c.json({ error: "name must be a non-empty string" }, 400);
+    }
+    name = body.name.trim();
+  }
+
+  // Auto-generate name for new providers if not provided
+  if (!name) {
+    const existing = await getProviderConfig(c.env, orgId, provider);
+    if (!existing) {
+      // This is a new provider, generate a default name
+      const allProviders = await listProviderConfigs(c.env, orgId);
+      name = generateDefaultProviderName(
+        provider,
+        allProviders.map((p) => ({ provider: p.provider, name: p.name })),
+      );
+    }
+  }
+
   const input: SaveProviderConfigInput = {
     keys: keys?.map((k) => k.trim()),
     enabled: body.enabled,
+    name,
     settings,
   };
 
@@ -233,6 +297,7 @@ providerConfigRouter.put("/:provider", async (c) => {
       resourceId: saved.id,
       details: {
         provider,
+        name: saved.name,
         enabled: saved.enabled,
         keysChanged: keys !== undefined,
         keyCount: saved.keys.length,
@@ -241,6 +306,7 @@ providerConfigRouter.put("/:provider", async (c) => {
     return c.json(
       publicProviderView({
         provider: saved.provider,
+        name: saved.name,
         configured: true,
         enabled: saved.enabled,
         settings: saved.settings,

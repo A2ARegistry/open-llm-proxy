@@ -63,6 +63,7 @@ function config(
   return {
     id: "pcfg_1",
     provider: "openai",
+    name: "",
     enabled: true,
     keys: ["sk-openai-test"],
     settings: { timeout: 60 },
@@ -483,6 +484,93 @@ describe("PUT /api/providers/:provider", () => {
       JSON.stringify({ settings: { baseUrl: "https://gw.example.com" } }),
     );
     expect(status).toBe(400);
+  });
+
+  it("rejects an empty name", async () => {
+    const { status, body } = await putJson(
+      "/api/providers/my-gw",
+      JSON.stringify({
+        name: "",
+        settings: { baseUrl: "https://gw.example.com" },
+      }),
+    );
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/name/);
+  });
+
+  it("accepts a name and stores it as top-level field", async () => {
+    mockSaveProviderConfig.mockResolvedValue(
+      config({
+        provider: "my-gw",
+        name: "My Gateway",
+        keys: [],
+        enabled: true,
+        settings: { baseUrl: "https://gw.example.com" },
+      }),
+    );
+    const { status, body } = await putJson(
+      "/api/providers/my-gw",
+      JSON.stringify({
+        name: "My Gateway",
+        settings: { baseUrl: "https://gw.example.com" },
+      }),
+    );
+    expect(status).toBe(200);
+    expect(body.name).toBe("My Gateway");
+    expect(mockSaveProviderConfig.mock.calls[0][3].name).toBe("My Gateway");
+    expect(mockSaveProviderConfig.mock.calls[0][3].settings).not.toHaveProperty(
+      "name",
+    );
+  });
+
+  it("auto-generates name for new providers when not provided", async () => {
+    mockGetProviderConfig.mockResolvedValue(null);
+    mockListProviderConfigs.mockResolvedValue([]);
+    mockSaveProviderConfig.mockResolvedValue(
+      config({
+        provider: "my-gw",
+        name: "Custom OpenAI-compatible Provider",
+        keys: [],
+        enabled: true,
+        settings: { baseUrl: "https://gw.example.com" },
+      }),
+    );
+    const { status, body } = await putJson(
+      "/api/providers/my-gw",
+      JSON.stringify({
+        settings: { baseUrl: "https://gw.example.com" },
+      }),
+    );
+    expect(status).toBe(200);
+    expect(body.name).toBe("Custom OpenAI-compatible Provider");
+  });
+
+  it("auto-generates name with index for duplicate providers", async () => {
+    mockGetProviderConfig.mockResolvedValue(null);
+    mockListProviderConfigs.mockResolvedValue([
+      config({
+        provider: "my-gw",
+        name: "Custom OpenAI-compatible Provider",
+        settings: { baseUrl: "https://gw1.example.com" },
+      }),
+    ]);
+    mockSaveProviderConfig.mockResolvedValue(
+      config({
+        provider: "my-gw-2",
+        name: "Custom OpenAI-compatible Provider 2",
+        keys: [],
+        enabled: true,
+        settings: { baseUrl: "https://gw2.example.com" },
+      }),
+    );
+    const { status, body } = await putJson(
+      "/api/providers/my-gw-2",
+      JSON.stringify({
+        settings: { baseUrl: "https://gw2.example.com" },
+      }),
+    );
+    expect(status).toBe(200);
+    expect(body.name).toBe("Custom OpenAI-compatible Provider 2");
   });
 });
 

@@ -17,6 +17,7 @@ export interface ProviderConfigRow {
   id: string;
   organization_id: string;
   provider: string;
+  name: string;
   enabled: number;
   config: string;
 }
@@ -33,6 +34,7 @@ export interface ProviderSettings {
 export interface StoredProviderConfig {
   id: string;
   provider: string;
+  name: string;
   enabled: boolean;
   encryptedKeys: EncryptedCredential[];
   settings: ProviderSettings;
@@ -94,6 +96,7 @@ function parseRow(row: ProviderConfigRow): StoredProviderConfig {
   return {
     id: row.id,
     provider: row.provider,
+    name: row.name ?? "",
     enabled: row.enabled === 1,
     encryptedKeys: (config.keys ?? []) as EncryptedCredential[],
     settings: config.settings ?? {},
@@ -109,7 +112,7 @@ export async function getProviderConfig(
   crypto?: TenantCryptoContext,
 ): Promise<DecryptedProviderConfig | undefined> {
   const row = await env.DB.prepare(
-    "SELECT id, organization_id, provider, enabled, config FROM provider_configs WHERE organization_id = ? AND provider = ?",
+    "SELECT id, organization_id, provider, name, enabled, config FROM provider_configs WHERE organization_id = ? AND provider = ?",
   )
     .bind(orgId, provider)
     .first<ProviderConfigRow>();
@@ -129,7 +132,7 @@ export async function listProviderConfigs(
   crypto?: TenantCryptoContext,
 ): Promise<DecryptedProviderConfig[]> {
   const { results } = await env.DB.prepare(
-    "SELECT id, organization_id, provider, enabled, config FROM provider_configs WHERE organization_id = ?",
+    "SELECT id, organization_id, provider, name, enabled, config FROM provider_configs WHERE organization_id = ?",
   )
     .bind(orgId)
     .all<ProviderConfigRow>();
@@ -149,6 +152,7 @@ export async function listProviderConfigs(
 export interface SaveProviderConfigInput {
   keys?: string[]; // plaintext keys to encrypt (replaces existing)
   enabled?: boolean;
+  name?: string;
   settings?: ProviderSettings;
 }
 
@@ -173,20 +177,23 @@ export async function saveProviderConfig(
     settings: { ...(existing?.settings ?? {}), ...(input.settings ?? {}) },
   };
 
+  const name = input.name ?? existing?.name ?? "";
   const now = nowSeconds();
   if (existing) {
     await env.DB.prepare(
-      `UPDATE provider_configs SET config = ?, enabled = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE provider_configs SET config = ?, enabled = ?, name = ?, updated_at = ? WHERE id = ?`,
     )
       .bind(
         JSON.stringify(nextConfig),
         input.enabled !== false ? 1 : 0,
+        name,
         now,
         existing.id,
       )
       .run();
     return {
       ...existing,
+      name,
       enabled: input.enabled !== false,
       encryptedKeys,
       settings: nextConfig.settings,
@@ -197,13 +204,14 @@ export async function saveProviderConfig(
 
   const id = newId("pcfg");
   await env.DB.prepare(
-    `INSERT INTO provider_configs (id, organization_id, provider, enabled, config, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO provider_configs (id, organization_id, provider, name, enabled, config, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
       orgId,
       provider,
+      name,
       input.enabled !== false ? 1 : 0,
       JSON.stringify(nextConfig),
       now,
@@ -213,6 +221,7 @@ export async function saveProviderConfig(
   return {
     id,
     provider,
+    name,
     enabled: input.enabled !== false,
     encryptedKeys,
     settings: nextConfig.settings,
