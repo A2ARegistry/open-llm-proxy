@@ -590,7 +590,6 @@ function ProviderFormModal({
         ...keysSetting,
         settings: {
           authMode,
-          customModels: parseCustomModels(),
           ...defaultModelSetting,
         },
       };
@@ -794,22 +793,6 @@ function ProviderFormModal({
                   : "Paste the service-account JSON. We mint a short-lived OAuth2 token server-side; the key is encrypted at rest."}
               </p>
             </div>
-            {authMode === "api-key" && (
-              <div>
-                <Label>Custom model IDs (optional)</Label>
-                <textarea
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  rows={2}
-                  placeholder={"gemini-2.5-flash-lite\ngemini-3.5-pro-preview"}
-                  value={customModelsText}
-                  onChange={(e) => setCustomModelsText(e.target.value)}
-                />
-                <p className="mt-1 text-[11px] text-gray-400">
-                  One model id per line, shown in /v1/models. Any model id works
-                  at request time even without listing it here.
-                </p>
-              </div>
-            )}
           </>
         ) : showCustomFields ? (
           <>
