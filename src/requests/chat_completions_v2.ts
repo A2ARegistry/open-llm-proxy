@@ -9,6 +9,7 @@ import {
   vertexModelsPath,
   vertexModelId,
 } from "../llm/google-vertex";
+import { GoogleDirectAdapter } from "../llm/google-direct-adapter";
 import { resolveDefaultModel } from "../llm/model-catalog";
 import { createTenantModels, modelFor } from "../llm/models-factory";
 import {
@@ -252,16 +253,20 @@ export async function chatCompletionsV2(
 
   const stream = chatBody.stream === true;
   const signal = request.signal;
-  // Google Vertex AI in "api-key" mode is Express Mode: no project/location, and
-  // requests go through the pi-ai @google/genai adapter (native generateContent).
-  // "service-account" mode keeps the OpenAI-compatible endpoint + OAuth2 path.
+  
+  // Google Vertex AI routing:
+  // - Express Mode (api-key): Use GoogleDirectAdapter for proper tool call handling
+  // - Service Account mode: Use OpenAI-compatible endpoint (existing V1 path)
+  const vertexExpressMode =
+    isVertexProvider(providerName) &&
+    config.settings?.authMode === "api-key";
   const vertexOpenAiCompat =
     isVertexProvider(providerName) &&
     config.settings?.authMode === "service-account";
   const piSpec = getPiAiProviderSpec(providerName);
 
   console.log(
-    `[chat-completions] Resolved provider | provider=${providerName} | model=${modelId} | stream=${stream} | piSpec=${!!piSpec} | vertexOpenAiCompat=${vertexOpenAiCompat} | authMode=${config.settings?.authMode} | isVertex=${isVertexProvider(providerName)}`,
+    `[chat-completions] Resolved provider | provider=${providerName} | model=${modelId} | stream=${stream} | piSpec=${!!piSpec} | vertexOpenAiCompat=${vertexOpenAiCompat} | vertexExpressMode=${vertexExpressMode} | authMode=${config.settings?.authMode} | isVertex=${isVertexProvider(providerName)}`,
   );
 
   const maxTokens = numberParam(
@@ -269,13 +274,21 @@ export async function chatCompletionsV2(
   );
   const estimatedTokens = maxTokens ?? 0;
 
+  console.log(
+    `[chat-completions] Rate limit check | org=${organizationId} key=${apiKeyAuth.keyId} rpm=${settings.rateLimit?.requestsPerMinute} burst=${settings.rateLimit?.burstSize} estimated=${estimatedTokens} stream=${stream}`,
+  );
+
   // Phase 4.1 — per-tenant/per-key rate limits (429 + Retry-After).
   const rate = await checkRateLimits(env, {
     organizationId,
     apiKeyId: apiKeyAuth.keyId,
     settings,
     estimatedTokens,
+    stream,
   });
+  console.log(
+    `[chat-completions] Rate limit result | allowed=${rate.allowed}${rate.retryAfter ? ` retryAfter=${rate.retryAfter}` : ``}`,
+  );
   if (!rate.allowed) {
     return new Response(
       JSON.stringify({
@@ -351,6 +364,170 @@ export async function chatCompletionsV2(
     }
   };
 
+  // Route 1: Google Vertex Express Mode (api-key) - Use direct Google SDK adapter
+  if (vertexExpressMode) {
+    const apiKey = config.keys[0];
+    if (!apiKey) {
+      return errorBody(
+        "not_configured",
+        "Google Vertex Express Mode requires an API key",
+      );
+    }
+
+    console.log(
+      `[chat-completions] Using GoogleDirectAdapter for Vertex Express Mode | model=${modelId}`,
+    );
+
+    const googleAdapter = new GoogleDirectAdapter({ apiKey });
+
+    // Extract tools from request
+    const tools =
+      chatBody.tools?.map((t: unknown) => {
+        const tool = t as {
+          type: string;
+          function: {
+            name: string;
+            description?: string;
+            parameters?: unknown;
+          };
+        };
+        return {
+          type: tool.type,
+          function: {
+            name: tool.function.name,
+            description: tool.function.description,
+            parameters: tool.function.parameters,
+          },
+        };
+      }) || undefined;
+
+    if (!stream) {
+      if (cacheKey) {
+        const cached = await getCachedResponse(env, organizationId, cacheKey);
+        if (cached !== null) {
+          record({ statusCode: 200, cacheHit: 1 });
+          return new Response(cached, {
+            headers: {
+              "Content-Type": "application/json",
+              "X-Cache": "HIT",
+            },
+          });
+        }
+      }
+
+      let message: AssistantMessage;
+      try {
+        console.log(
+          `[chat-completions] Calling GoogleDirectAdapter.generateContent | model=${modelId}`,
+        );
+        message = await googleAdapter.generateContent({
+          model: modelId,
+          messages: chatBody.messages as never[],
+          tools,
+          temperature: numberParam(chatBody.temperature),
+          maxTokens: maxTokens,
+        });
+        console.log(
+          `[chat-completions] GoogleDirectAdapter returned | stopReason=${message.stopReason} | ` +
+            `contentParts=${message.content.length} | ` +
+            `hasToolCalls=${message.content.some((p) => p.type === "toolCall")}`,
+        );
+      } catch (err) {
+        record({
+          statusCode: 500,
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
+      if (message.stopReason === "error" || message.stopReason === "aborted") {
+        record({
+          statusCode: 403,
+          usage: usageOf(message),
+          costUsd: message.usage?.cost?.total ?? null,
+          errorMessage: message.errorMessage ?? "Upstream provider error",
+        });
+        return errorBody(
+          "upstream_error",
+          message.errorMessage ?? "Upstream provider error",
+        );
+      }
+      record({
+        statusCode: 200,
+        usage: usageOf(message),
+        costUsd: message.usage?.cost?.total ?? null,
+      });
+      const bodyText = JSON.stringify(
+        assistantToOpenAI(message, chatBody.model as string),
+      );
+      console.log(
+        `[chat-completions] Returning non-streaming response | bodyLength=${bodyText.length}`,
+      );
+      if (cacheKey) {
+        ctx.waitUntil(
+          putCachedResponse(env, organizationId, cacheKey, bodyText, cacheTtl),
+        );
+      }
+      return new Response(bodyText, {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Streaming mode
+    const chunks: string[] = [];
+    const state = { emittedRole: false };
+    const responseId = `chatcmpl-${Math.random().toString(36).slice(2)}`;
+    let finalMessage: AssistantMessage | undefined;
+    console.log(
+      `[chat-completions] Starting GoogleDirectAdapter streaming | model=${modelId} | responseId=${responseId}`,
+    );
+    try {
+      for await (const event of googleAdapter.streamGenerateContent({
+        model: modelId,
+        messages: chatBody.messages as never[],
+        tools,
+        temperature: numberParam(chatBody.temperature),
+        maxTokens,
+      })) {
+        if (event.type === "done") finalMessage = event.message;
+        if (event.type === "error") finalMessage = event.error;
+        for (const chunk of eventToOpenAIChunks(
+          event,
+          chatBody.model as string,
+          responseId,
+          state,
+        )) {
+          chunks.push(chunk);
+        }
+      }
+      console.log(
+        `[chat-completions] GoogleDirectAdapter streaming completed | chunks=${chunks.length} | ` +
+          `finalStopReason=${finalMessage?.stopReason} | ` +
+          `hasToolCalls=${finalMessage?.content.some((p) => p.type === "toolCall")}`,
+      );
+    } catch (err) {
+      record({
+        statusCode: 500,
+        usage: finalMessage ? usageOf(finalMessage) : null,
+        costUsd: finalMessage?.usage?.cost?.total ?? null,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+    record({
+      statusCode: 200,
+      usage: finalMessage ? usageOf(finalMessage) : null,
+      costUsd: finalMessage?.usage?.cost?.total ?? null,
+      errorMessage:
+        finalMessage?.stopReason === "error"
+          ? (finalMessage.errorMessage ?? "Stream ended with an error")
+          : null,
+    });
+    return new Response(encodeSse(chunks), {
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  }
+
+  // Route 2: Other providers using pi-ai (keep existing logic)
   if (piSpec && !vertexOpenAiCompat) {
     const models = await createTenantModels({
       env,
@@ -401,11 +578,19 @@ export async function chatCompletionsV2(
 
       let message: AssistantMessage;
       try {
+        console.log(
+          `[chat-completions] Calling models.complete | provider=${providerName} | model=${modelId}`
+        );
         message = await models.complete({
           model: piModel,
           context,
           signal,
         });
+        console.log(
+          `[chat-completions] models.complete returned | stopReason=${message.stopReason} | ` +
+          `contentParts=${message.content.length} | ` +
+          `hasToolCalls=${message.content.some(p => p.type === "toolCall")}`
+        );
       } catch (err) {
         record({
           statusCode: 500,
@@ -433,6 +618,9 @@ export async function chatCompletionsV2(
       const bodyText = JSON.stringify(
         assistantToOpenAI(message, chatBody.model as string),
       );
+      console.log(
+        `[chat-completions] Returning non-streaming response | bodyLength=${bodyText.length}`
+      );
       if (cacheKey) {
         ctx.waitUntil(
           putCachedResponse(env, organizationId, cacheKey, bodyText, cacheTtl),
@@ -447,6 +635,9 @@ export async function chatCompletionsV2(
     const state = { emittedRole: false };
     const responseId = `chatcmpl-${Math.random().toString(36).slice(2)}`;
     let finalMessage: AssistantMessage | undefined;
+    console.log(
+      `[chat-completions] Starting streaming | provider=${providerName} | model=${modelId} | responseId=${responseId}`
+    );
     try {
       for await (const event of models.stream({
         model: piModel,
@@ -464,6 +655,14 @@ export async function chatCompletionsV2(
           chunks.push(chunk);
         }
       }
+      console.log(
+        `[chat-completions] Streaming completed | chunks=${chunks.length} | ` +
+        `finalStopReason=${finalMessage?.stopReason} | ` +
+        `hasToolCalls=${finalMessage?.content.some(p => p.type === "toolCall")}` +
+        (finalMessage?.stopReason === "error" 
+          ? ` | ERROR: ${finalMessage?.errorMessage ?? "no error message"}` 
+          : "")
+      );
     } catch (err) {
       record({
         statusCode: 500,
@@ -487,8 +686,8 @@ export async function chatCompletionsV2(
     });
   }
 
-  // V1 fallback (Ollama, Cohere, Perplexity, custom OpenAI-compatible endpoints)
-  // and Google Vertex AI (OpenAI-compatible endpoint with custom auth).
+  // Route 3: V1 fallback (Ollama, Cohere, Perplexity, custom OpenAI-compatible endpoints)
+  // and Google Vertex AI Service Account mode (OpenAI-compatible endpoint with custom auth).
   let client: V1OpenAICompatibleClient;
   let upstreamModelId = modelId;
   if (isVertexProvider(providerName)) {

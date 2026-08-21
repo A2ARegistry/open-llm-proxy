@@ -217,6 +217,26 @@ describe("assistantToOpenAI", () => {
       '{"q":"x"}',
     );
   });
+
+  it("fixes Google Gemini/Vertex issue: uses tool_calls finish_reason when tool calls present even if stopReason is stop", () => {
+    // Google Gemini/Vertex incorrectly returns stopReason: "stop" when there are tool calls
+    // We need to detect this and override to "tool_calls" for agentic workflows to work
+    const message = baseAssistant({
+      content: [
+        {
+          type: "toolCall",
+          id: "call_gemini_1",
+          name: "get_weather",
+          arguments: { location: "San Francisco" },
+        },
+      ],
+      stopReason: "stop", // Incorrectly returned by Google as "stop"
+    });
+    const out = assistantToOpenAI(message, "google-vertex/gemini-2.0-flash");
+    expect(out.choices[0].finish_reason).toBe("tool_calls");
+    expect(out.choices[0].message.tool_calls).toHaveLength(1);
+    expect(out.choices[0].message.tool_calls[0].function.name).toBe("get_weather");
+  });
 });
 
 describe("eventToOpenAIChunks / encodeSse", () => {
@@ -252,5 +272,47 @@ describe("eventToOpenAIChunks / encodeSse", () => {
   it("serializes SSE including [DONE]", () => {
     const sse = encodeSse(['{"a":1}']);
     expect(sse).toBe('data: {"a":1}\n\ndata: [DONE]\n\n');
+  });
+
+  it("fixes Google Gemini streaming: uses tool_calls finish_reason when tool calls present even if stopReason is stop", () => {
+    // Test the streaming fix for Google Gemini/Vertex
+    const state = { emittedRole: false };
+    const toolcallStart = {
+      type: "toolcall_start",
+      contentIndex: 0,
+      partial: baseAssistant({
+        content: [
+          {
+            type: "toolCall",
+            id: "call_gemini_stream",
+            name: "search",
+            arguments: {},
+          },
+        ],
+      }),
+    } as unknown as AssistantMessageEvent;
+    const done = {
+      type: "done",
+      reason: "stop", // Google incorrectly sends "stop" here
+      message: baseAssistant({
+        content: [
+          {
+            type: "toolCall",
+            id: "call_gemini_stream",
+            name: "search",
+            arguments: { query: "weather" },
+          },
+        ],
+        stopReason: "stop", // Incorrectly returned by Google
+      }),
+    } as unknown as AssistantMessageEvent;
+
+    const chunks = [
+      ...eventToOpenAIChunks(toolcallStart, requestModel, responseId, state),
+      ...eventToOpenAIChunks(done, requestModel, responseId, state),
+    ];
+    
+    const finalChunk = JSON.parse(chunks[chunks.length - 1]);
+    expect(finalChunk.choices[0].finish_reason).toBe("tool_calls");
   });
 });

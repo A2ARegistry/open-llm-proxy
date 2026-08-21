@@ -12,12 +12,13 @@ import {
 import { apiGet, apiSend, ApiKeyView, ProviderView } from "../lib/api";
 import { fmtDate } from "../lib/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, KeyRound, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Copy, KeyRound, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 export function ApiKeysPage() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
+  const [editingKey, setEditingKey] = useState<ApiKeyView | null>(null);
   const [created, setCreated] = useState<{
     id: string;
     key: string;
@@ -165,6 +166,17 @@ export function ApiKeysPage() {
                         <Button
                           size="sm"
                           variant="ghost"
+                          onClick={() => {
+                            setError(null);
+                            setEditingKey(k);
+                          }}
+                          title="Edit"
+                        >
+                          <Pencil size={13} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
                           onClick={() => rotate.mutate(k.id)}
                           title="Rotate"
                         >
@@ -206,6 +218,19 @@ export function ApiKeysPage() {
         />
       )}
 
+      {editingKey && (
+        <EditKeyModal
+          apiKey={editingKey}
+          providerOptions={providerOptions}
+          onClose={() => setEditingKey(null)}
+          onUpdated={() => {
+            setEditingKey(null);
+            qc.invalidateQueries({ queryKey: ["keys"] });
+          }}
+          onError={setError}
+        />
+      )}
+
       {created && (
         <KeyRevealModal
           key={created.id}
@@ -219,6 +244,122 @@ export function ApiKeysPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function EditKeyModal({
+  apiKey,
+  providerOptions,
+  onClose,
+  onUpdated,
+  onError,
+}: {
+  apiKey: ApiKeyView;
+  providerOptions: { value: string; label: string }[];
+  onClose: () => void;
+  onUpdated: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [name, setName] = useState(apiKey.name);
+  const [spendCapUsd, setSpendCapUsd] = useState(
+    apiKey.scopes.spendCapUsd !== undefined ? String(apiKey.scopes.spendCapUsd) : "",
+  );
+  const [defaultProvider, setDefaultProvider] = useState(
+    apiKey.scopes.defaultProvider ?? "",
+  );
+  const [status, setStatus] = useState(apiKey.status);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const scopes: Record<string, unknown> = { ...apiKey.scopes };
+      const cap = parseFloat(spendCapUsd);
+      if (spendCapUsd.trim() !== "" && Number.isFinite(cap) && cap > 0) {
+        scopes.spendCapUsd = cap;
+      } else {
+        delete scopes.spendCapUsd;
+      }
+      if (defaultProvider) {
+        scopes.defaultProvider = defaultProvider;
+      } else {
+        delete scopes.defaultProvider;
+      }
+
+      await apiSend("PATCH", `/api/keys/${apiKey.id}`, {
+        name: name.trim() || apiKey.name,
+        status,
+        scopes,
+      });
+      onUpdated();
+    } catch (err) {
+      onError((err as Error).message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Edit API Key — ${apiKey.name}`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={submit} loading={saving}>
+            Save changes
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <Label>Name</Label>
+          <Input
+            placeholder="e.g. production"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label>Provider (optional, binds the key)</Label>
+          <Select
+            className="w-full"
+            value={defaultProvider}
+            onChange={(v) => setDefaultProvider(v as string)}
+            options={[{ value: "", label: "Any provider — requires provider/model" }, ...providerOptions]}
+          />
+          <p className="mt-1 text-[11px] text-gray-400">
+            Bound keys only route to this provider and accept bare model ids.
+          </p>
+        </div>
+        <div>
+          <Label>Spend cap (USD, optional)</Label>
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="e.g. 50 (leave blank for unlimited)"
+            value={spendCapUsd}
+            onChange={(e) => setSpendCapUsd(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label>Status</Label>
+          <Select
+            className="w-full"
+            value={status}
+            onChange={(v) => setStatus(v as "active" | "revoked")}
+            options={[
+              { value: "active", label: "Active" },
+              { value: "revoked", label: "Revoked" },
+            ]}
+          />
+        </div>
+      </div>
+    </Modal>
   );
 }
 

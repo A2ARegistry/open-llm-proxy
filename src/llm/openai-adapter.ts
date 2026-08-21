@@ -84,6 +84,11 @@ export function toPiContext(body: {
   const messages: Message[] = [];
   const toolNameById = new Map<string, string>();
 
+  console.log(
+    `[openai-adapter] toPiContext | model=${body.model} | ` +
+    `messageCount=${body.messages?.length ?? 0}`
+  );
+
   for (const msg of body.messages ?? []) {
     if (msg.role === "system") {
       if (typeof msg.content === "string") systemParts.push(msg.content);
@@ -96,6 +101,7 @@ export function toPiContext(body: {
         content,
         timestamp: Date.now(),
       });
+      console.log(`[openai-adapter] toPiContext | role=user | contentLength=${content.length}`);
       continue;
     }
     if (msg.role === "assistant") {
@@ -119,13 +125,28 @@ export function toPiContext(body: {
           args = {};
         }
         toolNameById.set(tc.id, tc.function.name);
-        toolCalls.push({
+        const toolCall: {
+          type: "toolCall";
+          id: string;
+          name: string;
+          arguments: Record<string, unknown>;
+          thought_signature?: string;
+        } = {
           type: "toolCall",
           id: tc.id,
           name: tc.function.name,
           arguments: args,
-        });
+        };
+        // Preserve thought_signature if present (needed for Google Vertex continuation)
+        if ((tc as { thought_signature?: string }).thought_signature) {
+          toolCall.thought_signature = (tc as { thought_signature?: string }).thought_signature;
+        }
+        toolCalls.push(toolCall);
       }
+      console.log(
+        `[openai-adapter] toPiContext | role=assistant | toolCallsCount=${toolCalls.length}` +
+        (toolCalls.length > 0 ? ` | toolNames=[${toolCalls.map(tc => tc.name).join(", ")}]` : "")
+      );
       messages.push({
         role: "assistant",
         content: [...parts, ...toolCalls],
@@ -144,6 +165,11 @@ export function toPiContext(body: {
         typeof msg.content === "string"
           ? msg.content
           : String(msg.content ?? "");
+      console.log(
+        `[openai-adapter] toPiContext | role=tool | toolCallId=${toolCallId} | ` +
+        `toolName=${toolNameById.get(toolCallId) ?? msg.name ?? "tool"} | ` +
+        `contentLength=${content.length}`
+      );
       if (content) {
         messages.push({
           role: "toolResult",
@@ -156,6 +182,11 @@ export function toPiContext(body: {
       }
     }
   }
+
+  console.log(
+    `[openai-adapter] toPiContext | finalMessageCount=${messages.length} | ` +
+    `hasSystemPrompt=${systemParts.length > 0}`
+  );
 
   return {
     systemPrompt: systemParts.length > 0 ? systemParts.join("\n\n") : undefined,
@@ -211,14 +242,24 @@ export function assistantToOpenAI(
     if (part.type === "text") {
       content += (content ? "\n" : "") + part.text;
     } else if (part.type === "toolCall") {
-      toolCalls.push({
+      const toolCall: {
+        id: string;
+        type: string;
+        function: { name: string; arguments: string };
+        thought_signature?: string;
+      } = {
         id: part.id,
         type: "function",
         function: {
           name: part.name,
           arguments: JSON.stringify(part.arguments ?? {}),
         },
-      });
+      };
+      // Include thought_signature if present (Google Vertex requirement)
+      if ((part as { thought_signature?: string }).thought_signature) {
+        toolCall.thought_signature = (part as { thought_signature?: string }).thought_signature;
+      }
+      toolCalls.push(toolCall);
     }
   }
 
@@ -227,6 +268,23 @@ export function assistantToOpenAI(
     content: content || null,
   };
   if (toolCalls.length > 0) msg.tool_calls = toolCalls;
+
+  // Fix for Google Gemini/Vertex: if we have tool calls, always return
+  // finish_reason: "tool_calls", even if the upstream provider incorrectly
+  // sent "stop". This ensures agentic workflows continue properly.
+  const originalStopReason = message.stopReason;
+  const mappedFinishReason = finishReasonFromStop(originalStopReason);
+  const finishReason = toolCalls.length > 0
+    ? "tool_calls"
+    : mappedFinishReason;
+
+  console.log(
+    `[openai-adapter] assistantToOpenAI | model=${requestModel} | ` +
+    `provider=${message.provider} | stopReason=${originalStopReason} | ` +
+    `mappedFinishReason=${mappedFinishReason} | toolCallsCount=${toolCalls.length} | ` +
+    `finalFinishReason=${finishReason}` +
+    (toolCalls.length > 0 ? ` | toolNames=[${toolCalls.map(tc => tc.function.name).join(", ")}]` : "")
+  );
 
   return {
     id: message.responseId ?? `chatcmpl-${newUuid()}`,
@@ -237,7 +295,7 @@ export function assistantToOpenAI(
       {
         index: 0,
         message: msg,
-        finish_reason: finishReasonFromStop(message.stopReason),
+        finish_reason: finishReason,
       },
     ],
     usage: {
@@ -315,6 +373,7 @@ export function eventToOpenAIChunks(
     case "toolcall_start": {
       const toolCall = event.partial.content[event.contentIndex];
       if (toolCall && toolCall.type === "toolCall") {
+        const argsStr = JSON.stringify(toolCall.arguments ?? {});
         chunks.push(
           JSON.stringify({
             ...chunkBase(requestModel, responseId),
@@ -327,7 +386,10 @@ export function eventToOpenAIChunks(
                       index: event.contentIndex,
                       id: toolCall.id,
                       type: "function",
-                      function: { name: toolCall.name, arguments: "" },
+                      function: {
+                        name: toolCall.name,
+                        arguments: argsStr === "{}" ? "" : argsStr,
+                      },
                     },
                   ],
                 },
@@ -336,6 +398,28 @@ export function eventToOpenAIChunks(
             ],
           }),
         );
+        // If arguments were already present on toolCall, also emit arguments delta chunk
+        if (argsStr !== "{}" && argsStr !== "") {
+          chunks.push(
+            JSON.stringify({
+              ...chunkBase(requestModel, responseId),
+              choices: [
+                {
+                  index: 0,
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: event.contentIndex,
+                        function: { arguments: argsStr },
+                      },
+                    ],
+                  },
+                  finish_reason: null,
+                },
+              ],
+            }),
+          );
+        }
       }
       break;
     }
@@ -388,7 +472,29 @@ export function eventToOpenAIChunks(
       );
       break;
     }
-    case "done":
+    case "done": {
+      // Fix for Google Gemini/Vertex: check if the message contains tool calls
+      // and override finish_reason to "tool_calls" even if stopReason is "stop"
+      const hasToolCalls = event.message.content.some(
+        (part) => part.type === "toolCall",
+      );
+      const originalStopReason = event.message.stopReason;
+      const mappedFinishReason = finishReasonFromStop(originalStopReason);
+      const finishReason = hasToolCalls
+        ? "tool_calls"
+        : mappedFinishReason;
+      
+      const toolCallNames = event.message.content
+        .filter((part) => part.type === "toolCall")
+        .map((part) => (part as { name: string }).name);
+      
+      console.log(
+        `[openai-adapter] streaming done | model=${requestModel} | ` +
+        `stopReason=${originalStopReason} | mappedFinishReason=${mappedFinishReason} | ` +
+        `hasToolCalls=${hasToolCalls} | finalFinishReason=${finishReason}` +
+        (toolCallNames.length > 0 ? ` | toolNames=[${toolCallNames.join(", ")}]` : "")
+      );
+      
       chunks.push(
         JSON.stringify({
           ...chunkBase(requestModel, responseId),
@@ -396,16 +502,21 @@ export function eventToOpenAIChunks(
             {
               index: 0,
               delta: {},
-              finish_reason: finishReasonFromStop(event.message.stopReason),
+              finish_reason: finishReason,
             },
           ],
           usage: usageToOpenAI(event.message.usage),
         }),
       );
       break;
+    }
     case "error":
       // If we have already streamed, the response terminates with [DONE];
       // otherwise surface a clean stop.
+      console.log(
+        `[openai-adapter] streaming error | model=${requestModel} | ` +
+        `errorMessage=${event.error.errorMessage ?? "no error message"}`
+      );
       chunks.push(
         JSON.stringify({
           ...chunkBase(requestModel, responseId),

@@ -96,5 +96,33 @@
       "binding": "SESSION_CACHE",
       "id": "00000000000000000000000000000000"
     }
-  ]
+  ],
+  // Production environment configuration
+  // Deploy with: npm run deploy (uses production env by default)
+  "env": {
+    "production": {
+      "vars": {
+        "BASE_URL": "https://api.zervice.us",
+        "ENVIRONMENT": "production",
+        "DASHBOARD_URL": "https://api.zervice.us",
+        "SESSION_CACHE_TTL_SECONDS": "3600",
+        "RATE_LIMITER_SHARDS": "8",
+        "METRICS_BUFFER_SHARDS": "8",
+        "APP_NAME": "Open LLM Proxy"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "open-llm-proxy-prod",
+          "database_id": "REPLACE_WITH_PROD_DATABASE_ID"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "SESSION_CACHE",
+          "id": "REPLACE_WITH_PROD_KV_NAMESPACE_ID"
+        }
+      ]
+    }
+  }
 }
