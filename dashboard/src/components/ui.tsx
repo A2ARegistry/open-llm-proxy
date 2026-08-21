@@ -328,6 +328,8 @@ export function Modal({
   footer?: ReactNode;
   wide?: boolean;
 }) {
+  const isMouseDownOnBackdrop = useRef(false);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     if (open) window.addEventListener("keydown", onKey);
@@ -338,10 +340,14 @@ export function Modal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onMouseDown={(e) => {
+        isMouseDownOnBackdrop.current = e.target === e.currentTarget;
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) {
+        if (isMouseDownOnBackdrop.current && e.target === e.currentTarget) {
           onClose();
         }
+        isMouseDownOnBackdrop.current = false;
       }}
     >
       <div

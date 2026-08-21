@@ -82,10 +82,9 @@ function authHeaderSummary(headers: Record<string, string>): string {
 function pickKey(
   provider: string,
   keys: string[],
-  needsKey: boolean,
+  _needsKey: boolean,
 ): string | undefined {
-  if (!needsKey) return undefined;
-  return keys[0];
+  return keys.find((k) => typeof k === "string" && k.trim().length > 0)?.trim();
 }
 
 /** The model id a probe (or request) should use for this provider. */

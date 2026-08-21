@@ -204,7 +204,7 @@ describe("testProviderConnection", () => {
     vi.unstubAllGlobals();
   });
 
-  it("falls back to a models-list probe when no default model exists", async () => {
+  it("falls back to a models-list probe when no default model exists and includes authorization header", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(
@@ -213,14 +213,48 @@ describe("testProviderConnection", () => {
     vi.stubGlobal("fetch", fetchMock);
     const result = await testProviderConnection({
       provider: "custom-openai",
-      keys: ["sk"],
+      keys: ["sk-custom-secret"],
       settings: { baseUrl: "https://gw.example.com", modelsPath: "/v1/models" },
     });
     expect(result.ok).toBe(true);
     expect(result.modelCount).toBe(1);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://gw.example.com/v1/models",
-      expect.objectContaining({ method: "GET" }),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          authorization: "Bearer sk-custom-secret",
+        }),
+      }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("probes custom OpenAI-compatible provider with default model and authorization header", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ choices: [{ message: { content: "pong" } }] }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await testProviderConnection({
+      provider: "nvidia-deepseek-v4-flash",
+      keys: ["nvapi-secret-key"],
+      settings: {
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        defaultModel: "deepseek-ai/deepseek-v4-flash-0731",
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://integrate.api.nvidia.com/v1/chat/completions",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: "Bearer nvapi-secret-key",
+          "content-type": "application/json",
+        }),
+      }),
     );
     vi.unstubAllGlobals();
   });
