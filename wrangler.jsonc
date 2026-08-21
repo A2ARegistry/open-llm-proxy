@@ -98,13 +98,16 @@
     }
   ],
   // Production environment configuration
-  // Deploy with: npm run deploy (uses production env by default)
+  // For automated CI/CD deployments via Cloudflare Dashboard (Workers Builds / Git integration),
+  // sensitive values (real domain URLs, production D1/KV bindings, secrets) are configured
+  // directly in the Cloudflare Dashboard (Settings -> Variables and Secrets / Bindings)
+  // so this public open-source repository contains only placeholders.
   "env": {
     "production": {
       "vars": {
-        "BASE_URL": "https://api.zervice.us",
+        "BASE_URL": "https://your-domain.com",
         "ENVIRONMENT": "production",
-        "DASHBOARD_URL": "https://api.zervice.us",
+        "DASHBOARD_URL": "https://your-domain.com",
         "SESSION_CACHE_TTL_SECONDS": "3600",
         "RATE_LIMITER_SHARDS": "8",
         "METRICS_BUFFER_SHARDS": "8",
@@ -114,13 +117,13 @@
         {
           "binding": "DB",
           "database_name": "open-llm-proxy-prod",
-          "database_id": "REPLACE_WITH_PROD_DATABASE_ID"
+          "database_id": "00000000-0000-0000-0000-000000000000"
         }
       ],
       "kv_namespaces": [
         {
           "binding": "SESSION_CACHE",
-          "id": "REPLACE_WITH_PROD_KV_NAMESPACE_ID"
+          "id": "00000000000000000000000000000000"
         }
       ]
     }

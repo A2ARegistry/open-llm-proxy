@@ -19,6 +19,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test-watch": "vitest watch",
+    "build": "npm run tsc && npm run build:dashboard",
     "build:dashboard": "npm --prefix dashboard run build",
     "dev:dashboard": "npm --prefix dashboard run dev",
     "tsc": "tsc --noEmit",
