@@ -232,6 +232,7 @@ export function assistantToOpenAI(
   requestModel: string,
 ): Record<string, unknown> {
   let content = "";
+  let reasoningContent = "";
   const toolCalls: {
     id: string;
     type: string;
@@ -241,6 +242,8 @@ export function assistantToOpenAI(
   for (const part of message.content) {
     if (part.type === "text") {
       content += (content ? "\n" : "") + part.text;
+    } else if (part.type === "thinking") {
+      reasoningContent += (reasoningContent ? "\n" : "") + (part as { thinking: string }).thinking;
     } else if (part.type === "toolCall") {
       const toolCall: {
         id: string;
@@ -267,6 +270,9 @@ export function assistantToOpenAI(
     role: "assistant",
     content: content || null,
   };
+  if (reasoningContent) {
+    msg.reasoning_content = reasoningContent;
+  }
   if (toolCalls.length > 0) msg.tool_calls = toolCalls;
 
   // Fix for Google Gemini/Vertex: if we have tool calls, always return
@@ -367,7 +373,21 @@ export function eventToOpenAIChunks(
       );
       break;
     case "thinking_start":
+      break;
     case "thinking_delta":
+      chunks.push(
+        JSON.stringify({
+          ...chunkBase(requestModel, responseId),
+          choices: [
+            {
+              index: 0,
+              delta: { reasoning_content: event.delta },
+              finish_reason: null,
+            },
+          ],
+        }),
+      );
+      break;
     case "thinking_end":
       break;
     case "toolcall_start": {

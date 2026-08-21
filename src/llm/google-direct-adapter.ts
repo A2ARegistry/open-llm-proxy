@@ -128,6 +128,7 @@ interface GoogleContent {
 
 interface GooglePart {
   text?: string;
+  thought?: boolean | string;
   functionCall?: {
     name: string;
     args: Record<string, unknown>;
@@ -373,11 +374,21 @@ export class GoogleDirectAdapter {
     }
 
     let toolCallIndex = 0;
-    // Extract text and function calls
+    // Extract text, thinking, and function calls
     for (const part of parts) {
-      if (part.text) {
+      const isThought = Boolean((part as { thought?: boolean | string }).thought);
+      if (isThought) {
+        const thoughtText =
+          typeof (part as { thought?: boolean | string }).thought === "string"
+            ? ((part as { thought?: string }).thought as string)
+            : part.text || "";
+        if (thoughtText) {
+          content.push({ type: "thinking", thinking: thoughtText });
+        }
+      } else if (part.text) {
         content.push({ type: "text", text: part.text });
       }
+
       if (part.functionCall) {
         hasToolCalls = true;
         const sig = (part as { thoughtSignature?: string }).thoughtSignature || turnThoughtSignature;
@@ -603,6 +614,7 @@ export class GoogleDirectAdapter {
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     };
     let currentTextIndex = -1;
+    let currentThinkingIndex = -1;
     let currentToolIndex = -1;
     let lastThoughtSignature: string | undefined;
     const toolCallsById = new Map<string, number>();
@@ -618,7 +630,56 @@ export class GoogleDirectAdapter {
           lastThoughtSignature = (part as { thoughtSignature?: string }).thoughtSignature;
         }
 
-        if (part.text) {
+        const isThought = Boolean((part as { thought?: boolean | string }).thought);
+
+        if (isThought) {
+          const thoughtText =
+            typeof (part as { thought?: boolean | string }).thought === "string"
+              ? ((part as { thought?: string }).thought as string)
+              : part.text || "";
+
+          if (thoughtText) {
+            if (
+              currentThinkingIndex === -1 ||
+              accumulatedContent[currentThinkingIndex]?.type !== "thinking"
+            ) {
+              currentThinkingIndex = accumulatedContent.length;
+              accumulatedContent.push({ type: "thinking", thinking: "" });
+              yield {
+                type: "thinking_start",
+                contentIndex: currentThinkingIndex,
+                partial: {
+                  role: "assistant",
+                  content: accumulatedContent,
+                  api: "google-generative-ai",
+                  provider: "google-vertex",
+                  model: input.model,
+                  usage,
+                  stopReason: "stop",
+                  timestamp: Date.now(),
+                },
+              } as AssistantMessageEvent;
+            }
+
+            yield {
+              type: "thinking_delta",
+              contentIndex: currentThinkingIndex,
+              delta: thoughtText,
+              partial: {
+                role: "assistant",
+                content: accumulatedContent,
+                api: "google-generative-ai",
+                provider: "google-vertex",
+                model: input.model,
+                usage,
+                stopReason: "stop",
+                timestamp: Date.now(),
+              },
+            } as AssistantMessageEvent;
+
+            (accumulatedContent[currentThinkingIndex] as { type: "thinking"; thinking: string }).thinking += thoughtText;
+          }
+        } else if (part.text) {
           // Check if we're continuing an existing text part or starting a new one
           if (currentTextIndex === -1 || 
               accumulatedContent[currentTextIndex]?.type !== "text") {
