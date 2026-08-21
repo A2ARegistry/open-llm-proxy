@@ -22,6 +22,7 @@ export function ApiKeysPage() {
     id: string;
     key: string;
     name: string;
+    endpoint?: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,9 +52,17 @@ export function ApiKeysPage() {
 
   const rotate = useMutation({
     mutationFn: (id: string) =>
-      apiSend<{ id: string; key: string }>("POST", `/api/keys/${id}/rotate`),
+      apiSend<{ id: string; key: string; endpoint: string }>(
+        "POST",
+        `/api/keys/${id}/rotate`,
+      ),
     onSuccess: (data) =>
-      setCreated({ id: data.id, key: data.key, name: "rotated key" }),
+      setCreated({
+        id: data.id,
+        key: data.key,
+        name: "rotated key",
+        endpoint: data.endpoint,
+      }),
   });
 
   if (keys.isLoading) return <Spinner label="Loading keys…" />;
@@ -102,6 +111,7 @@ export function ApiKeysPage() {
                 <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
                   <th className="px-5 py-3 font-medium">Name</th>
                   <th className="px-5 py-3 font-medium">Prefix</th>
+                  <th className="px-5 py-3 font-medium">Endpoint</th>
                   <th className="px-5 py-3 font-medium">Provider</th>
                   <th className="px-5 py-3 font-medium">Status</th>
                   <th className="px-5 py-3 font-medium">Spend cap</th>
@@ -120,6 +130,15 @@ export function ApiKeysPage() {
                     </td>
                     <td className="px-5 py-3 font-mono text-xs text-gray-500">
                       {k.keyPrefix}…
+                    </td>
+                    <td className="px-5 py-3">
+                      {k.endpoint ? (
+                        <code className="text-xs text-gray-600">
+                          {k.endpoint}
+                        </code>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="px-5 py-3">
                       {k.scopes.defaultProvider ? (
@@ -211,7 +230,12 @@ function CreateKeyModal({
 }: {
   providerOptions: { value: string; label: string }[];
   onClose: () => void;
-  onCreated: (d: { id: string; key: string; name: string }) => void;
+  onCreated: (d: {
+    id: string;
+    key: string;
+    name: string;
+    endpoint?: string;
+  }) => void;
   onError: (msg: string) => void;
 }) {
   const [name, setName] = useState("");
@@ -227,14 +251,15 @@ function CreateKeyModal({
       if (spendCapUsd.trim() !== "" && Number.isFinite(cap) && cap > 0)
         scopes.spendCapUsd = cap;
       if (defaultProvider) scopes.defaultProvider = defaultProvider;
-      const res = await apiSend<{ id: string; key: string; name: string }>(
-        "POST",
-        "/api/keys",
-        {
-          name: name.trim() || "default",
-          scopes,
-        },
-      );
+      const res = await apiSend<{
+        id: string;
+        key: string;
+        name: string;
+        endpoint: string;
+      }>("POST", "/api/keys", {
+        name: name.trim() || "default",
+        scopes,
+      });
       onCreated(res);
     } catch (err) {
       onError((err as Error).message);
@@ -300,10 +325,11 @@ function KeyRevealModal({
   data,
   onClose,
 }: {
-  data: { id: string; key: string; name: string };
+  data: { id: string; key: string; name: string; endpoint?: string };
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [copiedEndpoint, setCopiedEndpoint] = useState(false);
   return (
     <Modal
       open
@@ -315,24 +341,55 @@ function KeyRevealModal({
         </Button>
       }
     >
-      <p className="mb-2 text-xs text-amber-700">
-        Copy this key now. It will not be shown again.
-      </p>
-      <div className="flex items-center gap-2">
-        <code className="flex-1 truncate rounded-md bg-gray-100 px-3 py-2 font-mono text-xs">
-          {data.key}
-        </code>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            navigator.clipboard.writeText(data.key);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          }}
-        >
-          <Copy size={13} /> {copied ? "Copied" : "Copy"}
-        </Button>
+      <div className="space-y-4">
+        <div>
+          <p className="mb-2 text-xs text-amber-700">
+            Copy this key now. It will not be shown again.
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded-md bg-gray-100 px-3 py-2 font-mono text-xs">
+              {data.key}
+            </code>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                navigator.clipboard.writeText(data.key);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              <Copy size={13} /> {copied ? "Copied" : "Copy"}
+            </Button>
+          </div>
+        </div>
+
+        {data.endpoint && (
+          <div>
+            <p className="mb-2 text-xs text-gray-600">
+              Base URL for OpenAI-compatible clients:
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 truncate rounded-md bg-gray-100 px-3 py-2 font-mono text-xs">
+                {data.endpoint}
+              </code>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(data.endpoint!);
+                  setCopiedEndpoint(true);
+                  setTimeout(() => setCopiedEndpoint(false), 1500);
+                }}
+              >
+                <Copy size={13} /> {copiedEndpoint ? "Copied" : "Copy"}
+              </Button>
+            </div>
+            <p className="mt-1 text-[11px] text-gray-400">
+              Use this as the base_url in OpenAI SDK or compatible clients.
+            </p>
+          </div>
+        )}
       </div>
     </Modal>
   );

@@ -14,6 +14,7 @@ export interface ApiKeyView {
   expiresAt: number | null;
   lastUsedAt: number | null;
   createdBy: string;
+  endpoint?: string;
 }
 
 export interface TenantInfo {

@@ -165,10 +165,11 @@ export function resolveTestTarget(input: {
     : (v1Spec?.needsKey ?? true);
   const baseUrl =
     (settings.baseUrl as string | undefined) ?? v1Spec?.baseUrl ?? "";
+  // For custom OpenAI-compatible providers, default to OpenAI's standard path
   const modelsPath =
     (settings.modelsPath as string | undefined) ??
     v1Spec?.modelsPath ??
-    "/models";
+    (isCustomProviderName(provider) ? "/v1/models" : "/models");
   if (!baseUrl) {
     return { error: "No base URL for this provider" };
   }
@@ -176,8 +177,11 @@ export function resolveTestTarget(input: {
   if (needsKey && !key) return { error: "No API key provided to test" };
   const headers: Record<string, string> = {};
   if (key) headers.authorization = `Bearer ${key}`;
+  // Normalize URL construction to avoid double slashes
+  const base = baseUrl.replace(/\/+$/, "");
+  const path = modelsPath.startsWith("/") ? modelsPath : `/${modelsPath}`;
   return {
-    target: { url: `${baseUrl}${modelsPath}`, headers },
+    target: { url: `${base}${path}`, headers },
     needsKey,
     keyHint: key ? maskSecret(key) : "none (local provider)",
   };
@@ -248,19 +252,25 @@ export function resolveChatProbe(input: {
     : (v1Spec?.needsKey ?? true);
   const baseUrl =
     (settings.baseUrl as string | undefined) ?? v1Spec?.baseUrl ?? "";
+  // For custom OpenAI-compatible providers, default to OpenAI's standard path
   const chatCompletionPath =
     (settings.chatCompletionPath as string | undefined) ??
     v1Spec?.chatCompletionPath ??
-    "/chat/completions";
+    (isCustomProviderName(provider) ? "/v1/chat/completions" : "/chat/completions");
   if (!baseUrl) return { error: "No base URL for this provider" };
   const key = pickKey(provider, input.keys, needsKey);
   if (needsKey && !key) return { error: "No API key provided to test" };
   const headers: Record<string, string> = {};
   if (key) headers.authorization = `Bearer ${key}`;
+  // Normalize URL construction to avoid double slashes
+  const base = baseUrl.replace(/\/+$/, "");
+  const path = chatCompletionPath.startsWith("/")
+    ? chatCompletionPath
+    : `/${chatCompletionPath}`;
   return {
     request: {
       target: {
-        url: `${baseUrl}${chatCompletionPath}`,
+        url: `${base}${path}`,
         headers: { "content-type": "application/json", ...headers },
       },
       needsKey,

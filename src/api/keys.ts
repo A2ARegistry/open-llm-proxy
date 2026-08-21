@@ -7,6 +7,7 @@ import {
 } from "../llm/provider-registry";
 import { reconcileKeyDisable } from "../metrics/spend-guard";
 import { newId } from "../tenants/encryption";
+import { getTenantPrefixInfo } from "../tenants/prefixes";
 import { ApiKeyScopes } from "../types";
 import { randomBytes, sha256Hex, nowSeconds } from "../utils/crypto";
 import { Hono } from "hono";
@@ -75,17 +76,20 @@ function validateScopes(scopes: unknown): ApiKeyScopes {
   return out;
 }
 
-function publicKeyView(row: {
-  id: string;
-  name: string;
-  key_prefix: string;
-  status: string;
-  scopes: string;
-  created_at: number;
-  expires_at: number | null;
-  last_used_at: number | null;
-  created_by: string;
-}) {
+function publicKeyView(
+  row: {
+    id: string;
+    name: string;
+    key_prefix: string;
+    status: string;
+    scopes: string;
+    created_at: number;
+    expires_at: number | null;
+    last_used_at: number | null;
+    created_by: string;
+  },
+  endpoint?: string,
+) {
   return {
     id: row.id,
     name: row.name,
@@ -96,6 +100,7 @@ function publicKeyView(row: {
     expiresAt: row.expires_at,
     lastUsedAt: row.last_used_at,
     createdBy: row.created_by,
+    ...(endpoint ? { endpoint } : {}),
   };
 }
 
@@ -122,7 +127,17 @@ keysRouter.get("/", async (c) => {
   )
     .bind(orgId)
     .all<KeyRow>();
-  return c.json({ keys: results.map(publicKeyView) });
+
+  // Get tenant prefix info to build base endpoint URL
+  const prefixInfo = await getTenantPrefixInfo(c.env, orgId);
+  const basePath = prefixInfo
+    ? prefixInfo.customPrefix ??
+      (prefixInfo.isRoot ? "" : prefixInfo.systemPrefix ?? "")
+    : "";
+  const baseUrl = c.env.BASE_URL || "http://localhost:8787";
+  const endpoint = basePath ? `${baseUrl}/${basePath}` : baseUrl;
+
+  return c.json({ keys: results.map((r) => publicKeyView(r, endpoint)) });
 });
 
 // POST /api/keys — create a key; returns the plaintext key exactly once.
@@ -198,6 +213,15 @@ keysRouter.post("/", async (c) => {
     details: { name: name.trim(), keyPrefix: plaintext.slice(0, 8) },
   });
 
+  // Get tenant prefix info to build base endpoint URL
+  const prefixInfo = await getTenantPrefixInfo(c.env, orgId);
+  const basePath = prefixInfo
+    ? prefixInfo.customPrefix ??
+      (prefixInfo.isRoot ? "" : prefixInfo.systemPrefix ?? "")
+    : "";
+  const baseUrl = c.env.BASE_URL || "http://localhost:8787";
+  const endpoint = basePath ? `${baseUrl}/${basePath}` : baseUrl;
+
   return c.json(
     {
       id,
@@ -208,6 +232,7 @@ keysRouter.post("/", async (c) => {
       scopes,
       expiresAt,
       createdAt: now,
+      endpoint,
     },
     201,
   );
@@ -341,10 +366,20 @@ keysRouter.post("/:id/rotate", async (c) => {
     details: { rotated: true },
   });
 
+  // Get tenant prefix info to build base endpoint URL
+  const prefixInfo = await getTenantPrefixInfo(c.env, orgId);
+  const basePath = prefixInfo
+    ? prefixInfo.customPrefix ??
+      (prefixInfo.isRoot ? "" : prefixInfo.systemPrefix ?? "")
+    : "";
+  const baseUrl = c.env.BASE_URL || "http://localhost:8787";
+  const endpoint = basePath ? `${baseUrl}/${basePath}` : baseUrl;
+
   return c.json({
     id,
     key: plaintext,
     keyPrefix: plaintext.slice(0, 8),
+    endpoint,
     message: "Previous key secret is revoked; update clients promptly.",
   });
 });

@@ -9,12 +9,13 @@ import {
   getPiAiProviderSpec,
   type RegisteredProvider,
 } from "./provider-registry";
-import { createModels } from "@earendil-works/pi-ai";
+// Try importing Models class directly instead of createModels factory
 import type {
   AssistantMessage,
   AssistantMessageEvent,
   Context,
   Model,
+  MutableModels,
 } from "@earendil-works/pi-ai";
 
 export type PiModelApi =
@@ -43,26 +44,49 @@ export interface TenantModelsOptions {
   enabledProviders: string[];
 }
 
-export function createTenantModels(options: TenantModelsOptions): StreamResult {
+export async function createTenantModels(options: TenantModelsOptions): Promise<StreamResult> {
   const { env, organizationId, enabledProviders } = options;
+  console.log(
+    `[models-factory] Creating tenant models | org=${organizationId} | providers=${enabledProviders.join(",")}`,
+  );
   const store = createTenantCredentialStore(env, organizationId);
-  const models = createModels({
-    credentials: store,
-    authContext: {
-      env: async () => undefined,
-      fileExists: async () => false,
-    },
-  });
+  
+  // Try dynamic import to avoid bundler issues
+  let models: MutableModels;
+  try {
+    // Import createModels dynamically
+    const piAi = await import("@earendil-works/pi-ai");
+    models = piAi.createModels({
+      credentials: store,
+      authContext: {
+        env: async () => undefined,
+        fileExists: async () => false,
+      },
+    });
+    console.log(`[models-factory] Models instance created successfully via dynamic import`);
+  } catch (err) {
+    console.log(`[models-factory] Dynamic import failed:`, err);
+    throw err;
+  }
 
   const registered: RegisteredProvider[] = [];
   for (const name of enabledProviders) {
     const spec = getPiAiProviderSpec(name);
-    if (!spec) continue;
+    if (!spec) {
+      console.log(`[models-factory] No pi-ai spec for provider: ${name}`);
+      continue;
+    }
     const provider = buildPiAiProvider(spec);
     models.setProvider(provider);
     registered.push({ id: spec.id, name: spec.name, mode: "pi-ai" });
+    console.log(
+      `[models-factory] Registered provider: ${name} (id=${spec.id})`,
+    );
   }
 
+  console.log(
+    `[models-factory] Tenant models ready | registered=${registered.length}`,
+  );
   return {
     registered,
     complete({ model, context, signal }) {

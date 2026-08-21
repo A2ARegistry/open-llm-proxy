@@ -111,33 +111,44 @@ export async function chatCompletionsV2(
   const { env, apiKeyAuth, request, ctx } = input;
   const organizationId = apiKeyAuth.organizationId;
 
+  console.log(
+    `[chat-completions] Request started | org=${organizationId} | keyId=${apiKeyAuth.keyId} | boundProvider=${apiKeyAuth.scopes.defaultProvider || "none"}`,
+  );
+
   const tenants = new TenantService(env.DB);
   const settings = await tenants.getSettings(organizationId);
 
   const tenantBlocked = assertTenantActive(settings);
-  if (tenantBlocked)
+  if (tenantBlocked) {
+    console.log(`[chat-completions] Tenant blocked: ${tenantBlocked.message}`);
     return errorBody(tenantBlocked.code, tenantBlocked.message);
+  }
 
   const sbDisabledUntil = apiKeyAuth.spendDisabledUntil;
   const tenantSpendDisabledUntil = settings.spendDisabledUntil as
     number | undefined;
   if (sbDisabledUntil && Date.now() / 1000 < sbDisabledUntil) {
+    console.log(`[chat-completions] API key spend cap reached`);
     return errorBody("spend_limit_exceeded", "API key spend cap reached");
   }
   if (
     tenantSpendDisabledUntil &&
     Date.now() / 1000 < tenantSpendDisabledUntil
   ) {
+    console.log(`[chat-completions] Tenant spend limit reached`);
     return errorBody("spend_limit_exceeded", "Tenant spend limit reached");
   }
 
   const body = parseBody(await request.text());
   if (!body) {
+    console.log(`[chat-completions] Invalid request body`);
     return errorBody("invalid_model", "Invalid request body");
   }
   const chatBody = body as unknown as ChatCompletionsRequest;
 
   const rawModel = typeof body.model === "string" ? body.model.trim() : "";
+  console.log(`[chat-completions] Raw model string: "${rawModel}"`);
+  
   // An API key may be bound to a provider (scopes.defaultProvider): the key
   // then only ever routes to that provider and users can send bare model ids.
   // Unbound keys must name the provider explicitly (`provider/model`).
@@ -249,6 +260,10 @@ export async function chatCompletionsV2(
     config.settings?.authMode === "service-account";
   const piSpec = getPiAiProviderSpec(providerName);
 
+  console.log(
+    `[chat-completions] Resolved provider | provider=${providerName} | model=${modelId} | stream=${stream} | piSpec=${!!piSpec} | vertexOpenAiCompat=${vertexOpenAiCompat} | authMode=${config.settings?.authMode} | isVertex=${isVertexProvider(providerName)}`,
+  );
+
   const maxTokens = numberParam(
     chatBody.max_tokens ?? chatBody.max_completion_tokens,
   );
@@ -337,7 +352,7 @@ export async function chatCompletionsV2(
   };
 
   if (piSpec && !vertexOpenAiCompat) {
-    const models = createTenantModels({
+    const models = await createTenantModels({
       env,
       organizationId,
       enabledProviders: [providerName],
@@ -477,6 +492,7 @@ export async function chatCompletionsV2(
   let client: V1OpenAICompatibleClient;
   let upstreamModelId = modelId;
   if (isVertexProvider(providerName)) {
+    console.log(`[chat-completions] Setting up Vertex AI client (service-account mode)`);
     let vertexAuth: Record<string, string>;
     try {
       const vertex = parseVertexConfig({
@@ -485,13 +501,18 @@ export async function chatCompletionsV2(
       });
       vertexAuth = await resolveVertexHeaders(vertex);
       upstreamModelId = vertexModelId(modelId);
+      const baseUrl = vertexBaseUrl(vertex.settings.location);
+      const chatPath = vertexChatCompletionsPath(
+        vertex.settings.projectId,
+        vertex.settings.location,
+      );
+      console.log(
+        `[chat-completions] Vertex Service Account | baseUrl=${baseUrl} | chatPath=${chatPath}`,
+      );
       client = new V1OpenAICompatibleClient({
         provider: providerName,
-        baseUrl: vertexBaseUrl(vertex.settings.location),
-        chatCompletionPath: vertexChatCompletionsPath(
-          vertex.settings.projectId,
-          vertex.settings.location,
-        ),
+        baseUrl,
+        chatCompletionPath: chatPath,
         modelsPath: vertexModelsPath(
           vertex.settings.projectId,
           vertex.settings.location,
@@ -500,6 +521,7 @@ export async function chatCompletionsV2(
         authHeaders: vertexAuth,
       });
     } catch (err) {
+      console.log(`[chat-completions] Vertex setup error:`, err);
       return errorBody(
         "not_configured",
         err instanceof Error ? err.message : "Vertex AI is not configured",

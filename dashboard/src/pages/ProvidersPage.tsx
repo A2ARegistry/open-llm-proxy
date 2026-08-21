@@ -931,7 +931,7 @@ function ProviderFormModal({
                     <Input
                       value={chatPath}
                       onChange={(e) => setChatPath(e.target.value)}
-                      placeholder="/chat/completions"
+                      placeholder="/v1/chat/completions"
                     />
                   </div>
                   <div>
@@ -939,7 +939,7 @@ function ProviderFormModal({
                     <Input
                       value={modelsPath}
                       onChange={(e) => setModelsPath(e.target.value)}
-                      placeholder="/models"
+                      placeholder="/v1/models"
                     />
                   </div>
                 </div>

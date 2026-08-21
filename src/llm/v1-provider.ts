@@ -30,20 +30,22 @@ export class V1OpenAICompatibleClient {
   }) {
     const canonical = canonicalProviderName(options.provider);
     const spec = getV1ProviderSpec(canonical);
+    const isCustom = !spec; // Custom provider if no built-in spec
     this.keys = options.keys;
     this.needsKey = spec?.needsKey ?? true;
     this.baseUrl =
       options.custom?.baseUrl ?? options.baseUrl ?? spec?.baseUrl ?? "";
+    // For custom OpenAI-compatible providers, default to OpenAI's standard paths
     this.chatCompletionPath =
       options.custom?.chatCompletionPath ??
       options.chatCompletionPath ??
       spec?.chatCompletionPath ??
-      "/chat/completions";
+      (isCustom ? "/v1/chat/completions" : "/chat/completions");
     this.modelsPath =
       options.custom?.modelsPath ??
       options.modelsPath ??
       spec?.modelsPath ??
-      "/models";
+      (isCustom ? "/v1/models" : "/models");
     this.extraHeaders = {};
     if (canonical === "perplexity-ai") {
       // Perplexity honors OpenAI-compatible headers already; no extras.
@@ -72,7 +74,10 @@ export class V1OpenAICompatibleClient {
   }
 
   private fullUrl(path: string): string {
-    return `${this.baseUrl}${path}`;
+    // Normalize: remove trailing slash from baseUrl, ensure path starts with /
+    const base = this.baseUrl.replace(/\/+$/, "");
+    const normalized = path.startsWith("/") ? path : `/${path}`;
+    return `${base}${normalized}`;
   }
 
   async chatCompletions(
