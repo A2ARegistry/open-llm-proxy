@@ -5,6 +5,7 @@ import {
   InitialAdminInfo,
 } from "./admin";
 import { ensureSecrets } from "./secrets";
+import { seedTemplates } from "../email/templates";
 
 const bootstrapCache = new WeakMap<Env, Promise<void>>();
 
@@ -12,6 +13,7 @@ const bootstrapCache = new WeakMap<Env, Promise<void>>();
  * One-time self-serve initialization for a fresh deployment:
  * 1. Generate + persist runtime secrets (auth secret, encryption key).
  * 2. Seed the default admin account + organization.
+ * 3. Seed default system email templates.
  *
  * Memoized per isolate so the cost is a single `users` lookup per request
  * afterwards; the seed itself is idempotent under concurrent first requests.
@@ -31,6 +33,13 @@ export function ensureBootstrapped(env: Env): Promise<void> {
 async function doBootstrap(env: Env): Promise<void> {
   await ensureSecrets(env);
   await ensureInitialAdmin(env);
+  
+  try {
+    await seedTemplates(env);
+  } catch (error) {
+    console.error('[Bootstrap] Failed to seed email templates - email features may not work:', error);
+    // Don't throw - allow app to start even if email seeding fails
+  }
 }
 
 export interface BootstrapStatus {

@@ -152,32 +152,38 @@ Thanks,\nThe {{brand_name}} team`,
 
 /** Seed templates idempotently (upsert by template_id). */
 export async function seedTemplates(env: Env): Promise<number> {
-  const batch = SEED_TEMPLATES.map((t) =>
-    env.DB.prepare(
-      `INSERT INTO system_email_templates
-        (template_id, template_name, template_type, subject_template, body_markdown, variables, description, is_active, created_at, updated_at, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'system')
-       ON CONFLICT(template_id) DO UPDATE SET
-         template_name = excluded.template_name,
-         template_type = excluded.template_type,
-         subject_template = excluded.subject_template,
-         body_markdown = excluded.body_markdown,
-         variables = excluded.variables,
-         description = excluded.description,
-         is_active = 1,
-         updated_at = excluded.updated_at`,
-    ).bind(
-      t.template_id,
-      t.template_name,
-      t.template_type,
-      t.subject_template,
-      t.body_markdown,
-      JSON.stringify(t.variables),
-      t.description,
-      nowSeconds(),
-      nowSeconds(),
-    ),
-  );
-  await env.DB.batch(batch);
-  return SEED_TEMPLATES.length;
+  try {
+    const batch = SEED_TEMPLATES.map((t) =>
+      env.DB.prepare(
+        `INSERT INTO system_email_templates
+          (template_id, template_name, template_type, subject_template, body_markdown, variables, description, is_active, created_at, updated_at, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'system')
+         ON CONFLICT(template_id) DO UPDATE SET
+           template_name = excluded.template_name,
+           template_type = excluded.template_type,
+           subject_template = excluded.subject_template,
+           body_markdown = excluded.body_markdown,
+           variables = excluded.variables,
+           description = excluded.description,
+           is_active = 1,
+           updated_at = excluded.updated_at`,
+      ).bind(
+        t.template_id,
+        t.template_name,
+        t.template_type,
+        t.subject_template,
+        t.body_markdown,
+        JSON.stringify(t.variables),
+        t.description,
+        nowSeconds(),
+        nowSeconds(),
+      ),
+    );
+    await env.DB.batch(batch);
+    console.log(`[seedTemplates] Successfully seeded ${SEED_TEMPLATES.length} templates`);
+    return SEED_TEMPLATES.length;
+  } catch (error) {
+    console.error('[seedTemplates] Failed to seed templates:', error);
+    throw error;
+  }
 }

@@ -21,10 +21,12 @@ CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, organizationId TEXT NOT
 CREATE TABLE IF NOT EXISTS invitations (id TEXT PRIMARY KEY, organizationId TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, email TEXT NOT NULL, role TEXT, status TEXT NOT NULL, expiresAt INTEGER NOT NULL, inviterId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, createdAt INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id), action TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT, details TEXT, timestamp INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS system_email_templates (template_id TEXT PRIMARY KEY, template_name TEXT NOT NULL, template_type TEXT NOT NULL, subject_template TEXT NOT NULL, body_markdown TEXT NOT NULL, variables TEXT, description TEXT, is_active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, updated_by TEXT);
 `;
 
 async function resetDb() {
   for (const table of [
+    "system_email_templates",
     "audit_logs",
     "invitations",
     "members",
