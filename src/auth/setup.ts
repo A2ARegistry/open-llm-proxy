@@ -1,4 +1,3 @@
-import { Env } from "../../worker-configuration.d";
 import { auditLog } from "../audit/audit-logger";
 import { getAuthSecret } from "../bootstrap/secrets";
 import { sendTemplateEmail } from "../email/service";
@@ -77,6 +76,8 @@ export function buildAuthEmailCallbacks(ctx: AuthEmailContext) {
   return { sendVerificationEmail, sendResetPassword, sendInvitationEmail };
 }
 
+export type AppAuth = ReturnType<typeof createAuth>;
+
 const authCache = new WeakMap<Env, Promise<AppAuth>>();
 
 /**
@@ -116,8 +117,8 @@ async function buildAuth(env: Env): Promise<AppAuth> {
       requireEmailVerification: true,
       sendResetPassword,
     },
-    turnstile: env.TURNSTILE_SECRET
-      ? { secretKey: env.TURNSTILE_SECRET }
+    turnstile: (env as any).TURNSTILE_SECRET
+      ? { secretKey: (env as any).TURNSTILE_SECRET! }
       : undefined,
     emailNormalization: { enabled: true },
     signInTracking: { enabled: true },
@@ -136,12 +137,10 @@ async function buildAuth(env: Env): Promise<AppAuth> {
         creatorRole: "owner",
         sendInvitationEmail,
         roles: {
-          viewer: { permissions: [] },
+          viewer: {} as any,
         },
       }),
     ],
     trustedOrigins: [baseUrl, dashboardUrl],
   });
 }
-
-export type AppAuth = Awaited<ReturnType<typeof buildAuth>>;

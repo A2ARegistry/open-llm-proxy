@@ -1,11 +1,13 @@
+import { Spinner } from "./ui";
+import { authClient } from "@contentgrowth/content-auth";
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { authClient } from "@contentgrowth/content-auth";
-import { Spinner } from "./ui";
 
 export function ProtectedRoute() {
   const location = useLocation();
-  const [status, setStatus] = useState<"loading" | "authed" | "guest">("loading");
+  const [status, setStatus] = useState<"loading" | "authed" | "guest">(
+    "loading",
+  );
 
   useEffect(() => {
     let alive = true;

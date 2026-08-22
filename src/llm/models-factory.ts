@@ -44,13 +44,15 @@ export interface TenantModelsOptions {
   enabledProviders: string[];
 }
 
-export async function createTenantModels(options: TenantModelsOptions): Promise<StreamResult> {
+export async function createTenantModels(
+  options: TenantModelsOptions,
+): Promise<StreamResult> {
   const { env, organizationId, enabledProviders } = options;
   console.log(
     `[models-factory] Creating tenant models | org=${organizationId} | providers=${enabledProviders.join(",")}`,
   );
   const store = createTenantCredentialStore(env, organizationId);
-  
+
   // Try dynamic import to avoid bundler issues
   let models: MutableModels;
   try {
@@ -63,7 +65,9 @@ export async function createTenantModels(options: TenantModelsOptions): Promise<
         fileExists: async () => false,
       },
     });
-    console.log(`[models-factory] Models instance created successfully via dynamic import`);
+    console.log(
+      `[models-factory] Models instance created successfully via dynamic import`,
+    );
   } catch (err) {
     console.log(`[models-factory] Dynamic import failed:`, err);
     throw err;

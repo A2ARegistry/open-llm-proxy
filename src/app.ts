@@ -148,24 +148,62 @@ export function createApp(): Hono<AppBindings> {
     });
   };
 
-  const proxyChain = [
+  app.post(
+    "/v1/chat/completions",
     tenantPrefixMiddleware,
     apiKeyAuthMiddleware,
     tenantPrefixGuardMiddleware,
-  ];
-
-  app.post("/v1/chat/completions", ...proxyChain, chatCompletions);
-  app.post(
-    "/:tenantPrefix/v1/chat/completions",
-    ...proxyChain,
     chatCompletions,
   );
-  app.post("/chat/completions", ...proxyChain, chatCompletions);
-  app.post("/:tenantPrefix/chat/completions", ...proxyChain, chatCompletions);
-  app.get("/v1/models", ...proxyChain, listModels);
-  app.get("/:tenantPrefix/v1/models", ...proxyChain, listModels);
-  app.get("/models", ...proxyChain, listModels);
-  app.get("/:tenantPrefix/models", ...proxyChain, listModels);
+  app.post(
+    "/:tenantPrefix/v1/chat/completions",
+    tenantPrefixMiddleware,
+    apiKeyAuthMiddleware,
+    tenantPrefixGuardMiddleware,
+    chatCompletions,
+  );
+  app.post(
+    "/chat/completions",
+    tenantPrefixMiddleware,
+    apiKeyAuthMiddleware,
+    tenantPrefixGuardMiddleware,
+    chatCompletions,
+  );
+  app.post(
+    "/:tenantPrefix/chat/completions",
+    tenantPrefixMiddleware,
+    apiKeyAuthMiddleware,
+    tenantPrefixGuardMiddleware,
+    chatCompletions,
+  );
+  app.get(
+    "/v1/models",
+    tenantPrefixMiddleware,
+    apiKeyAuthMiddleware,
+    tenantPrefixGuardMiddleware,
+    listModels,
+  );
+  app.get(
+    "/:tenantPrefix/v1/models",
+    tenantPrefixMiddleware,
+    apiKeyAuthMiddleware,
+    tenantPrefixGuardMiddleware,
+    listModels,
+  );
+  app.get(
+    "/models",
+    tenantPrefixMiddleware,
+    apiKeyAuthMiddleware,
+    tenantPrefixGuardMiddleware,
+    listModels,
+  );
+  app.get(
+    "/:tenantPrefix/models",
+    tenantPrefixMiddleware,
+    apiKeyAuthMiddleware,
+    tenantPrefixGuardMiddleware,
+    listModels,
+  );
 
   return app;
 }

@@ -1,6 +1,6 @@
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { ResetPasswordForm } from "@contentgrowth/content-auth";
 import { AuthLayout } from "./AuthLayout";
+import { ResetPasswordForm } from "@contentgrowth/content-auth";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 export function ResetPasswordPage() {
   const navigate = useNavigate();

@@ -1,6 +1,6 @@
 # Deployment Guide: Cloudflare Dashboard Auto-Deploy (Git CI/CD)
 
-This guide walks you through deploying **Open LLM Proxy** via the **Cloudflare Dashboard (Workers Builds / Git Integration)**. 
+This guide walks you through deploying **Open LLM Proxy** via the **Cloudflare Dashboard (Workers Builds / Git Integration)**.
 
 Because this is a public open-source repository, **you do not need to commit any sensitive domain names, account credentials, or production resource IDs into `wrangler.jsonc` or Git history.** Everything private is securely configured in your Cloudflare Dashboard.
 
@@ -19,21 +19,26 @@ Because this is a public open-source repository, **you do not need to commit any
 In the [Cloudflare Dashboard](https://dash.cloudflare.com/):
 
 ### 1.1 Create D1 Database
+
 1. Go to **Storage & Databases** → **D1 SQL Database**.
 2. Click **Create Database**.
 3. Name it `open-llm-proxy-prod`.
 
 ### 1.2 Create KV Namespace
+
 1. Go to **Storage & Databases** → **KV**.
 2. Click **Create Namespace**.
 3. Name it `SESSION_CACHE_PROD` (or `open-llm-proxy-sessions`).
 
 ### 1.3 Apply Initial Database Migrations
+
 Run the D1 migrations against your remote database once using Wrangler CLI (or D1 Console in Dashboard):
+
 ```bash
 npx wrangler d1 migrations apply open-llm-proxy-prod --remote
 ```
-*(Or use `npx wrangler d1 migrations apply DB --remote`)*
+
+_(Or use `npx wrangler d1 migrations apply DB --remote`)_
 
 ---
 
@@ -49,6 +54,7 @@ npx wrangler d1 migrations apply open-llm-proxy-prod --remote
 ## Step 3: Configure Build Settings
 
 In the **Build settings** section:
+
 - **Framework preset**: `None`
 - **Build command**:
   ```bash
@@ -64,6 +70,7 @@ In the **Build settings** section:
 Once the project is connected, go to your Worker's **Settings**:
 
 ### 4.1 Bindings (Settings → Bindings)
+
 Link the real Cloudflare resources to the binding names used in code:
 
 1. **D1 Database Binding**:
@@ -83,22 +90,25 @@ Link the real Cloudflare resources to the binding names used in code:
 ---
 
 ### 4.2 Environment Variables (Settings → Variables and Secrets)
+
 Add your production environment variables (plaintext):
 
-| Variable Name | Production Value (Example) | Description |
-|---|---|---|
-| `ENVIRONMENT` | `production` | Deployment environment |
-| `BASE_URL` | `https://api.yourdomain.com` | Public base URL for the API & Proxy |
-| `DASHBOARD_URL` | `https://api.yourdomain.com` | URL where the admin UI is hosted |
-| `APP_NAME` | `Open LLM Proxy` | Application name displayed in UI/emails |
-| `RATE_LIMITER_SHARDS` | `8` | Number of DO shards for tenant rate limiting |
-| `METRICS_BUFFER_SHARDS`| `8` | Number of DO shards for request buffering |
-| `SESSION_CACHE_TTL_SECONDS` | `3600` | Session cache TTL in seconds |
+| Variable Name               | Production Value (Example)   | Description                                  |
+| --------------------------- | ---------------------------- | -------------------------------------------- |
+| `ENVIRONMENT`               | `production`                 | Deployment environment                       |
+| `BASE_URL`                  | `https://api.yourdomain.com` | Public base URL for the API & Proxy          |
+| `DASHBOARD_URL`             | `https://api.yourdomain.com` | URL where the admin UI is hosted             |
+| `APP_NAME`                  | `Open LLM Proxy`             | Application name displayed in UI/emails      |
+| `RATE_LIMITER_SHARDS`       | `8`                          | Number of DO shards for tenant rate limiting |
+| `METRICS_BUFFER_SHARDS`     | `8`                          | Number of DO shards for request buffering    |
+| `SESSION_CACHE_TTL_SECONDS` | `3600`                       | Session cache TTL in seconds                 |
 
 ---
 
 ### 4.3 Secrets (Settings → Variables and Secrets → Add Secret)
+
 Add any encrypted credentials required:
+
 - `JWT_SECRET` (if customized)
 - Any default provider keys you want encrypted at rest
 

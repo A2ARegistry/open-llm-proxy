@@ -47,7 +47,9 @@ function publicInvitationView(row: InvitationRow) {
 
 /** Reuse the request-scoped auth instance when available. */
 function authFor(c: Context<AppBindings>): Promise<AppAuth> {
-  return c.get("auth") ?? getAuthFor(c.env);
+  const auth = c.get("auth");
+  if (auth) return Promise.resolve(auth);
+  return getAuthFor(c.env);
 }
 
 /** Run a Better Auth organization plugin call, mapping failures to HTTP errors. */

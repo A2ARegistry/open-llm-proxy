@@ -131,8 +131,8 @@ keysRouter.get("/", async (c) => {
   // Get tenant prefix info to build base endpoint URL
   const prefixInfo = await getTenantPrefixInfo(c.env, orgId);
   const basePath = prefixInfo
-    ? prefixInfo.customPrefix ??
-      (prefixInfo.isRoot ? "" : prefixInfo.systemPrefix ?? "")
+    ? (prefixInfo.customPrefix ??
+      (prefixInfo.isRoot ? "" : (prefixInfo.systemPrefix ?? "")))
     : "";
   const baseUrl = c.env.BASE_URL || "http://localhost:8787";
   const endpoint = basePath ? `${baseUrl}/${basePath}` : baseUrl;
@@ -216,8 +216,8 @@ keysRouter.post("/", async (c) => {
   // Get tenant prefix info to build base endpoint URL
   const prefixInfo = await getTenantPrefixInfo(c.env, orgId);
   const basePath = prefixInfo
-    ? prefixInfo.customPrefix ??
-      (prefixInfo.isRoot ? "" : prefixInfo.systemPrefix ?? "")
+    ? (prefixInfo.customPrefix ??
+      (prefixInfo.isRoot ? "" : (prefixInfo.systemPrefix ?? "")))
     : "";
   const baseUrl = c.env.BASE_URL || "http://localhost:8787";
   const endpoint = basePath ? `${baseUrl}/${basePath}` : baseUrl;
@@ -369,8 +369,8 @@ keysRouter.post("/:id/rotate", async (c) => {
   // Get tenant prefix info to build base endpoint URL
   const prefixInfo = await getTenantPrefixInfo(c.env, orgId);
   const basePath = prefixInfo
-    ? prefixInfo.customPrefix ??
-      (prefixInfo.isRoot ? "" : prefixInfo.systemPrefix ?? "")
+    ? (prefixInfo.customPrefix ??
+      (prefixInfo.isRoot ? "" : (prefixInfo.systemPrefix ?? "")))
     : "";
   const baseUrl = c.env.BASE_URL || "http://localhost:8787";
   const endpoint = basePath ? `${baseUrl}/${basePath}` : baseUrl;

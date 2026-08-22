@@ -446,7 +446,10 @@ function ProviderFormModal({
   onSaved: () => void;
 }) {
   const isVertex = provider === "google-vertex";
-  const isCustom = provider != null && !catalogById.has(provider) && provider !== "google-vertex";
+  const isCustom =
+    provider != null &&
+    !catalogById.has(provider) &&
+    provider !== "google-vertex";
   const [selected, setSelected] = useState(provider ?? PROVIDER_CATALOG[0].id);
   const hasExistingKeys = (initialKeyCount ?? 0) > 0;
   const [customId, setCustomId] = useState(
@@ -467,9 +470,7 @@ function ProviderFormModal({
   const [modelsPath, setModelsPath] = useState(
     isCustom ? String(initialSettings?.modelsPath ?? "") : "",
   );
-  const [keysText, setKeysText] = useState(
-    hasExistingKeys ? KEY_MASK : "",
-  );
+  const [keysText, setKeysText] = useState(hasExistingKeys ? KEY_MASK : "");
   const [projectId, setProjectId] = useState(
     isVertex ? String(initialSettings?.projectId ?? "") : "",
   );
@@ -525,10 +526,9 @@ function ProviderFormModal({
   const isCustomSelected = selected === "custom";
   const showCustomFields = isCustomSelected || isCustom;
   const targetProvider =
-    provider != null ? provider : (isCustomSelected ? customId.trim() : selected);
+    provider != null ? provider : isCustomSelected ? customId.trim() : selected;
 
-  const isMaskedKey = (v: string) =>
-    v.trim() === "" || v.trim() === KEY_MASK;
+  const isMaskedKey = (v: string) => v.trim() === "" || v.trim() === KEY_MASK;
 
   const enteredKeys = () =>
     isMaskedKey(keysText)
@@ -554,9 +554,7 @@ function ProviderFormModal({
     if (selected === "google-vertex") {
       if (authMode === "service-account") {
         return (
-          projectId.trim() &&
-          location.trim() &&
-          (hasRealKey || hasExistingKeys)
+          projectId.trim() && location.trim() && (hasRealKey || hasExistingKeys)
         );
       }
       return hasRealKey || hasExistingKeys;
@@ -570,17 +568,14 @@ function ProviderFormModal({
     settings?: Record<string, unknown>;
   } => {
     const defaultModelSetting =
-      defaultModel.trim() !== ""
-        ? { defaultModel: defaultModel.trim() }
-        : {};
+      defaultModel.trim() !== "" ? { defaultModel: defaultModel.trim() } : {};
     const keys = enteredKeys();
     const keysSetting = keys.length ? { keys } : {};
-    
+
     // For custom providers, send name as top-level field
-    const nameSetting = showCustomFields && customName.trim()
-      ? { name: customName.trim() }
-      : {};
-    
+    const nameSetting =
+      showCustomFields && customName.trim() ? { name: customName.trim() } : {};
+
     if (selected === "google-vertex") {
       if (authMode === "service-account") {
         return {
@@ -609,9 +604,7 @@ function ProviderFormModal({
         ...nameSetting,
         settings: {
           baseUrl: baseUrl.trim(),
-          ...(chatPath.trim()
-            ? { chatCompletionPath: chatPath.trim() }
-            : {}),
+          ...(chatPath.trim() ? { chatCompletionPath: chatPath.trim() } : {}),
           ...(modelsPath.trim() ? { modelsPath: modelsPath.trim() } : {}),
           customModels: parseCustomModels(),
           ...defaultModelSetting,
@@ -724,7 +717,9 @@ function ProviderFormModal({
               onChange={(v) => {
                 setSelected(v as string);
                 if (!provider)
-                  setDefaultModel(catalogById.get(v as string)?.defaultModel ?? "");
+                  setDefaultModel(
+                    catalogById.get(v as string)?.defaultModel ?? "",
+                  );
               }}
               options={PROVIDER_CATALOG.map((p) => ({
                 value: p.id,
@@ -868,9 +863,12 @@ function ProviderFormModal({
                   size="sm"
                   onClick={runFetchModels}
                   loading={fetchingModels}
-                  disabled={!baseUrl.trim() || (provider == null && !targetProvider)}
+                  disabled={
+                    !baseUrl.trim() || (provider == null && !targetProvider)
+                  }
                 >
-                  <Sparkles size={13} className="text-indigo-600" /> Auto-Detect Models
+                  <Sparkles size={13} className="text-indigo-600" /> Auto-Detect
+                  Models
                 </Button>
               </div>
               <Input
@@ -911,7 +909,9 @@ function ProviderFormModal({
               <div className="mt-3 space-y-3 border-t border-gray-200/60 pt-3">
                 {provider == null && (
                   <div>
-                    <Label>Provider Slug ID (used in requests as `slug/model`)</Label>
+                    <Label>
+                      Provider Slug ID (used in requests as `slug/model`)
+                    </Label>
                     <Input
                       value={customId}
                       onChange={(e) => {
@@ -921,7 +921,10 @@ function ProviderFormModal({
                       placeholder="e.g. my-ollama"
                     />
                     <p className="mt-1 text-[11px] text-gray-400">
-                      Request format: <code>{customId ? `${customId}/model-id` : "slug/model-id"}</code>
+                      Request format:{" "}
+                      <code>
+                        {customId ? `${customId}/model-id` : "slug/model-id"}
+                      </code>
                     </p>
                   </div>
                 )}
@@ -944,7 +947,9 @@ function ProviderFormModal({
                   </div>
                 </div>
                 <div>
-                  <Label>Pinned Custom Model IDs (one per line, optional)</Label>
+                  <Label>
+                    Pinned Custom Model IDs (one per line, optional)
+                  </Label>
                   <textarea
                     className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     rows={2}
@@ -953,7 +958,8 @@ function ProviderFormModal({
                     onChange={(e) => setCustomModelsText(e.target.value)}
                   />
                   <p className="mt-1 text-[11px] text-gray-400">
-                    Explicitly list model IDs to expose in /v1/models if the endpoint has no /models route.
+                    Explicitly list model IDs to expose in /v1/models if the
+                    endpoint has no /models route.
                   </p>
                 </div>
               </div>
@@ -993,7 +999,8 @@ function ProviderFormModal({
               placeholder="e.g. gemini-2.5-flash"
             />
             <p className="mt-1 text-[11px] text-gray-400">
-              Used when a request omits the model id, and by the connection test. Leave empty to use the built-in default.
+              Used when a request omits the model id, and by the connection
+              test. Leave empty to use the built-in default.
             </p>
           </div>
         )}

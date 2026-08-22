@@ -1,5 +1,6 @@
 import { TenantService } from "../db/tenant";
 import { getProviderConfig } from "../llm/credential-store";
+import { GoogleDirectAdapter } from "../llm/google-direct-adapter";
 import {
   isVertexProvider,
   parseVertexConfig,
@@ -9,7 +10,6 @@ import {
   vertexModelsPath,
   vertexModelId,
 } from "../llm/google-vertex";
-import { GoogleDirectAdapter } from "../llm/google-direct-adapter";
 import { resolveDefaultModel } from "../llm/model-catalog";
 import { createTenantModels, modelFor } from "../llm/models-factory";
 import {
@@ -147,9 +147,22 @@ export async function chatCompletionsV2(
   }
   const chatBody = body as unknown as ChatCompletionsRequest;
 
+  // Log raw incoming HTTP request user message directly from request body
+  if (chatBody.messages && Array.isArray(chatBody.messages)) {
+    const lastUserMsg = [...chatBody.messages]
+      .reverse()
+      .find((m) => m && m.role === "user");
+    if (lastUserMsg) {
+      console.log(
+        `[chat-completions] Raw incoming HTTP request last user message content:`,
+        JSON.stringify(lastUserMsg.content).slice(0, 300),
+      );
+    }
+  }
+
   const rawModel = typeof body.model === "string" ? body.model.trim() : "";
   console.log(`[chat-completions] Raw model string: "${rawModel}"`);
-  
+
   // An API key may be bound to a provider (scopes.defaultProvider): the key
   // then only ever routes to that provider and users can send bare model ids.
   // Unbound keys must name the provider explicitly (`provider/model`).
@@ -253,13 +266,12 @@ export async function chatCompletionsV2(
 
   const stream = chatBody.stream === true;
   const signal = request.signal;
-  
+
   // Google Vertex AI routing:
   // - Express Mode (api-key): Use GoogleDirectAdapter for proper tool call handling
   // - Service Account mode: Use OpenAI-compatible endpoint (existing V1 path)
   const vertexExpressMode =
-    isVertexProvider(providerName) &&
-    config.settings?.authMode === "api-key";
+    isVertexProvider(providerName) && config.settings?.authMode === "api-key";
   const vertexOpenAiCompat =
     isVertexProvider(providerName) &&
     config.settings?.authMode === "service-account";
@@ -381,25 +393,26 @@ export async function chatCompletionsV2(
     const googleAdapter = new GoogleDirectAdapter({ apiKey });
 
     // Extract tools from request
-    const tools =
-      chatBody.tools?.map((t: unknown) => {
-        const tool = t as {
-          type: string;
-          function: {
-            name: string;
-            description?: string;
-            parameters?: unknown;
+    const tools = Array.isArray(chatBody.tools)
+      ? chatBody.tools.map((t: unknown) => {
+          const tool = t as {
+            type: string;
+            function: {
+              name: string;
+              description?: string;
+              parameters?: unknown;
+            };
           };
-        };
-        return {
-          type: tool.type,
-          function: {
-            name: tool.function.name,
-            description: tool.function.description,
-            parameters: tool.function.parameters,
-          },
-        };
-      }) || undefined;
+          return {
+            type: tool.type || "function",
+            function: {
+              name: tool.function?.name || "",
+              description: tool.function?.description,
+              parameters: tool.function?.parameters as Record<string, unknown>,
+            },
+          };
+        })
+      : undefined;
 
     if (!stream) {
       if (cacheKey) {
@@ -579,7 +592,7 @@ export async function chatCompletionsV2(
       let message: AssistantMessage;
       try {
         console.log(
-          `[chat-completions] Calling models.complete | provider=${providerName} | model=${modelId}`
+          `[chat-completions] Calling models.complete | provider=${providerName} | model=${modelId}`,
         );
         message = await models.complete({
           model: piModel,
@@ -588,8 +601,8 @@ export async function chatCompletionsV2(
         });
         console.log(
           `[chat-completions] models.complete returned | stopReason=${message.stopReason} | ` +
-          `contentParts=${message.content.length} | ` +
-          `hasToolCalls=${message.content.some(p => p.type === "toolCall")}`
+            `contentParts=${message.content.length} | ` +
+            `hasToolCalls=${message.content.some((p) => p.type === "toolCall")}`,
         );
       } catch (err) {
         record({
@@ -619,7 +632,7 @@ export async function chatCompletionsV2(
         assistantToOpenAI(message, chatBody.model as string),
       );
       console.log(
-        `[chat-completions] Returning non-streaming response | bodyLength=${bodyText.length}`
+        `[chat-completions] Returning non-streaming response | bodyLength=${bodyText.length}`,
       );
       if (cacheKey) {
         ctx.waitUntil(
@@ -636,7 +649,7 @@ export async function chatCompletionsV2(
     const responseId = `chatcmpl-${Math.random().toString(36).slice(2)}`;
     let finalMessage: AssistantMessage | undefined;
     console.log(
-      `[chat-completions] Starting streaming | provider=${providerName} | model=${modelId} | responseId=${responseId}`
+      `[chat-completions] Starting streaming | provider=${providerName} | model=${modelId} | responseId=${responseId}`,
     );
     try {
       for await (const event of models.stream({
@@ -657,11 +670,11 @@ export async function chatCompletionsV2(
       }
       console.log(
         `[chat-completions] Streaming completed | chunks=${chunks.length} | ` +
-        `finalStopReason=${finalMessage?.stopReason} | ` +
-        `hasToolCalls=${finalMessage?.content.some(p => p.type === "toolCall")}` +
-        (finalMessage?.stopReason === "error" 
-          ? ` | ERROR: ${finalMessage?.errorMessage ?? "no error message"}` 
-          : "")
+          `finalStopReason=${finalMessage?.stopReason} | ` +
+          `hasToolCalls=${finalMessage?.content.some((p) => p.type === "toolCall")}` +
+          (finalMessage?.stopReason === "error"
+            ? ` | ERROR: ${finalMessage?.errorMessage ?? "no error message"}`
+            : ""),
       );
     } catch (err) {
       record({
@@ -691,7 +704,9 @@ export async function chatCompletionsV2(
   let client: V1OpenAICompatibleClient;
   let upstreamModelId = modelId;
   if (isVertexProvider(providerName)) {
-    console.log(`[chat-completions] Setting up Vertex AI client (service-account mode)`);
+    console.log(
+      `[chat-completions] Setting up Vertex AI client (service-account mode)`,
+    );
     let vertexAuth: Record<string, string>;
     try {
       const vertex = parseVertexConfig({

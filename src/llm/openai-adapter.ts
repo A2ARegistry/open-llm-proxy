@@ -1,9 +1,9 @@
 import { newUuid } from "../utils/crypto";
+import { decodeToolCallId } from "./google-direct-adapter";
 import {
   canonicalProviderName,
   isKnownProviderName,
 } from "./provider-registry";
-import { decodeToolCallId } from "./google-direct-adapter";
 import type {
   AssistantMessage,
   AssistantMessageEvent,
@@ -85,7 +85,6 @@ export function toPiContext(body: {
   const messages: Message[] = [];
   const toolNameById = new Map<string, string>();
 
-
   for (const msg of body.messages ?? []) {
     if (msg.role === "system") {
       if (typeof msg.content === "string") systemParts.push(msg.content);
@@ -141,7 +140,8 @@ export function toPiContext(body: {
         }
         toolNameById.set(tc.id, tc.function.name);
 
-        let thoughtSignature = (tc as { thought_signature?: string }).thought_signature;
+        let thoughtSignature = (tc as { thought_signature?: string })
+          .thought_signature;
         if (!thoughtSignature && tc.id) {
           const decoded = decodeToolCallId(tc.id);
           if (decoded?.thoughtSignature) {
@@ -182,7 +182,8 @@ export function toPiContext(body: {
     if (msg.role === "tool") {
       const toolCallId = msg.tool_call_id ?? "";
       const decoded = decodeToolCallId(toolCallId);
-      const toolName = toolNameById.get(toolCallId) ?? msg.name ?? decoded?.name ?? "tool";
+      const toolName =
+        toolNameById.get(toolCallId) ?? msg.name ?? decoded?.name ?? "tool";
       const content =
         typeof msg.content === "string"
           ? msg.content
@@ -255,7 +256,9 @@ export function assistantToOpenAI(
     if (part.type === "text") {
       content += (content ? "\n" : "") + part.text;
     } else if (part.type === "thinking") {
-      reasoningContent += (reasoningContent ? "\n" : "") + (part as { thinking: string }).thinking;
+      reasoningContent +=
+        (reasoningContent ? "\n" : "") +
+        (part as { thinking: string }).thinking;
     } else if (part.type === "toolCall") {
       const toolCall: {
         id: string;
@@ -272,7 +275,9 @@ export function assistantToOpenAI(
       };
       // Include thought_signature if present (Google Vertex requirement)
       if ((part as { thought_signature?: string }).thought_signature) {
-        toolCall.thought_signature = (part as { thought_signature?: string }).thought_signature;
+        toolCall.thought_signature = (
+          part as { thought_signature?: string }
+        ).thought_signature;
       }
       toolCalls.push(toolCall);
     }
@@ -292,16 +297,16 @@ export function assistantToOpenAI(
   // sent "stop". This ensures agentic workflows continue properly.
   const originalStopReason = message.stopReason;
   const mappedFinishReason = finishReasonFromStop(originalStopReason);
-  const finishReason = toolCalls.length > 0
-    ? "tool_calls"
-    : mappedFinishReason;
+  const finishReason = toolCalls.length > 0 ? "tool_calls" : mappedFinishReason;
 
   console.log(
     `[openai-adapter] assistantToOpenAI | model=${requestModel} | ` +
-    `provider=${message.provider} | stopReason=${originalStopReason} | ` +
-    `mappedFinishReason=${mappedFinishReason} | toolCallsCount=${toolCalls.length} | ` +
-    `finalFinishReason=${finishReason}` +
-    (toolCalls.length > 0 ? ` | toolNames=[${toolCalls.map(tc => tc.function.name).join(", ")}]` : "")
+      `provider=${message.provider} | stopReason=${originalStopReason} | ` +
+      `mappedFinishReason=${mappedFinishReason} | toolCallsCount=${toolCalls.length} | ` +
+      `finalFinishReason=${finishReason}` +
+      (toolCalls.length > 0
+        ? ` | toolNames=[${toolCalls.map((tc) => tc.function.name).join(", ")}]`
+        : ""),
   );
 
   return {
@@ -387,6 +392,9 @@ export function eventToOpenAIChunks(
     case "thinking_start":
       break;
     case "thinking_delta":
+      console.log(
+        `[openai-adapter] Emitting reasoning_content chunk (${event.delta.length}b): ${JSON.stringify(event.delta.slice(0, 30))}`,
+      );
       chunks.push(
         JSON.stringify({
           ...chunkBase(requestModel, responseId),
@@ -512,21 +520,21 @@ export function eventToOpenAIChunks(
       );
       const originalStopReason = event.message.stopReason;
       const mappedFinishReason = finishReasonFromStop(originalStopReason);
-      const finishReason = hasToolCalls
-        ? "tool_calls"
-        : mappedFinishReason;
-      
+      const finishReason = hasToolCalls ? "tool_calls" : mappedFinishReason;
+
       const toolCallNames = event.message.content
         .filter((part) => part.type === "toolCall")
         .map((part) => (part as { name: string }).name);
-      
+
       console.log(
         `[openai-adapter] streaming done | model=${requestModel} | ` +
-        `stopReason=${originalStopReason} | mappedFinishReason=${mappedFinishReason} | ` +
-        `hasToolCalls=${hasToolCalls} | finalFinishReason=${finishReason}` +
-        (toolCallNames.length > 0 ? ` | toolNames=[${toolCallNames.join(", ")}]` : "")
+          `stopReason=${originalStopReason} | mappedFinishReason=${mappedFinishReason} | ` +
+          `hasToolCalls=${hasToolCalls} | finalFinishReason=${finishReason}` +
+          (toolCallNames.length > 0
+            ? ` | toolNames=[${toolCallNames.join(", ")}]`
+            : ""),
       );
-      
+
       chunks.push(
         JSON.stringify({
           ...chunkBase(requestModel, responseId),
@@ -547,7 +555,7 @@ export function eventToOpenAIChunks(
       // otherwise surface a clean stop.
       console.log(
         `[openai-adapter] streaming error | model=${requestModel} | ` +
-        `errorMessage=${event.error.errorMessage ?? "no error message"}`
+          `errorMessage=${event.error.errorMessage ?? "no error message"}`,
       );
       chunks.push(
         JSON.stringify({

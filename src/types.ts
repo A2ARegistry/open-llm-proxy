@@ -1,4 +1,3 @@
-import { Env } from "../worker-configuration.d";
 import { AppAuth } from "./auth/setup";
 import { TenantSettings } from "./db/tenant";
 

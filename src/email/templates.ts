@@ -1,4 +1,3 @@
-import { Env } from "../../worker-configuration.d";
 import { nowSeconds } from "../utils/crypto";
 
 export interface SeedTemplate {

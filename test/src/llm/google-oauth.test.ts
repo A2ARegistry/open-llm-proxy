@@ -115,13 +115,11 @@ describe("getGoogleAccessToken", () => {
     const sa = await generateServiceAccountJson();
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ error: "invalid_grant" }), {
-            status: 400,
-          }),
-        ),
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: "invalid_grant" }), {
+          status: 400,
+        }),
+      ),
     );
     await expect(getGoogleAccessToken(sa)).rejects.toThrow(
       /OAuth2 access token/,

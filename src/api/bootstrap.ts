@@ -1,6 +1,7 @@
 import { bootstrapStatus } from "../bootstrap";
 import { rotateInitialAdminPassword } from "../bootstrap/admin";
 import { sessionAuthMiddleware } from "../middlewares/auth-required";
+import { AppBindings } from "../types";
 import { Hono } from "hono";
 
 /**
@@ -10,12 +11,15 @@ import { Hono } from "hono";
  * - `POST /api/bootstrap/change-password` — session-authenticated; rotates the
  *   seeded admin password and clears the must-change flag.
  */
-export const bootstrapRouter = new Hono()
+export const bootstrapRouter = new Hono<AppBindings>()
   .get("/status", async (c) => {
     return c.json(await bootstrapStatus(c.env));
   })
   .post("/change-password", sessionAuthMiddleware, async (c) => {
     const session = c.get("session");
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
     const body = await c.req.json().catch(() => ({}));
     const currentPassword =
       typeof (body as { currentPassword?: unknown }).currentPassword ===

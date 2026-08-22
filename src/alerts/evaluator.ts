@@ -1,4 +1,3 @@
-import { Env } from "../../worker-configuration.d";
 import { TenantService, type TenantSettings } from "../db/tenant";
 import { sendTemplateEmail } from "../email/service";
 import { monthStartSeconds, spendLimitStatus } from "../metrics/cost-tracker";

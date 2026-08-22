@@ -57,7 +57,9 @@ export class V1OpenAICompatibleClient {
   }
 
   private getKey(): string | undefined {
-    return this.keys.find((k) => typeof k === "string" && k.trim().length > 0)?.trim();
+    return this.keys
+      .find((k) => typeof k === "string" && k.trim().length > 0)
+      ?.trim();
   }
 
   private headers(): Record<string, string> {

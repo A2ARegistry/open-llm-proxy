@@ -235,7 +235,9 @@ describe("assistantToOpenAI", () => {
     const out = assistantToOpenAI(message, "google-vertex/gemini-2.0-flash");
     expect(out.choices[0].finish_reason).toBe("tool_calls");
     expect(out.choices[0].message.tool_calls).toHaveLength(1);
-    expect(out.choices[0].message.tool_calls[0].function.name).toBe("get_weather");
+    expect(out.choices[0].message.tool_calls[0].function.name).toBe(
+      "get_weather",
+    );
   });
 });
 
@@ -311,7 +313,7 @@ describe("eventToOpenAIChunks / encodeSse", () => {
       ...eventToOpenAIChunks(toolcallStart, requestModel, responseId, state),
       ...eventToOpenAIChunks(done, requestModel, responseId, state),
     ];
-    
+
     const finalChunk = JSON.parse(chunks[chunks.length - 1]);
     expect(finalChunk.choices[0].finish_reason).toBe("tool_calls");
   });

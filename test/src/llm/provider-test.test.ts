@@ -234,7 +234,10 @@ describe("testProviderConnection", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(
-        new Response(JSON.stringify({ choices: [{ message: { content: "pong" } }] }), { status: 200 }),
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: "pong" } }] }),
+          { status: 200 },
+        ),
       );
     vi.stubGlobal("fetch", fetchMock);
     const result = await testProviderConnection({

@@ -14,7 +14,12 @@ describe("GoogleDirectAdapter message conversion", () => {
           },
         ],
       },
-      { role: "tool", tool_call_id: "call_123", name: "read", content: "File contents here" },
+      {
+        role: "tool",
+        tool_call_id: "call_123",
+        name: "read",
+        content: "File contents here",
+      },
     ];
 
     // Expected Google format for tool result
@@ -34,9 +39,9 @@ describe("GoogleDirectAdapter message conversion", () => {
 
     // The adapter should convert tool results to this format
     expect(expectedGoogleFormat.parts[0].functionResponse.name).toBe("read");
-    expect(expectedGoogleFormat.parts[0].functionResponse.response.content).toBe(
-      "File contents here",
-    );
+    expect(
+      expectedGoogleFormat.parts[0].functionResponse.response.content,
+    ).toBe("File contents here");
     expect(expectedGoogleFormat.role).toBe("user"); // Not "tool"!
   });
 
@@ -55,8 +60,18 @@ describe("GoogleDirectAdapter message conversion", () => {
           },
         ],
       },
-      { role: "tool", tool_call_id: "call_1", name: "read", content: "Content A" },
-      { role: "tool", tool_call_id: "call_2", name: "read", content: "Content B" },
+      {
+        role: "tool",
+        tool_call_id: "call_1",
+        name: "read",
+        content: "Content A",
+      },
+      {
+        role: "tool",
+        tool_call_id: "call_2",
+        name: "read",
+        content: "Content B",
+      },
     ];
 
     // Both tool results should be in ONE user turn with multiple parts
@@ -110,7 +125,9 @@ describe("GoogleDirectAdapter message conversion", () => {
       ],
     };
 
-    const parsedArgs = JSON.parse(assistantMessage.tool_calls[0].function.arguments);
+    const parsedArgs = JSON.parse(
+      assistantMessage.tool_calls[0].function.arguments,
+    );
     expect(expectedGoogleFormat.parts[0].functionCall.name).toBe("get_weather");
     expect(expectedGoogleFormat.parts[0].functionCall.args).toEqual(parsedArgs);
   });
@@ -206,9 +223,8 @@ describe("GoogleDirectAdapter stop reason mapping", () => {
 
 describe("GoogleDirectAdapter tool_call_id encoding and decoding", () => {
   it("should encode and decode name and thought_signature into tool_call_id", async () => {
-    const { encodeToolCallId, decodeToolCallId } = await import(
-      "../../src/llm/google-direct-adapter"
-    );
+    const { encodeToolCallId, decodeToolCallId } =
+      await import("../../src/llm/google-direct-adapter");
 
     const originalSignature = "sig_xyz123_encrypted_token/+=?";
     const index = 0;
@@ -229,9 +245,8 @@ describe("GoogleDirectAdapter tool_call_id encoding and decoding", () => {
   });
 
   it("should encode and decode multiple tool call IDs preserving index order and tool names", async () => {
-    const { encodeToolCallId, decodeToolCallId } = await import(
-      "../../src/llm/google-direct-adapter"
-    );
+    const { encodeToolCallId, decodeToolCallId } =
+      await import("../../src/llm/google-direct-adapter");
 
     const sig = "shared_thought_signature";
     const id0 = encodeToolCallId(0, "grep", sig);
@@ -252,9 +267,8 @@ describe("GoogleDirectAdapter tool_call_id encoding and decoding", () => {
   });
 
   it("should safely handle tool call IDs without signature", async () => {
-    const { encodeToolCallId, decodeToolCallId } = await import(
-      "../../src/llm/google-direct-adapter"
-    );
+    const { encodeToolCallId, decodeToolCallId } =
+      await import("../../src/llm/google-direct-adapter");
 
     const toolCallId = encodeToolCallId(2, "bash");
 

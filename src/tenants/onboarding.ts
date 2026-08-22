@@ -1,4 +1,3 @@
-import { Env } from "../../worker-configuration.d";
 import { auditLog } from "../audit/audit-logger";
 import { newId, nowSeconds } from "../utils/crypto";
 import { assignTenantPrefixes } from "./prefixes";

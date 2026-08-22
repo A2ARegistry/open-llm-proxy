@@ -1,4 +1,3 @@
-import { Env } from "../../worker-configuration.d";
 import { auditLog } from "../audit/audit-logger";
 import { setSetting } from "../db/settings";
 import { assignTenantPrefixes } from "../tenants/prefixes";
@@ -69,8 +68,9 @@ export async function ensureInitialAdmin(env: Env): Promise<boolean> {
   const existing = await env.DB.prepare("SELECT id FROM users LIMIT 1").first();
   if (existing) return false;
 
-  const email = env.INITIAL_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL;
-  const password = env.INITIAL_ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
+  const email = (env as any).INITIAL_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL;
+  const password =
+    (env as any).INITIAL_ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
   const userId = newId("usr");
   const organizationId = newId("org");
   const now = nowSeconds();

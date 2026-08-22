@@ -3,7 +3,8 @@ import { Buffer } from "node:buffer";
 export function toBase64(data: ArrayBuffer | Uint8Array | string): string {
   if (typeof data === "string")
     return Buffer.from(data, "utf8").toString("base64");
-  return Buffer.from(data).toString("base64");
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  return Buffer.from(bytes).toString("base64");
 }
 
 export function fromBase64(data: string): Uint8Array {

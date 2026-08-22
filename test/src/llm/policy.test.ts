@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
+import type { TenantSettings } from "~/src/db/tenant";
 import {
   assertModelAllowed,
   assertProviderAllowed,
   assertTenantActive,
   isModelAllowed,
 } from "~/src/llm/policy";
-import type { TenantSettings } from "~/src/db/tenant";
 import type { ApiKeyScopes } from "~/src/types";
 
 describe("assertTenantActive", () => {
@@ -44,9 +44,9 @@ describe("isModelAllowed", () => {
   });
 
   it("matches bare entries against model id", () => {
-    expect(isModelAllowed([["gpt-4o", "claude-3-5-sonnet"]], "openai", "gpt-4o")).toBe(
-      true,
-    );
+    expect(
+      isModelAllowed([["gpt-4o", "claude-3-5-sonnet"]], "openai", "gpt-4o"),
+    ).toBe(true);
     expect(isModelAllowed([["gpt-4o"]], "anthropic", "gpt-4o")).toBe(true);
   });
 
@@ -55,19 +55,11 @@ describe("isModelAllowed", () => {
   });
 
   it("requires every configured list to match", () => {
+    expect(isModelAllowed([["gpt-4o"], ["gpt-4o"]], "openai", "gpt-4o")).toBe(
+      true,
+    );
     expect(
-      isModelAllowed(
-        [["gpt-4o"], ["gpt-4o"]],
-        "openai",
-        "gpt-4o",
-      ),
-    ).toBe(true);
-    expect(
-      isModelAllowed(
-        [["gpt-4o"], ["claude-3-5-sonnet"]],
-        "openai",
-        "gpt-4o",
-      ),
+      isModelAllowed([["gpt-4o"], ["claude-3-5-sonnet"]], "openai", "gpt-4o"),
     ).toBe(false);
   });
 });
@@ -75,7 +67,12 @@ describe("isModelAllowed", () => {
 describe("assertModelAllowed", () => {
   it("blocks models outside the tenant allowlist", () => {
     const settings = { modelAllowlist: ["openai/gpt-4o"] } as TenantSettings;
-    const err = assertModelAllowed(settings, undefined, "openai", "gpt-4o-mini");
+    const err = assertModelAllowed(
+      settings,
+      undefined,
+      "openai",
+      "gpt-4o-mini",
+    );
     expect(err?.code).toBe("model_not_allowed");
   });
 

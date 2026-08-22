@@ -112,7 +112,9 @@ export async function checkRateLimits(
   // real token count so the budget is enforced retroactively.
   const estimated = params.estimatedTokens ?? 0;
   if (tpm && tpm > 0 && estimated > 0 && !params.stream) {
-    console.log(`[checkRateLimits] Token bucket: capacity=${tpm} estimated=${estimated}`);
+    console.log(
+      `[checkRateLimits] Token bucket: capacity=${tpm} estimated=${estimated}`,
+    );
     checks.push(
       doCheck(env, params.organizationId, {
         key: `tokens:org:${params.organizationId}`,

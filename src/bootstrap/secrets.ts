@@ -1,4 +1,3 @@
-import { Env } from "../../worker-configuration.d";
 import { getOrCreateSetting } from "../db/settings";
 import { randomBytes, toBase64 } from "../utils/crypto";
 

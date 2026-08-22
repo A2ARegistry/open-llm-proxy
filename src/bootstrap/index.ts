@@ -1,4 +1,3 @@
-import { Env } from "../../worker-configuration.d";
 import {
   clearMustChangePassword,
   ensureInitialAdmin,
@@ -48,8 +47,8 @@ export async function bootstrapStatus(env: Env): Promise<BootstrapStatus> {
     initialAdmin,
     defaultCredentials: initialAdmin?.mustChangePassword
       ? {
-          email: env.INITIAL_ADMIN_EMAIL || initialAdmin.email,
-          password: env.INITIAL_ADMIN_PASSWORD || "AwesomeProxy!!",
+          email: (env as any).INITIAL_ADMIN_EMAIL || initialAdmin.email,
+          password: (env as any).INITIAL_ADMIN_PASSWORD || "AwesomeProxy!!",
         }
       : undefined,
   };

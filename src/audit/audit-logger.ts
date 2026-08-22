@@ -1,4 +1,3 @@
-import { Env } from "../../worker-configuration.d";
 import { newId, nowSeconds, jsonStringify } from "../utils/crypto";
 
 export interface AuditLogEntry {

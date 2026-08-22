@@ -1,4 +1,3 @@
-import { Env } from "../../worker-configuration.d";
 import { getAuthFor } from "../auth/setup";
 import { AppBindings, SessionAuth } from "../types";
 import { nowSeconds, safeJsonParse, sha256Hex } from "../utils/crypto";

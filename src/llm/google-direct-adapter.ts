@@ -1,9 +1,9 @@
-import { GoogleGenAI } from "@google/genai";
+import { newUuid } from "../utils/crypto";
 import type {
   AssistantMessage,
   AssistantMessageEvent,
 } from "@earendil-works/pi-ai";
-import { newUuid } from "../utils/crypto";
+import { GoogleGenAI } from "@google/genai";
 
 function stringToHex(str: string): string {
   const encoder = new TextEncoder();
@@ -73,7 +73,9 @@ export function decodeToolCallId(toolCallId: string): {
   }
 
   // Format without signature: call_<index>_<name>__nosig_<randomHex>
-  const noSigMatch = toolCallId.match(/^call_(\d+)_(.+)__nosig_([0-9a-fA-F]+)$/);
+  const noSigMatch = toolCallId.match(
+    /^call_(\d+)_(.+)__nosig_([0-9a-fA-F]+)$/,
+  );
   if (noSigMatch) {
     return { index: parseInt(noSigMatch[1], 10), name: noSigMatch[2] };
   }
@@ -136,7 +138,7 @@ interface GooglePart {
     mimeType: string;
     fileUri: string;
   };
-  thought?: boolean | string;
+  thought?: boolean;
   functionCall?: {
     name: string;
     args: Record<string, unknown>;
@@ -149,6 +151,41 @@ interface GooglePart {
 }
 
 /**
+ * Helper to parse base64 image data from data URLs, raw base64 strings, or structured objects.
+ */
+function parseImageData(
+  urlOrData: string,
+): { mimeType: string; data: string } | null {
+  if (!urlOrData) return null;
+
+  if (urlOrData.startsWith("data:")) {
+    const commaIdx = urlOrData.indexOf(",");
+    if (commaIdx !== -1) {
+      const header = urlOrData.slice(0, commaIdx);
+      const data = urlOrData.slice(commaIdx + 1);
+      const mimeTypeMatch = header.match(/^data:([^;]+)/);
+      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/png";
+      return { mimeType, data };
+    }
+  }
+
+  const trimmed = urlOrData.trim();
+  if (trimmed.startsWith("iVBORw0KGgo")) {
+    return { mimeType: "image/png", data: trimmed };
+  } else if (trimmed.startsWith("/9j/")) {
+    return { mimeType: "image/jpeg", data: trimmed };
+  } else if (trimmed.startsWith("R0lGOD")) {
+    return { mimeType: "image/gif", data: trimmed };
+  } else if (trimmed.startsWith("UklGR")) {
+    return { mimeType: "image/webp", data: trimmed };
+  } else if (trimmed.length > 100 && /^[A-Za-z0-9+/=\s]+$/.test(trimmed)) {
+    return { mimeType: "image/png", data: trimmed.replace(/\s+/g, "") };
+  }
+
+  return null;
+}
+
+/**
  * Convert OpenAI user content (string or array of text/image parts) into Google parts.
  */
 function convertUserContentToGoogleParts(
@@ -157,43 +194,114 @@ function convertUserContentToGoogleParts(
   if (!content) return [];
 
   if (typeof content === "string") {
+    console.log(
+      `[GoogleDirectAdapter] User string content (128b snippet):`,
+      JSON.stringify(content.slice(0, 128)),
+    );
     return content.trim().length > 0 ? [{ text: content }] : [];
   }
 
   if (Array.isArray(content)) {
+    console.log(
+      `[GoogleDirectAdapter] Processing array user content with ${content.length} items`,
+    );
+
     const parts: GooglePart[] = [];
-    for (const item of content) {
+    for (let i = 0; i < content.length; i++) {
+      const item = content[i];
+      console.log(
+        `[GoogleDirectAdapter] Raw content item [${i}] (128b snippet):`,
+        JSON.stringify(item).slice(0, 128),
+      );
+
       if (typeof item === "string") {
         if (item.trim().length > 0) parts.push({ text: item });
       } else if (item && typeof item === "object") {
         const obj = item as Record<string, unknown>;
+        console.log(
+          `[GoogleDirectAdapter] Content item [${i}] | type=${obj.type} | keys=${Object.keys(obj).join(",")} | textSnippet=${typeof obj.text === "string" ? JSON.stringify(obj.text.slice(0, 100)) : undefined}`,
+        );
+
+        // 1. Text part
         if (
-          obj.type === "text" &&
+          (obj.type === "text" || !obj.type) &&
           typeof obj.text === "string" &&
           obj.text.trim().length > 0
         ) {
           parts.push({ text: obj.text });
-        } else if (obj.type === "image_url" && obj.image_url) {
-          const imgUrlObj =
+        }
+        // 2. OpenAI image_url format ({ type: "image_url", image_url: { url: "..." } })
+        else if (obj.type === "image_url" || obj.image_url || obj.url) {
+          const imgObj =
             typeof obj.image_url === "string"
               ? { url: obj.image_url }
-              : (obj.image_url as { url?: string });
-          const url = imgUrlObj.url || "";
-          if (url.startsWith("data:")) {
-            const commaIdx = url.indexOf(",");
-            if (commaIdx !== -1) {
-              const header = url.slice(0, commaIdx);
-              const data = url.slice(commaIdx + 1);
-              const mimeTypeMatch = header.match(/^data:([^;]+)/);
-              const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/png";
-              parts.push({
-                inlineData: {
-                  mimeType,
-                  data,
-                },
-              });
+              : (obj.image_url as { url?: string; b64_json?: string }) ||
+                (typeof obj.url === "string" ? { url: obj.url } : {});
+
+          const rawUrl = imgObj.url || imgObj.b64_json || "";
+          const parsed = parseImageData(rawUrl);
+
+          if (parsed) {
+            console.log(
+              `[GoogleDirectAdapter] ✅ Converted image_url part to inlineData | mimeType=${parsed.mimeType} | dataBytes=${parsed.data.length}`,
+            );
+            parts.push({ inlineData: parsed });
+          } else {
+            console.warn(
+              `[GoogleDirectAdapter] ⚠️ Could not parse image_url payload snippet:`,
+              JSON.stringify(rawUrl).slice(0, 100),
+            );
+            if (
+              rawUrl.startsWith("http://") ||
+              rawUrl.startsWith("https://") ||
+              rawUrl.startsWith("file://")
+            ) {
+              parts.push({ text: `[Image File/URL: ${rawUrl}]` });
             }
           }
+        }
+        // 3. Anthropic style image format ({ type: "image", source: { type: "base64", media_type: "...", data: "..." } })
+        else if (
+          obj.type === "image" &&
+          obj.source &&
+          typeof obj.source === "object"
+        ) {
+          const src = obj.source as {
+            type?: string;
+            media_type?: string;
+            data?: string;
+          };
+          const parsed = parseImageData(src.data || "");
+          if (parsed) {
+            console.log(
+              `[GoogleDirectAdapter] ✅ Converted Anthropic image part to inlineData | mimeType=${parsed.mimeType} | dataBytes=${parsed.data.length}`,
+            );
+            parts.push({ inlineData: parsed });
+          } else {
+            console.warn(
+              `[GoogleDirectAdapter] ⚠️ Could not parse Anthropic image source`,
+            );
+          }
+        }
+        // 4. Native Google inlineData format ({ inlineData: { mimeType: "...", data: "..." } })
+        else if (obj.inlineData && typeof obj.inlineData === "object") {
+          const inline = obj.inlineData as { mimeType?: string; data?: string };
+          if (inline.data) {
+            console.log(
+              `[GoogleDirectAdapter] ✅ Preserved native inlineData part | mimeType=${inline.mimeType} | dataBytes=${inline.data.length}`,
+            );
+            parts.push({
+              inlineData: {
+                mimeType: inline.mimeType || "image/png",
+                data: inline.data,
+              },
+            });
+          }
+        } else {
+          console.log(
+            `[GoogleDirectAdapter] Unhandled content object structure:`,
+            Object.keys(obj),
+          );
         }
       }
     }
@@ -366,9 +474,12 @@ export class GoogleDirectAdapter {
       JSON.stringify(
         tailMessages.map((m) => ({
           role: m.role,
-          contentSnippet: typeof m.content === "string" ? m.content.slice(0, 50) : undefined,
+          contentSnippet:
+            typeof m.content === "string" ? m.content.slice(0, 50) : undefined,
           hasToolCalls: !!(m.tool_calls && m.tool_calls.length > 0),
-          toolCallId: m.tool_call_id,
+          toolCallId: m.tool_call_id
+            ? m.tool_call_id.slice(0, 30) + "..."
+            : undefined,
         })),
       ),
     );
@@ -385,7 +496,10 @@ export class GoogleDirectAdapter {
     // Google API requires the conversation to end with a user turn.
     // This happens when the client sends full history ending with an
     // assistant text message (common in agentic tool-use flows).
-    while (contents.length > 0 && contents[contents.length - 1].role !== "user") {
+    while (
+      contents.length > 0 &&
+      contents[contents.length - 1].role !== "user"
+    ) {
       console.warn(
         "[GoogleDirectAdapter] Removing trailing non-user message:",
         contents[contents.length - 1].role,
@@ -403,7 +517,8 @@ export class GoogleDirectAdapter {
             if (p.text) return "text";
             if (p.inlineData) return `inlineData:${p.inlineData.mimeType}`;
             if (p.functionCall) return `funcCall:${p.functionCall.name}`;
-            if (p.functionResponse) return `funcResp:${p.functionResponse.name}`;
+            if (p.functionResponse)
+              return `funcResp:${p.functionResponse.name}`;
             return "unknown";
           }),
         })),
@@ -446,14 +561,17 @@ export class GoogleDirectAdapter {
     // First scan parts for any top-level or part thoughtSignature
     for (const part of parts) {
       if ((part as { thoughtSignature?: string }).thoughtSignature) {
-        turnThoughtSignature = (part as { thoughtSignature?: string }).thoughtSignature;
+        turnThoughtSignature = (part as { thoughtSignature?: string })
+          .thoughtSignature;
       }
     }
 
     let toolCallIndex = 0;
     // Extract text, thinking, and function calls
     for (const part of parts) {
-      const isThought = Boolean((part as { thought?: boolean | string }).thought);
+      const isThought = Boolean(
+        (part as { thought?: boolean | string }).thought,
+      );
       if (isThought) {
         const thoughtText =
           typeof (part as { thought?: boolean | string }).thought === "string"
@@ -468,8 +586,14 @@ export class GoogleDirectAdapter {
 
       if (part.functionCall) {
         hasToolCalls = true;
-        const sig = (part as { thoughtSignature?: string }).thoughtSignature || turnThoughtSignature;
-        const toolCallId = encodeToolCallId(toolCallIndex, part.functionCall.name, sig);
+        const sig =
+          (part as { thoughtSignature?: string }).thoughtSignature ||
+          turnThoughtSignature;
+        const toolCallId = encodeToolCallId(
+          toolCallIndex,
+          part.functionCall.name,
+          sig,
+        );
         toolCallIndex++;
 
         const args = part.functionCall.args || {};
@@ -496,8 +620,6 @@ export class GoogleDirectAdapter {
     } else if (candidate.finishReason === "MAX_TOKENS") {
       stopReason = "length";
     }
-
-
 
     return {
       role: "assistant",
@@ -549,12 +671,13 @@ export class GoogleDirectAdapter {
       config: {
         temperature?: number;
         maxOutputTokens?: number;
+        thinkingConfig?: { includeThoughts?: boolean };
         systemInstruction?: { parts: Array<{ text: string }> };
         tools?: Array<{
           functionDeclarations: Array<{
             name: string;
             description?: string;
-            parameters?: unknown;
+            parameters?: any;
           }>;
         }>;
       };
@@ -564,6 +687,7 @@ export class GoogleDirectAdapter {
       config: {
         temperature: input.temperature,
         maxOutputTokens: input.maxTokens,
+        thinkingConfig: { includeThoughts: true },
       },
     };
 
@@ -579,10 +703,10 @@ export class GoogleDirectAdapter {
           functionDeclarations: input.tools.map((t) => ({
             name: t.function.name,
             description: t.function.description,
-            parameters: t.function.parameters,
+            parameters: t.function.parameters as any,
           })),
         },
-      ];
+      ] as any;
     }
 
     const response = (await this.client.models.generateContent(
@@ -622,12 +746,13 @@ export class GoogleDirectAdapter {
       config: {
         temperature?: number;
         maxOutputTokens?: number;
+        thinkingConfig?: { includeThoughts?: boolean };
         systemInstruction?: { parts: Array<{ text: string }> };
         tools?: Array<{
           functionDeclarations: Array<{
             name: string;
             description?: string;
-            parameters?: unknown;
+            parameters?: any;
           }>;
         }>;
       };
@@ -637,6 +762,7 @@ export class GoogleDirectAdapter {
       config: {
         temperature: input.temperature,
         maxOutputTokens: input.maxTokens,
+        thinkingConfig: { includeThoughts: true },
       },
     };
 
@@ -652,17 +778,16 @@ export class GoogleDirectAdapter {
           functionDeclarations: input.tools.map((t) => ({
             name: t.function.name,
             description: t.function.description,
-            parameters: t.function.parameters,
+            parameters: t.function.parameters as any,
           })),
         },
-      ];
+      ] as any;
     }
 
-    const stream = await this.client.models.generateContentStream(
-      requestOptions,
-    );
+    const stream =
+      await this.client.models.generateContentStream(requestOptions);
 
-    let accumulatedContent: AssistantMessage["content"] = [];
+    const accumulatedContent: AssistantMessage["content"] = [];
     let usage = {
       input: 0,
       output: 0,
@@ -678,17 +803,21 @@ export class GoogleDirectAdapter {
     const toolCallsById = new Map<string, number>();
 
     for await (const chunk of stream) {
-      const candidate = (chunk as GoogleGenerateContentResponse).candidates?.[0];
+      const candidate = (chunk as GoogleGenerateContentResponse)
+        .candidates?.[0];
       if (!candidate) continue;
 
       const parts = candidate.content?.parts || [];
 
       for (const part of parts) {
         if ((part as { thoughtSignature?: string }).thoughtSignature) {
-          lastThoughtSignature = (part as { thoughtSignature?: string }).thoughtSignature;
+          lastThoughtSignature = (part as { thoughtSignature?: string })
+            .thoughtSignature;
         }
 
-        const isThought = Boolean((part as { thought?: boolean | string }).thought);
+        const isThought = Boolean(
+          (part as { thought?: boolean | string }).thought,
+        );
 
         if (isThought) {
           const thoughtText =
@@ -697,6 +826,10 @@ export class GoogleDirectAdapter {
               : part.text || "";
 
           if (thoughtText) {
+            console.log(
+              `[GoogleDirectAdapter] Gemini thought delta (${thoughtText.length}b): ${JSON.stringify(thoughtText.slice(0, 30))}`,
+            );
+
             if (
               currentThinkingIndex === -1 ||
               accumulatedContent[currentThinkingIndex]?.type !== "thinking"
@@ -735,12 +868,19 @@ export class GoogleDirectAdapter {
               },
             } as AssistantMessageEvent;
 
-            (accumulatedContent[currentThinkingIndex] as { type: "thinking"; thinking: string }).thinking += thoughtText;
+            (
+              accumulatedContent[currentThinkingIndex] as {
+                type: "thinking";
+                thinking: string;
+              }
+            ).thinking += thoughtText;
           }
         } else if (part.text) {
           // Check if we're continuing an existing text part or starting a new one
-          if (currentTextIndex === -1 ||
-            accumulatedContent[currentTextIndex]?.type !== "text") {
+          if (
+            currentTextIndex === -1 ||
+            accumulatedContent[currentTextIndex]?.type !== "text"
+          ) {
             // New text part
             currentTextIndex = accumulatedContent.length;
             accumulatedContent.push({ type: "text", text: "" });
@@ -764,11 +904,19 @@ export class GoogleDirectAdapter {
           } as AssistantMessageEvent;
 
           // Accumulate text
-          (accumulatedContent[currentTextIndex] as { type: "text"; text: string }).text += part.text;
+          (
+            accumulatedContent[currentTextIndex] as {
+              type: "text";
+              text: string;
+            }
+          ).text += part.text;
         }
 
         if (part.functionCall) {
-          const args = (part.functionCall.args || {}) as Record<string, unknown>;
+          const args = (part.functionCall.args || {}) as Record<
+            string,
+            unknown
+          >;
           const partSig =
             (part as { thoughtSignature?: string }).thoughtSignature ||
             lastThoughtSignature;
@@ -789,7 +937,7 @@ export class GoogleDirectAdapter {
             );
 
             console.log(
-              `[GoogleDirectAdapter] Outgoing stream tool_call | name=${part.functionCall.name} | args=${JSON.stringify(args)} | toolCallId=${toolCallId}`,
+              `[GoogleDirectAdapter] Outgoing stream tool_call | name=${part.functionCall.name} | args=${JSON.stringify(args)} | toolCallId=${toolCallId.slice(0, 30)}...`,
             );
 
             const toolCall: {
@@ -872,9 +1020,9 @@ export class GoogleDirectAdapter {
 
     // Determine final stop reason
     const hasToolCalls = accumulatedContent.some((c) => c.type === "toolCall");
-    const stopReason: AssistantMessage["stopReason"] = hasToolCalls ? "toolUse" : "stop";
-
-
+    const stopReason: AssistantMessage["stopReason"] = hasToolCalls
+      ? "toolUse"
+      : "stop";
 
     // Send final done event
     const finalMessage: AssistantMessage = {

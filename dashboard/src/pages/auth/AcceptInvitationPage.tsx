@@ -1,12 +1,14 @@
+import { AuthLayout } from "./AuthLayout";
+import { authClient } from "@contentgrowth/content-auth";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { authClient } from "@contentgrowth/content-auth";
-import { AuthLayout } from "./AuthLayout";
 
 export function AcceptInvitationPage() {
   const [params] = useSearchParams();
   const invitationId = params.get("id") ?? "";
-  const [state, setState] = useState<"loading" | "need-auth" | "ok" | "error">("loading");
+  const [state, setState] = useState<"loading" | "need-auth" | "ok" | "error">(
+    "loading",
+  );
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -43,7 +45,11 @@ export function AcceptInvitationPage() {
 
   return (
     <AuthLayout>
-      {state === "loading" && <p className="text-center text-sm text-gray-500">Accepting invitation…</p>}
+      {state === "loading" && (
+        <p className="text-center text-sm text-gray-500">
+          Accepting invitation…
+        </p>
+      )}
       {state === "need-auth" && (
         <div className="text-center">
           <p className="text-sm text-gray-600">

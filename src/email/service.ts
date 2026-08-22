@@ -1,4 +1,3 @@
-import { Env } from "../../worker-configuration.d";
 import { nowSeconds, safeJsonParse } from "../utils/crypto";
 import { EmailService } from "@contentgrowth/content-emailing/backend";
 
@@ -69,12 +68,12 @@ export function buildEmailConfig(env: Env) {
     settingsTableName: "system_settings",
     settingsKeyPrefix: "system_email.",
     defaults: {
-      fromName: env.EMAIL_FROM_NAME || "Open LLM Proxy",
-      fromAddress: env.EMAIL_FROM_ADDRESS || "noreply@example.com",
+      fromName: (env as any).EMAIL_FROM_NAME || "Open LLM Proxy",
+      fromAddress: (env as any).EMAIL_FROM_ADDRESS || "noreply@example.com",
       provider: "sendpulse",
     },
-    sendpulseClientId: env.SENDPULSE_CLIENT_ID,
-    sendpulseClientSecret: env.SENDPULSE_CLIENT_SECRET,
+    sendpulseClientId: (env as any).SENDPULSE_CLIENT_ID,
+    sendpulseClientSecret: (env as any).SENDPULSE_CLIENT_SECRET,
     settingsLoader: async (profile: string, tenantId?: string | null) => {
       if (profile === "tenant" && tenantId) {
         return loadTenantEmailSettings(env, tenantId);

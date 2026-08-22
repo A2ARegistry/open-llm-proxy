@@ -1,6 +1,6 @@
-import { useNavigate } from "react-router-dom";
-import { ForgotPasswordForm } from "@contentgrowth/content-auth";
 import { AuthLayout } from "./AuthLayout";
+import { ForgotPasswordForm } from "@contentgrowth/content-auth";
+import { useNavigate } from "react-router-dom";
 
 export function ForgotPasswordPage() {
   const navigate = useNavigate();

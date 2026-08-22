@@ -1,7 +1,7 @@
+import { AuthLayout } from "./AuthLayout";
+import { authClient } from "@contentgrowth/content-auth";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { authClient } from "@contentgrowth/content-auth";
-import { AuthLayout } from "./AuthLayout";
 
 export function VerifyEmailPage() {
   const [params] = useSearchParams();
@@ -38,11 +38,17 @@ export function VerifyEmailPage() {
 
   return (
     <AuthLayout>
-      {state === "loading" && <p className="text-center text-sm text-gray-500">Verifying your email…</p>}
+      {state === "loading" && (
+        <p className="text-center text-sm text-gray-500">
+          Verifying your email…
+        </p>
+      )}
       {state === "ok" && (
         <div className="text-center">
           <p className="text-sm font-medium text-green-700">Email verified.</p>
-          <p className="mt-1 text-sm text-gray-500">Your account is ready to use.</p>
+          <p className="mt-1 text-sm text-gray-500">
+            Your account is ready to use.
+          </p>
           <Link
             to="/dashboard"
             className="mt-4 inline-block rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
@@ -53,7 +59,9 @@ export function VerifyEmailPage() {
       )}
       {state === "error" && (
         <div className="text-center">
-          <p className="text-sm font-medium text-red-600">Verification failed.</p>
+          <p className="text-sm font-medium text-red-600">
+            Verification failed.
+          </p>
           <p className="mt-1 text-xs text-gray-500">{message}</p>
           <Link
             to="/signin"

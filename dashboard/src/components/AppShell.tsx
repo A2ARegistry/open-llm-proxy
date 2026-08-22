@@ -1,7 +1,5 @@
-import { useState } from "react";
-import { NavLink, Navigate, Outlet, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { authClient } from "@contentgrowth/content-auth";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   Boxes,
@@ -12,6 +10,8 @@ import {
   Settings,
   Users,
 } from "lucide-react";
+import { useState } from "react";
+import { NavLink, Navigate, Outlet, useNavigate } from "react-router-dom";
 
 interface OrgInfo {
   id: string;
@@ -86,7 +86,10 @@ export function AppShell() {
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-gray-900">
               {orgs.data?.find(
-                (o) => o.id === (session.data?.session as { activeOrganizationId?: string })?.activeOrganizationId,
+                (o) =>
+                  o.id ===
+                  (session.data?.session as { activeOrganizationId?: string })
+                    ?.activeOrganizationId,
               )?.name ?? "Open LLM Proxy"}
             </p>
             <p className="text-xs text-gray-400">Console</p>
@@ -118,7 +121,9 @@ export function AppShell() {
               {(user.name || user.email || "?")[0]?.toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-xs font-medium text-gray-800">{user.name}</p>
+              <p className="truncate text-xs font-medium text-gray-800">
+                {user.name}
+              </p>
               <p className="truncate text-[11px] text-gray-400">{user.email}</p>
             </div>
           </div>

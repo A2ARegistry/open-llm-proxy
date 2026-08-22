@@ -1,3 +1,4 @@
+import { Card } from "../components/ui";
 import { apiGet, apiSend } from "../lib/api";
 import {
   EmailLogsPanel,
@@ -9,7 +10,6 @@ import type {
   EmailTemplate,
   TemplateFormData,
 } from "@contentgrowth/content-emailing/frontend";
-import { Card } from "../components/ui";
 
 interface LogsResponse {
   logs: Record<string, unknown>[];
@@ -34,12 +34,17 @@ const fetchLogs = async (params: {
   const logs = res.logs.map((l) => ({
     id: String(l.id ?? ""),
     recipientEmail: String(l.recipient_email ?? l.recipientEmail ?? ""),
-    recipientUserId: l.recipient_user_id ? String(l.recipient_user_id) : undefined,
+    recipientUserId: l.recipient_user_id
+      ? String(l.recipient_user_id)
+      : undefined,
     templateId: String(l.template_id ?? l.templateId ?? ""),
     subject: l.subject ? String(l.subject) : undefined,
-    status: String(l.status ?? "sent") as "sent" | "pending" | "failed" | "bounced" | "complained",
+    status: String(l.status ?? "sent") as
+      "sent" | "pending" | "failed" | "bounced" | "complained",
     provider: l.provider ? String(l.provider) : undefined,
-    providerMessageId: l.provider_message_id ? String(l.provider_message_id) : undefined,
+    providerMessageId: l.provider_message_id
+      ? String(l.provider_message_id)
+      : undefined,
     errorMessage: l.error_message ? String(l.error_message) : undefined,
     createdAt: Number(l.created_at ?? l.createdAt ?? 0),
     sentAt: l.sent_at ? Number(l.sent_at) : undefined,
@@ -48,7 +53,9 @@ const fetchLogs = async (params: {
 };
 
 async function loadTemplates(): Promise<EmailTemplate[]> {
-  const res = await apiGet<{ templates: EmailTemplate[] }>("/api/email/templates");
+  const res = await apiGet<{ templates: EmailTemplate[] }>(
+    "/api/email/templates",
+  );
   return res.templates;
 }
 
@@ -72,7 +79,9 @@ async function sendTestEmail(data: {
 }
 
 async function loadSettings(): Promise<EmailSettingsData> {
-  const res = await apiGet<{ settings: EmailSettingsData }>("/api/email/settings");
+  const res = await apiGet<{ settings: EmailSettingsData }>(
+    "/api/email/settings",
+  );
   return res.settings;
 }
 
@@ -94,7 +103,10 @@ export function EmailPage() {
         <EmailSettings
           onLoadSettings={loadSettings}
           onSaveSettings={saveSettings}
-          onTestSettings={async () => ({ success: false, message: "Test sending is done from the template tester." })}
+          onTestSettings={async () => ({
+            success: false,
+            message: "Test sending is done from the template tester.",
+          })}
         />
       </Card>
 
@@ -103,7 +115,14 @@ export function EmailPage() {
         onSaveTemplate={saveTemplate}
         onDeleteTemplate={deleteTemplate}
         onSendTestEmail={sendTestEmail}
-        templateTypes={["auth", "notification", "system", "invitation", "verification", "marketing"]}
+        templateTypes={[
+          "auth",
+          "notification",
+          "system",
+          "invitation",
+          "verification",
+          "marketing",
+        ]}
       />
 
       <Card title="Logs" subtitle="Recent transactional email deliveries">

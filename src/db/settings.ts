@@ -1,5 +1,3 @@
-import { Env } from "../../worker-configuration.d";
-
 /** Read a `system_settings` row. */
 export async function getSetting(
   env: Env,
@@ -49,5 +47,6 @@ export async function getOrCreateSetting(
   )
     .bind(key, value)
     .run();
-  return getSetting(env, key) ?? value;
+  const created = await getSetting(env, key);
+  return created ?? value;
 }

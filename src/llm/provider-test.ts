@@ -256,7 +256,9 @@ export function resolveChatProbe(input: {
   const chatCompletionPath =
     (settings.chatCompletionPath as string | undefined) ??
     v1Spec?.chatCompletionPath ??
-    (isCustomProviderName(provider) ? "/v1/chat/completions" : "/chat/completions");
+    (isCustomProviderName(provider)
+      ? "/v1/chat/completions"
+      : "/chat/completions");
   if (!baseUrl) return { error: "No base URL for this provider" };
   const key = pickKey(provider, input.keys, needsKey);
   if (needsKey && !key) return { error: "No API key provided to test" };

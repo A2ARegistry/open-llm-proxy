@@ -262,7 +262,9 @@ function EditKeyModal({
 }) {
   const [name, setName] = useState(apiKey.name);
   const [spendCapUsd, setSpendCapUsd] = useState(
-    apiKey.scopes.spendCapUsd !== undefined ? String(apiKey.scopes.spendCapUsd) : "",
+    apiKey.scopes.spendCapUsd !== undefined
+      ? String(apiKey.scopes.spendCapUsd)
+      : "",
   );
   const [defaultProvider, setDefaultProvider] = useState(
     apiKey.scopes.defaultProvider ?? "",
@@ -329,7 +331,10 @@ function EditKeyModal({
             className="w-full"
             value={defaultProvider}
             onChange={(v) => setDefaultProvider(v as string)}
-            options={[{ value: "", label: "Any provider — requires provider/model" }, ...providerOptions]}
+            options={[
+              { value: "", label: "Any provider — requires provider/model" },
+              ...providerOptions,
+            ]}
           />
           <p className="mt-1 text-[11px] text-gray-400">
             Bound keys only route to this provider and accept bare model ids.
