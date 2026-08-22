@@ -36,7 +36,7 @@ class EmailServiceWithConsole extends BaseEmailService {
     batchId?: string | null;
     metadata?: Record<string, unknown>;
   }): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    const settings = await this.loadSettings(profile, tenantId);
+    const settings = await this.loadSettings(profile, tenantId ?? undefined);
     const useProvider = provider || settings.provider || "mailchannels";
 
     // Handle 'console' provider - just log to console
@@ -98,7 +98,7 @@ class EmailServiceWithConsole extends BaseEmailService {
       text,
       from,
       profile,
-      tenantId,
+      tenantId: tenantId ?? undefined,
       provider,
       templateId,
       userId,
