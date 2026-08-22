@@ -5,6 +5,9 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "deploy": "npm run build && npm run migrate && wrangler deploy --env production",
     "deploy:full": "npm run build:dashboard && npm run deploy",

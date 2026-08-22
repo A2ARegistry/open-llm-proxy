@@ -24,7 +24,8 @@ This guide provides step-by-step instructions for deploying **Open LLM Proxy** t
 - Cloudflare account (free tier works)
 - GitHub repository with this code (forked or your own)
 - GitHub account connected to Cloudflare (one-time OAuth setup)
-- **Important**: This project requires **Node.js 22.x** (both locally and on Cloudflare)
+
+**Note**: Node.js 22 is automatically configured via the `.node-version` file in the repository.
 
 ---
 
@@ -78,21 +79,17 @@ In the build configuration screen:
 - **Build output directory**: Leave blank
 - **Root directory**: `/` (leave as default)
 
-**Environment variables** (click "Add variable"):
-- Variable name: `NODE_VERSION`
-- Value: `22`
-
 **Deploy command**:
 ```bash
 npm ci && npm run deploy
 ```
 
-**Important**: Setting `NODE_VERSION=22` ensures Cloudflare uses Node.js 22.x, matching the development environment and avoiding TypeScript compatibility issues.
-
 **Note**: The `npm run deploy` script will:
 1. Build TypeScript and dashboard (`npm run build`)
 2. Apply database migrations (`npm run migrate`)
 3. Deploy to Cloudflare Workers (`wrangler deploy`)
+
+**Note**: Node.js 22 is automatically used based on the `.node-version` file in the repository.
 
 Click **Save and Deploy**
 
@@ -365,23 +362,18 @@ With GitHub integration, deployments are automatic:
 
 ## Troubleshooting
 
-### Issue: TypeScript error about 'baseUrl' deprecated or 'ignoreDeprecations'
+### Issue: TypeScript error about 'baseUrl' deprecated
 
 **Error message**:
 ```
 tsconfig.json:15:27 - error TS5101: Option 'baseUrl' is deprecated
 ```
 
-**Cause**: Node.js version mismatch. The project requires Node.js 22.x but Cloudflare is using an older version.
+**Cause**: Cloudflare didn't detect the `.node-version` file, or you're using an old deployment.
 
-**Solution**:
-1. Go to your worker in the dashboard
-2. Click **Settings** → **Variables and Secrets**
-3. Under **Environment Variables**, click **Add variable**
-4. Variable name: `NODE_VERSION`
-5. Value: `22`
-6. Click **Save**
-7. Go to **Deployments** tab and click **Retry deployment**
+**Solution**: The repository includes a `.node-version` file that tells Cloudflare to use Node.js 22. If you still see this error:
+1. Ensure the `.node-version` file exists in your repository root
+2. Retry the deployment from the **Deployments** tab
 
 ### Issue: "No D1 database binding found for 'DB'"
 
