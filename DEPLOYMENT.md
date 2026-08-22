@@ -1,6 +1,6 @@
 # Deployment Guide: Open LLM Proxy on Cloudflare
 
-This guide provides step-by-step instructions for deploying **Open LLM Proxy** to Cloudflare Workers in production using the Cloudflare Dashboard.
+This guide provides step-by-step instructions for deploying **Open LLM Proxy** to Cloudflare Workers using the **Cloudflare Dashboard web portal** with GitHub integration.
 
 **Important**: This is an open-source project, so `wrangler.jsonc` contains only development/local settings. **Never commit production credentials, database IDs, or domains to Git.** All production configuration is done through the Cloudflare Dashboard.
 
@@ -10,8 +10,8 @@ This guide provides step-by-step instructions for deploying **Open LLM Proxy** t
 
 1. [Prerequisites](#prerequisites)
 2. [Create Cloudflare Resources](#step-1-create-cloudflare-resources)
-3. [Apply Database Migrations](#step-2-apply-database-migrations)
-4. [Deploy via Cloudflare Dashboard](#step-3-deploy-via-cloudflare-dashboard)
+3. [Connect GitHub and Deploy](#step-2-connect-github-and-deploy)
+4. [Apply Database Migrations](#step-3-apply-database-migrations)
 5. [Configure Production Settings](#step-4-configure-production-settings)
 6. [Configure Custom Domain](#step-5-configure-custom-domain-optional)
 7. [Verify Deployment](#step-6-verify-deployment)
@@ -22,9 +22,8 @@ This guide provides step-by-step instructions for deploying **Open LLM Proxy** t
 ## Prerequisites
 
 - Cloudflare account (free tier works)
-- GitHub repository with this code
-- Wrangler CLI installed: `npm install -g wrangler`
-- Logged in to Wrangler: `npx wrangler login`
+- GitHub repository with this code (forked or your own)
+- GitHub account connected to Cloudflare (one-time OAuth setup)
 
 ---
 
@@ -39,160 +38,220 @@ All resources must be created in your Cloudflare account before deployment.
 3. Click **Create Database**
 4. Name: `open-llm-proxy` (or any name you prefer)
 5. Click **Create**
-6. **Copy the Database ID** (looks like `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
+6. **Keep this tab open** - you'll need to copy the Database ID later
 
 ### 1.2 Create KV Namespace
 
-1. In Cloudflare Dashboard, go to **Workers & Pages** → **KV**
+1. In a new tab, go to **Workers & Pages** → **KV**
 2. Click **Create Namespace**
 3. Name: `open-llm-proxy-sessions` (or any name you prefer)
 4. Click **Add**
-5. **Copy the Namespace ID** (looks like `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`)
-
-### 1.3 Create Durable Objects (Automatic)
-
-Durable Objects will be automatically created when you deploy. No manual setup needed for:
-- `RateLimiter`
-- `ResponseCache`
-- `SessionManager`
-- `MetricsBuffer`
-- `EmailingCacheDO`
+5. **Keep this tab open** - you'll need to select this namespace later
 
 ---
 
-## Step 2: Apply Database Migrations
+## Step 2: Connect GitHub and Deploy
 
-Before deploying, apply the D1 migrations to create the database schema.
+### 2.1 Create Worker from Git
+
+1. In Cloudflare Dashboard, go to **Workers & Pages**
+2. Click **Create Application**
+3. Click the **Workers** tab
+4. Click **Connect to Git**
+
+### 2.2 Connect GitHub Repository
+
+1. If first time: Click **Connect GitHub** and authorize Cloudflare
+2. Select your GitHub account
+3. Find and select the `open-llm-proxy` repository (or your fork)
+4. Click **Begin setup**
+
+### 2.3 Configure Build Settings
+
+In the build configuration screen:
+
+**Production branch**: `main` (or your default branch)
+
+**Build configurations**:
+- **Build command**: Leave blank (the deploy command handles everything)
+- **Build output directory**: Leave blank
+- **Root directory**: `/` (leave as default)
+
+**Deploy command**:
+```bash
+npm ci && npm run deploy
+```
+
+**Note**: The `npm run deploy` script will:
+1. Build TypeScript and dashboard (`npm run build`)
+2. Apply database migrations (`npm run migrate`)
+3. Deploy to Cloudflare Workers (`wrangler deploy`)
+
+Click **Save and Deploy**
+
+### 2.4 Initial Deployment (Will Fail - Expected)
+
+The first deployment will fail because bindings (D1, KV) are not configured yet. This is expected. The worker needs to exist before we can configure its bindings.
+
+You'll see an error like:
+```
+Error: No D1 database binding found for 'DB'
+```
+
+This is normal - proceed to the next step.
+
+---
+
+## Step 3: Apply Database Migrations
+
+Before the worker can run, you need to create the database schema.
 
 ### Option A: Using Wrangler CLI (Recommended)
 
-```bash
-# Set your database name or ID
-export DB_NAME="open-llm-proxy"  # or use the Database ID
+If you have Node.js and npm installed locally:
 
-# Apply migrations to production
-npx wrangler d1 migrations apply $DB_NAME --remote
+```bash
+# Clone the repository (if not already done)
+git clone https://github.com/YOUR_USERNAME/open-llm-proxy.git
+cd open-llm-proxy
+
+# Install dependencies
+npm install
+
+# Login to Cloudflare (one-time)
+npx wrangler login
+
+# Apply migrations (replace with your database name)
+npx wrangler d1 migrations apply open-llm-proxy --remote
 ```
 
-You should see output like:
+Expected output:
 ```
 Migrations to be applied:
-┌──────────────────┐
-│ 0001_auth.sql    │
-│ 0002_email.sql   │
-│ 0003_app.sql     │
-└──────────────────┘
+┌───────────────────────────┐
+│ 0001_auth.sql             │
+│ 0002_email.sql            │
+│ 0003_app.sql              │
+└───────────────────────────┘
 ✔ About to apply 3 migration(s)
-Your database may not be available to serve requests during the migration, continue? … yes
-🌀 Mapping SQL input into an array of statements
-🌀 Executing on remote database open-llm-proxy (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx):
+🌀 Executing on remote database open-llm-proxy:
 ✅ Successfully applied 3 migration(s)!
 ```
 
 ### Option B: Using D1 Console in Dashboard
 
+If you don't have CLI access:
+
 1. Go to your D1 database in the Cloudflare Dashboard
-2. Click **Console** tab
-3. Copy and paste the contents of each migration file in order:
-   - `migrations/0001_auth.sql`
-   - `migrations/0002_email.sql`
-   - `migrations/0003_app.sql`
-4. Execute each one
-
----
-
-## Step 3: Deploy via Cloudflare Dashboard
-
-You can deploy using either Git Integration (automatic) or Manual Upload.
-
-### Option A: Git Integration (Recommended for CI/CD)
-
-1. Go to **Workers & Pages** → **Create Application**
-2. Click **Workers** tab
-3. Click **Connect to Git**
-4. Select your GitHub account and repository
-5. Choose the branch to deploy (e.g., `main`)
-6. Configure build settings:
-   - **Build command**: `npm ci && npm run build`
-   - **Build output directory**: Leave empty (Worker deployment)
-7. Click **Save and Deploy**
-
-### Option B: Manual Deployment via CLI
-
-```bash
-# Build the project
-npm run build
-
-# Deploy to production
-npx wrangler deploy --env production
-
-# Or use the deploy script (includes migrations)
-npm run deploy
-```
+2. Click the **Console** tab
+3. Copy the contents of `migrations/0001_auth.sql` from GitHub
+4. Paste into the console and click **Execute**
+5. Repeat for `0002_email.sql` and `0003_app.sql` in order
 
 ---
 
 ## Step 4: Configure Production Settings
 
-After deployment, configure the Worker in the Cloudflare Dashboard.
+Now configure the worker with the resources you created.
 
-### 4.1 Bind Resources
+### 4.1 Access Worker Settings
 
-Go to your Worker → **Settings** → **Variables and Secrets**
+1. Go to **Workers & Pages**
+2. Click on your worker (e.g., `open-llm-proxy`)
+3. Click **Settings** tab
+4. Click **Variables and Secrets** in the left sidebar
 
-#### Add Bindings:
+### 4.2 Add Resource Bindings
 
-1. **D1 Database**:
-   - Click **Add** under **D1 Database Bindings**
-   - Variable name: `DB`
-   - D1 Database: Select your database (e.g., `open-llm-proxy`)
-   - Click **Save**
+#### D1 Database Binding
 
-2. **KV Namespace**:
-   - Click **Add** under **KV Namespace Bindings**
-   - Variable name: `SESSION_CACHE`
-   - KV Namespace: Select your namespace (e.g., `open-llm-proxy-sessions`)
-   - Click **Save**
+1. Scroll to **D1 Database Bindings**
+2. Click **Add binding**
+3. **Variable name**: `DB` (must be exactly this)
+4. **D1 database**: Select your database (e.g., `open-llm-proxy`)
+5. Click **Save**
 
-3. **Durable Object Bindings** (if not auto-bound):
-   - Variable: `RATE_LIMITER` → Class: `RateLimiter`
-   - Variable: `RESPONSE_CACHE` → Class: `ResponseCache`
-   - Variable: `SESSION_MANAGER` → Class: `SessionManager`
-   - Variable: `METRICS_BUFFER` → Class: `MetricsBuffer`
-   - Variable: `EMAIL_TEMPLATE_CACHE` → Class: `EmailingCacheDO`
+#### KV Namespace Binding
 
-### 4.2 Environment Variables
+1. Scroll to **KV Namespace Bindings**
+2. Click **Add binding**
+3. **Variable name**: `SESSION_CACHE` (must be exactly this)
+4. **KV namespace**: Select your namespace (e.g., `open-llm-proxy-sessions`)
+5. Click **Save**
 
-Click **Add Variable** to add these production environment variables:
+#### Durable Object Bindings
 
-| Variable                    | Value (Example)                      | Required | Description                              |
-| --------------------------- | ------------------------------------ | -------- | ---------------------------------------- |
-| `ENVIRONMENT`               | `production`                         | Yes      | Deployment environment                   |
-| `BASE_URL`                  | `https://proxy.yourdomain.com`       | Yes      | Public base URL for the API              |
-| `DASHBOARD_URL`             | `https://proxy.yourdomain.com`       | Yes      | URL where admin dashboard is hosted      |
-| `APP_NAME`                  | `Open LLM Proxy`                     | No       | App name in UI and emails                |
-| `RATE_LIMITER_SHARDS`       | `8`                                  | No       | Number of rate limiter DO shards         |
-| `METRICS_BUFFER_SHARDS`     | `8`                                  | No       | Number of metrics buffer DO shards       |
-| `SESSION_CACHE_TTL_SECONDS` | `3600`                               | No       | Session cache TTL (1 hour)               |
-| `EMAIL_PROVIDER`            | `mailchannels`                       | No       | Email provider (console/mailchannels/resend/sendgrid/sendpulse) |
-| `EMAIL_FROM_NAME`           | `Open LLM Proxy`                     | No       | Email sender name                        |
-| `EMAIL_FROM_ADDRESS`        | `noreply@yourdomain.com`             | No       | Email sender address                     |
+Scroll to **Durable Object Bindings** and add each of these:
 
-**Note**: Use `console` for `EMAIL_PROVIDER` during testing to log emails instead of sending them.
+| Variable Name           | Durable Object Class Name | Script Name         |
+| ----------------------- | ------------------------- | ------------------- |
+| `RATE_LIMITER`          | `RateLimiter`             | (select your worker)|
+| `RESPONSE_CACHE`        | `ResponseCache`           | (select your worker)|
+| `SESSION_MANAGER`       | `SessionManager`          | (select your worker)|
+| `METRICS_BUFFER`        | `MetricsBuffer`           | (select your worker)|
+| `EMAIL_TEMPLATE_CACHE`  | `EmailingCacheDO`         | (select your worker)|
 
-### 4.3 Secrets (Encrypted Variables)
+For each binding:
+1. Click **Add binding**
+2. Enter the **Variable name**
+3. Select the **Durable Object class**
+4. Select your worker from **Script name** dropdown
+5. Click **Save**
 
-Click **Add Secret** to add encrypted credentials:
+### 4.3 Add Environment Variables
 
-| Secret                    | Description                                   | When Required              |
-| ------------------------- | --------------------------------------------- | -------------------------- |
-| `RESEND_API_KEY`          | Resend email API key                          | If EMAIL_PROVIDER=resend   |
-| `SENDGRID_API_KEY`        | SendGrid email API key                        | If EMAIL_PROVIDER=sendgrid |
-| `SENDPULSE_CLIENT_ID`     | SendPulse OAuth client ID                     | If EMAIL_PROVIDER=sendpulse|
-| `SENDPULSE_CLIENT_SECRET` | SendPulse OAuth client secret                 | If EMAIL_PROVIDER=sendpulse|
-| `TURNSTILE_SECRET`        | Cloudflare Turnstile secret (for bot protection) | If using Turnstile      |
+Scroll to **Environment Variables** section.
 
-**Important**: Click **Save** after adding all variables and secrets.
+Click **Add variable** for each of these:
+
+**Required Variables**:
+
+| Variable               | Value (Example)                    | Description                         |
+| ---------------------- | ---------------------------------- | ----------------------------------- |
+| `ENVIRONMENT`          | `production`                       | Deployment environment              |
+| `BASE_URL`             | `https://proxy.yourdomain.com`     | Your public API URL                 |
+| `DASHBOARD_URL`        | `https://proxy.yourdomain.com`     | Admin dashboard URL (same as above) |
+
+**Optional Variables** (recommended):
+
+| Variable                    | Value (Example)      | Description                              |
+| --------------------------- | -------------------- | ---------------------------------------- |
+| `APP_NAME`                  | `Open LLM Proxy`     | App name in UI and emails                |
+| `RATE_LIMITER_SHARDS`       | `8`                  | Number of rate limiter shards (default: 4)|
+| `METRICS_BUFFER_SHARDS`     | `8`                  | Number of metrics buffer shards (default: 4)|
+| `SESSION_CACHE_TTL_SECONDS` | `3600`               | Session cache TTL in seconds (default: 60)|
+| `EMAIL_PROVIDER`            | `console`            | Email provider (see options below)       |
+| `EMAIL_FROM_NAME`           | `Open LLM Proxy`     | Email sender name                        |
+| `EMAIL_FROM_ADDRESS`        | `noreply@yourdomain.com` | Email sender address                |
+
+**Email Provider Options**:
+- `console` - Logs emails to console (recommended for testing)
+- `mailchannels` - Uses Cloudflare MailChannels (free)
+- `resend` - Requires `RESEND_API_KEY` secret
+- `sendgrid` - Requires `SENDGRID_API_KEY` secret
+- `sendpulse` - Requires `SENDPULSE_CLIENT_ID` and `SENDPULSE_CLIENT_SECRET` secrets
+
+**Important**: Click **Save** after adding all variables.
+
+### 4.4 Add Secrets (If Using Email)
+
+If you set `EMAIL_PROVIDER` to `resend`, `sendgrid`, or `sendpulse`:
+
+1. Scroll to **Environment Variables** section
+2. Click **Add variable**
+3. Enter the **Variable name** (e.g., `RESEND_API_KEY`)
+4. Enter the **Value** (your API key)
+5. Select **Encrypt** checkbox
+6. Click **Save**
+
+Common secrets:
+
+| Secret Name               | When Required              |
+| ------------------------- | -------------------------- |
+| `RESEND_API_KEY`          | EMAIL_PROVIDER=resend      |
+| `SENDGRID_API_KEY`        | EMAIL_PROVIDER=sendgrid    |
+| `SENDPULSE_CLIENT_ID`     | EMAIL_PROVIDER=sendpulse   |
+| `SENDPULSE_CLIENT_SECRET` | EMAIL_PROVIDER=sendpulse   |
 
 ---
 
@@ -201,31 +260,61 @@ Click **Add Secret** to add encrypted credentials:
 To use your own domain instead of `*.workers.dev`:
 
 1. Go to your Worker → **Settings** → **Domains & Routes**
-2. Click **Add** → **Custom Domain**
-3. Enter your domain: `proxy.yourdomain.com`
-4. Cloudflare will:
-   - Add DNS records automatically
-   - Provision SSL/TLS certificates
-   - Enable HTTPS automatically
+2. Click **Add** next to **Custom Domains**
+3. Enter your domain or subdomain: `proxy.yourdomain.com`
+4. Click **Add Domain**
 
-**Note**: Your domain must be managed by Cloudflare DNS for this to work automatically.
+Cloudflare will automatically:
+- Add the required DNS records (if your domain uses Cloudflare DNS)
+- Provision SSL/TLS certificates
+- Enable HTTPS
+
+**Note**: Your domain must use Cloudflare nameservers for automatic DNS setup.
 
 ---
 
 ## Step 6: Verify Deployment
 
-### 6.1 Check Dashboard
+### 6.1 Trigger a New Deployment
+
+After configuring all bindings and variables:
+
+1. Go to **Deployments** tab
+2. Click **Retry deployment** on the failed deployment
+
+OR
+
+1. Make a small commit to your GitHub repository
+2. Push to the `main` branch
+3. Cloudflare will automatically build and deploy
+
+### 6.2 Check Deployment Status
+
+1. Go to **Deployments** tab
+2. Wait for the deployment to complete (green checkmark)
+3. You should see "Deployment successful"
+
+### 6.3 Access the Dashboard
 
 Visit your deployment URL:
 ```
 https://proxy.yourdomain.com
 # or
-https://open-llm-proxy.your-subdomain.workers.dev
+https://open-llm-proxy.YOUR-SUBDOMAIN.workers.dev
 ```
 
-You should see the admin dashboard login page.
+You should see the Open LLM Proxy admin dashboard login page.
 
-### 6.2 Check Health Endpoint
+### 6.4 Complete Initial Setup
+
+1. On first visit, you'll see the bootstrap/setup page
+2. Note the default admin credentials (shown only once)
+3. Log in with the default credentials
+4. **Immediately change the admin password** in settings
+
+### 6.5 Test the API
+
+Check the health endpoint:
 
 ```bash
 curl https://proxy.yourdomain.com/api/health
@@ -239,80 +328,81 @@ Expected response:
 }
 ```
 
-### 6.3 Complete Initial Setup
-
-1. Visit the dashboard URL
-2. You'll see the bootstrap page with default admin credentials
-3. Log in and **change the default password immediately**
-4. The default admin credentials will only show on first visit
-
-### 6.4 Verify Database
-
-Check that templates were seeded:
-
-```bash
-# View database tables
-npx wrangler d1 execute open-llm-proxy --remote --command "SELECT COUNT(*) FROM system_email_templates"
-```
-
-Should return `6` (or the number of templates in `src/email/templates.ts`).
-
 ---
 
 ## Step 7: Continuous Deployment
 
-### Automatic Deployment (Git Integration)
+With GitHub integration, deployments are automatic:
 
-If you set up Git integration in Step 3:
-
-1. Make changes to your code
-2. Commit and push to GitHub:
+1. Make changes to your code locally
+2. Commit and push:
    ```bash
    git add .
    git commit -m "Update configuration"
    git push origin main
    ```
-3. Cloudflare automatically rebuilds and deploys
-4. Check deployment status in **Workers & Pages** → **Deployments**
+3. Cloudflare automatically detects the push
+4. Runs the deploy command: `npm ci && npm run deploy`
+5. Deploys the new version
 
-### Manual Deployment
+**View deployment history**:
+- Go to your worker in the dashboard
+- Click **Deployments** tab
+- See all past deployments with timestamps and Git commit info
 
-```bash
-# Build and deploy
-npm run deploy
-
-# This runs:
-# 1. npm run build (TypeScript check + dashboard build)
-# 2. npm run migrate (apply new DB migrations)
-# 3. wrangler deploy --env production
-```
+**Rollback if needed**:
+- Click on a previous successful deployment
+- Click **Rollback to this deployment**
 
 ---
 
 ## Troubleshooting
 
-### Issue: "Unknown provider: mock"
+### Issue: "No D1 database binding found for 'DB'"
 
-**Solution**: Set `EMAIL_PROVIDER=console` or `EMAIL_PROVIDER=mailchannels` in environment variables.
+**Cause**: D1 database not bound to the worker.
 
-### Issue: "Template not found"
+**Solution**:
+1. Go to **Settings** → **Variables and Secrets** → **D1 Database Bindings**
+2. Verify variable name is exactly `DB`
+3. Verify the correct database is selected
+4. Click **Save** and retry deployment
 
-**Solution**: Run migrations again:
-```bash
-npx wrangler d1 migrations apply open-llm-proxy --remote
-```
+### Issue: "Unknown provider: mock" or email errors
 
-### Issue: "Database binding not found"
+**Cause**: Email provider not configured.
 
-**Solution**: Verify the D1 binding in **Settings** → **Variables and Secrets** → **D1 Database Bindings**. The variable name must be exactly `DB`.
+**Solution**: Add environment variable `EMAIL_PROVIDER=console` in **Settings** → **Variables and Secrets**
 
-### Issue: "Module not found" or "Cannot find module"
+### Issue: "Template not found" errors
 
-**Solution**: Run `npm run build` before deploying. The dashboard build must complete successfully.
+**Cause**: Database migrations not applied.
 
-### Issue: Rate limits or CORS errors
+**Solution**: Run migrations using Wrangler CLI or D1 Console (see Step 3)
 
-**Solution**: Check that `BASE_URL` and `DASHBOARD_URL` match your actual domain/URL.
+### Issue: Build fails with "Cannot find module"
+
+**Cause**: Build command may be incorrect or dependencies missing.
+
+**Solution**:
+1. Go to **Settings** → **Builds & deployments**
+2. Verify **Deploy command** is: `npm ci && npm run deploy`
+3. Retry deployment
+
+### Issue: "Rate limit exceeded" or 429 errors
+
+**Cause**: Default rate limiter shards may be too low.
+
+**Solution**: Add environment variable `RATE_LIMITER_SHARDS=8` (or higher)
+
+### Issue: Dashboard shows blank page
+
+**Cause**: `BASE_URL` or `DASHBOARD_URL` mismatch.
+
+**Solution**:
+1. Go to **Settings** → **Variables and Secrets**
+2. Update `BASE_URL` and `DASHBOARD_URL` to match your actual domain
+3. Both should be the same value (e.g., `https://proxy.yourdomain.com`)
 
 ---
 
@@ -320,25 +410,29 @@ npx wrangler d1 migrations apply open-llm-proxy --remote
 
 Before going live:
 
+- [ ] Database migrations applied successfully
+- [ ] All resource bindings configured (D1, KV, DOs)
+- [ ] `BASE_URL` and `DASHBOARD_URL` set to your domain
+- [ ] Email provider configured (or set to `console`)
 - [ ] Changed default admin password
-- [ ] Set strong `BASE_URL` and `DASHBOARD_URL` values
-- [ ] Email provider configured (or set to `console` for testing)
 - [ ] Custom domain with HTTPS enabled
-- [ ] D1 database migrations applied
-- [ ] Reviewed rate limits in dashboard
+- [ ] Tested API health endpoint
+- [ ] Tested creating API keys
 - [ ] No secrets committed to Git
-- [ ] Tested API key creation and LLM requests
+- [ ] Reviewed environment variables
 
 ---
 
 ## Next Steps
 
-1. **Configure Provider API Keys**: Add OpenAI, Anthropic, or other LLM provider keys
-2. **Set Up Alerting**: Configure spend limits and error rate alerts
-3. **Monitor Usage**: Check the metrics dashboard
-4. **Invite Team Members**: Create additional admin/user accounts
+1. **Add LLM Provider Keys**: Configure OpenAI, Anthropic, Google, etc.
+2. **Create API Keys**: Generate keys for your applications
+3. **Set Up Monitoring**: Check metrics and logs in dashboard
+4. **Configure Alerts**: Set spend limits and error rate alerts
+5. **Invite Team Members**: Create additional admin/user accounts
 
 For more information, see:
-- [README.md](./README.md) - Getting started guide
-- [QUICK-DEPLOY.md](./QUICK-DEPLOY.md) - Quick deployment reference
+- [README.md](./README.md) - Project overview and features
 - [Cloudflare Workers Docs](https://developers.cloudflare.com/workers/)
+- [Cloudflare D1 Docs](https://developers.cloudflare.com/d1/)
+
