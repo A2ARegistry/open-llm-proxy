@@ -8,6 +8,9 @@
   "engines": {
     "node": ">=22.0.0"
   },
+  "workspaces": [
+    "dashboard"
+  ],
   "scripts": {
     "deploy": "npm run build && npm run migrate && wrangler deploy --env production",
     "deploy:full": "npm run build:dashboard && npm run deploy",
@@ -23,8 +26,8 @@
     "test:coverage": "vitest run --coverage",
     "test-watch": "vitest watch",
     "build": "npm run tsc && npm run build:dashboard",
-    "build:dashboard": "npm --prefix dashboard run build",
-    "dev:dashboard": "npm --prefix dashboard run dev",
+    "build:dashboard": "npm run build --workspace=dashboard",
+    "dev:dashboard": "npm run dev --workspace=dashboard",
     "tsc": "tsc --noEmit",
     "prettier": "prettier --write .",
     "prettier-ci": "prettier --check .",
