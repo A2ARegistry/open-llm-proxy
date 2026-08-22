@@ -7,7 +7,7 @@ export function ResetPasswordPage() {
   const [params] = useSearchParams();
   const token = params.get("token");
   return (
-    <AuthLayout>
+    <AuthLayout inCard={false}>
       <ResetPasswordForm
         token={token}
         onBackToLogin={() => navigate("/signin")}

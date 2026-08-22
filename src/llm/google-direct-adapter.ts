@@ -128,6 +128,14 @@ interface GoogleContent {
 
 interface GooglePart {
   text?: string;
+  inlineData?: {
+    mimeType: string;
+    data: string;
+  };
+  fileData?: {
+    mimeType: string;
+    fileUri: string;
+  };
   thought?: boolean | string;
   functionCall?: {
     name: string;
@@ -138,6 +146,61 @@ interface GooglePart {
     response: Record<string, unknown>;
   };
   thoughtSignature?: string;
+}
+
+/**
+ * Convert OpenAI user content (string or array of text/image parts) into Google parts.
+ */
+function convertUserContentToGoogleParts(
+  content: string | unknown[] | undefined,
+): GooglePart[] {
+  if (!content) return [];
+
+  if (typeof content === "string") {
+    return content.trim().length > 0 ? [{ text: content }] : [];
+  }
+
+  if (Array.isArray(content)) {
+    const parts: GooglePart[] = [];
+    for (const item of content) {
+      if (typeof item === "string") {
+        if (item.trim().length > 0) parts.push({ text: item });
+      } else if (item && typeof item === "object") {
+        const obj = item as Record<string, unknown>;
+        if (
+          obj.type === "text" &&
+          typeof obj.text === "string" &&
+          obj.text.trim().length > 0
+        ) {
+          parts.push({ text: obj.text });
+        } else if (obj.type === "image_url" && obj.image_url) {
+          const imgUrlObj =
+            typeof obj.image_url === "string"
+              ? { url: obj.image_url }
+              : (obj.image_url as { url?: string });
+          const url = imgUrlObj.url || "";
+          if (url.startsWith("data:")) {
+            const commaIdx = url.indexOf(",");
+            if (commaIdx !== -1) {
+              const header = url.slice(0, commaIdx);
+              const data = url.slice(commaIdx + 1);
+              const mimeTypeMatch = header.match(/^data:([^;]+)/);
+              const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/png";
+              parts.push({
+                inlineData: {
+                  mimeType,
+                  data,
+                },
+              });
+            }
+          }
+        }
+      }
+    }
+    return parts;
+  }
+
+  return [];
 }
 
 interface GoogleGenerateContentResponse {
@@ -162,7 +225,6 @@ export class GoogleDirectAdapter {
   private client: GoogleGenAI;
 
   constructor(config: { apiKey: string }) {
-    console.log("[GoogleDirectAdapter] Initializing with API key (Express Mode)");
     this.client = new GoogleGenAI({
       vertexai: true,
       apiKey: config.apiKey,
@@ -179,10 +241,6 @@ export class GoogleDirectAdapter {
     const contents: GoogleContent[] = [];
     let pendingToolParts: GooglePart[] = [];
 
-    console.log(
-      `[GoogleDirectAdapter] Converting ${messages.length} messages to Google format`,
-    );
-
     for (let index = 0; index < messages.length; index++) {
       const msg = messages[index];
 
@@ -196,14 +254,6 @@ export class GoogleDirectAdapter {
           typeof msg.content === "string"
             ? msg.content
             : String(msg.content ?? "");
-        const contentSnippet =
-          rawContent.length > 120
-            ? rawContent.slice(0, 120) + "..."
-            : rawContent;
-
-        console.log(
-          `[GoogleDirectAdapter] Converting tool result | toolCallId=${toolCallId} | toolName=${toolName} | contentSnippet=${JSON.stringify(contentSnippet)}`,
-        );
 
         // ✅ CORRECT FORMAT: functionResponse with name and response wrapper
         pendingToolParts.push({
@@ -218,10 +268,6 @@ export class GoogleDirectAdapter {
         // Check if next message is also a tool result
         const nextMsg = messages[index + 1];
         if (!nextMsg || nextMsg.role !== "tool") {
-          // Flush all accumulated tool responses as a single user turn
-          console.log(
-            `[GoogleDirectAdapter] Flushing ${pendingToolParts.length} tool responses as user turn`,
-          );
           contents.push({
             role: "user",
             parts: pendingToolParts,
@@ -240,22 +286,21 @@ export class GoogleDirectAdapter {
         pendingToolParts = [];
       }
 
-      // Handle user messages
+      // Handle user messages (supporting text and multimodal images)
       if (msg.role === "user") {
-        contents.push({
-          role: "user",
-          parts: [{ text: typeof msg.content === "string" ? msg.content : "" }],
-        });
+        const userParts = convertUserContentToGoogleParts(msg.content);
+        if (userParts.length > 0) {
+          contents.push({
+            role: "user",
+            parts: userParts,
+          });
+        }
         continue;
       }
 
       // Handle assistant messages
       if (msg.role === "assistant") {
         if (msg.tool_calls && msg.tool_calls.length > 0) {
-          console.log(
-            `[GoogleDirectAdapter] Assistant has tool_calls: count=${msg.tool_calls.length}`,
-          );
-
           const parts: GooglePart[] = [];
 
           for (let idx = 0; idx < msg.tool_calls.length; idx++) {
@@ -268,23 +313,14 @@ export class GoogleDirectAdapter {
               args = {};
             }
 
-            // 1. Direct signature from property
+            // Recover thought_signature: first from property, then from encoded tool_call_id
             let thoughtSignature = tc.thought_signature;
-
-            // 2. Decode from tool_call_id (100% stateless recovery!)
             if (!thoughtSignature && tc.id) {
               const decoded = decodeToolCallId(tc.id);
               if (decoded?.thoughtSignature) {
                 thoughtSignature = decoded.thoughtSignature;
-                console.log(
-                  `[GoogleDirectAdapter] Decoded thought_signature from tool_call_id for ${tc.function.name} | toolCallId=${tc.id}`,
-                );
               }
             }
-
-            console.log(
-              `[GoogleDirectAdapter] Assistant tool_call ${idx} | name=${tc.function.name} | args=${tc.function.arguments} | toolCallId=${tc.id} | hasSig=${!!thoughtSignature}`,
-            );
 
             const part: GooglePart = {
               functionCall: {
@@ -306,10 +342,13 @@ export class GoogleDirectAdapter {
           });
         } else {
           // Regular text response
-          contents.push({
-            role: "model",
-            parts: [{ text: typeof msg.content === "string" ? msg.content : "" }],
-          });
+          const text = typeof msg.content === "string" ? msg.content : "";
+          if (text.trim().length > 0) {
+            contents.push({
+              role: "model",
+              parts: [{ text }],
+            });
+          }
         }
         continue;
       }
@@ -320,6 +359,20 @@ export class GoogleDirectAdapter {
       }
     }
 
+    // Log the tail of incoming OpenAI messages for debugging
+    const tailMessages = messages.slice(-3);
+    console.log(
+      `[GoogleDirectAdapter] Input tail (${tailMessages.length}/${messages.length}):`,
+      JSON.stringify(
+        tailMessages.map((m) => ({
+          role: m.role,
+          contentSnippet: typeof m.content === "string" ? m.content.slice(0, 50) : undefined,
+          hasToolCalls: !!(m.tool_calls && m.tool_calls.length > 0),
+          toolCallId: m.tool_call_id,
+        })),
+      ),
+    );
+
     // Ensure conversation starts with user message
     while (contents.length > 0 && contents[0].role !== "user") {
       console.warn(
@@ -329,8 +382,32 @@ export class GoogleDirectAdapter {
       contents.shift();
     }
 
+    // Google API requires the conversation to end with a user turn.
+    // This happens when the client sends full history ending with an
+    // assistant text message (common in agentic tool-use flows).
+    while (contents.length > 0 && contents[contents.length - 1].role !== "user") {
+      console.warn(
+        "[GoogleDirectAdapter] Removing trailing non-user message:",
+        contents[contents.length - 1].role,
+      );
+      contents.pop();
+    }
+
+    const tailContents = contents.slice(-3);
     console.log(
-      `[GoogleDirectAdapter] Converted to ${contents.length} Google content entries`,
+      `[GoogleDirectAdapter] Converted ${messages.length} messages to ${contents.length} Google content entries. Final tail:`,
+      JSON.stringify(
+        tailContents.map((c) => ({
+          role: c.role,
+          partKinds: c.parts.map((p) => {
+            if (p.text) return "text";
+            if (p.inlineData) return `inlineData:${p.inlineData.mimeType}`;
+            if (p.functionCall) return `funcCall:${p.functionCall.name}`;
+            if (p.functionResponse) return `funcResp:${p.functionResponse.name}`;
+            return "unknown";
+          }),
+        })),
+      ),
     );
 
     return contents;
@@ -396,9 +473,6 @@ export class GoogleDirectAdapter {
         toolCallIndex++;
 
         const args = part.functionCall.args || {};
-        console.log(
-          `[GoogleDirectAdapter] Outgoing non-stream tool_call | name=${part.functionCall.name} | args=${JSON.stringify(args)} | toolCallId=${toolCallId}`,
-        );
 
         const toolCall = {
           type: "toolCall" as const,
@@ -423,9 +497,7 @@ export class GoogleDirectAdapter {
       stopReason = "length";
     }
 
-    console.log(
-      `[GoogleDirectAdapter] Response | stopReason=${stopReason} | hasToolCalls=${hasToolCalls} | hasThoughtSignature=${!!turnThoughtSignature} | finishReason=${candidate.finishReason}`,
-    );
+
 
     return {
       role: "assistant",
@@ -511,14 +583,7 @@ export class GoogleDirectAdapter {
           })),
         },
       ];
-      console.log(
-        `[GoogleDirectAdapter] Attached ${input.tools.length} tool declarations`,
-      );
     }
-
-    console.log(
-      `[GoogleDirectAdapter] Calling Google API | model=${input.model} | contents=${contents.length} | hasTools=${!!input.tools}`,
-    );
 
     const response = (await this.client.models.generateContent(
       requestOptions,
@@ -591,14 +656,7 @@ export class GoogleDirectAdapter {
           })),
         },
       ];
-      console.log(
-        `[GoogleDirectAdapter] Attached ${input.tools.length} tool declarations`,
-      );
     }
-
-    console.log(
-      `[GoogleDirectAdapter] Streaming from Google API | model=${input.model} | contents=${contents.length} | hasTools=${!!input.tools}`,
-    );
 
     const stream = await this.client.models.generateContentStream(
       requestOptions,
@@ -681,8 +739,8 @@ export class GoogleDirectAdapter {
           }
         } else if (part.text) {
           // Check if we're continuing an existing text part or starting a new one
-          if (currentTextIndex === -1 || 
-              accumulatedContent[currentTextIndex]?.type !== "text") {
+          if (currentTextIndex === -1 ||
+            accumulatedContent[currentTextIndex]?.type !== "text") {
             // New text part
             currentTextIndex = accumulatedContent.length;
             accumulatedContent.push({ type: "text", text: "" });
@@ -750,9 +808,6 @@ export class GoogleDirectAdapter {
             // ✅ CRITICAL: Preserve thought_signature from Google response
             if (partSig) {
               toolCall.thought_signature = partSig;
-              console.log(
-                `[GoogleDirectAdapter] Extracted thought_signature from Google response for ${part.functionCall.name} | toolCallId=${toolCallId}`,
-              );
             }
 
             toolCallsById.set(part.functionCall.name, currentToolIndex);
@@ -796,9 +851,6 @@ export class GoogleDirectAdapter {
             };
             if (Object.keys(args).length > 0) {
               existingCall.arguments = { ...existingCall.arguments, ...args };
-              console.log(
-                `[GoogleDirectAdapter] Merged args for stream tool_call | name=${part.functionCall.name} | args=${JSON.stringify(existingCall.arguments)}`,
-              );
             }
           }
         }
@@ -822,10 +874,7 @@ export class GoogleDirectAdapter {
     const hasToolCalls = accumulatedContent.some((c) => c.type === "toolCall");
     const stopReason: AssistantMessage["stopReason"] = hasToolCalls ? "toolUse" : "stop";
 
-    console.log(
-      `[GoogleDirectAdapter] Stream complete | stopReason=${stopReason} | ` +
-      `hasToolCalls=${hasToolCalls} | hasThoughtSignature=${!!lastThoughtSignature}`,
-    );
+
 
     // Send final done event
     const finalMessage: AssistantMessage = {

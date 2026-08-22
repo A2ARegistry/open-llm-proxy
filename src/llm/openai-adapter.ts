@@ -3,6 +3,7 @@ import {
   canonicalProviderName,
   isKnownProviderName,
 } from "./provider-registry";
+import { decodeToolCallId } from "./google-direct-adapter";
 import type {
   AssistantMessage,
   AssistantMessageEvent,
@@ -84,10 +85,6 @@ export function toPiContext(body: {
   const messages: Message[] = [];
   const toolNameById = new Map<string, string>();
 
-  console.log(
-    `[openai-adapter] toPiContext | model=${body.model} | ` +
-    `messageCount=${body.messages?.length ?? 0}`
-  );
 
   for (const msg of body.messages ?? []) {
     if (msg.role === "system") {
@@ -95,13 +92,31 @@ export function toPiContext(body: {
       continue;
     }
     if (msg.role === "user") {
-      const content = typeof msg.content === "string" ? msg.content : "";
+      let content = "";
+      if (typeof msg.content === "string") {
+        content = msg.content;
+      } else if (Array.isArray(msg.content)) {
+        content = msg.content
+          .map((part) => {
+            if (typeof part === "string") return part;
+            if (
+              part &&
+              typeof part === "object" &&
+              "text" in part &&
+              typeof (part as { text?: unknown }).text === "string"
+            ) {
+              return (part as { text: string }).text;
+            }
+            return "";
+          })
+          .filter(Boolean)
+          .join("\n");
+      }
       messages.push({
         role: "user",
         content,
         timestamp: Date.now(),
       });
-      console.log(`[openai-adapter] toPiContext | role=user | contentLength=${content.length}`);
       continue;
     }
     if (msg.role === "assistant") {
@@ -125,6 +140,15 @@ export function toPiContext(body: {
           args = {};
         }
         toolNameById.set(tc.id, tc.function.name);
+
+        let thoughtSignature = (tc as { thought_signature?: string }).thought_signature;
+        if (!thoughtSignature && tc.id) {
+          const decoded = decodeToolCallId(tc.id);
+          if (decoded?.thoughtSignature) {
+            thoughtSignature = decoded.thoughtSignature;
+          }
+        }
+
         const toolCall: {
           type: "toolCall";
           id: string;
@@ -137,16 +161,12 @@ export function toPiContext(body: {
           name: tc.function.name,
           arguments: args,
         };
-        // Preserve thought_signature if present (needed for Google Vertex continuation)
-        if ((tc as { thought_signature?: string }).thought_signature) {
-          toolCall.thought_signature = (tc as { thought_signature?: string }).thought_signature;
+
+        if (thoughtSignature) {
+          toolCall.thought_signature = thoughtSignature;
         }
         toolCalls.push(toolCall);
       }
-      console.log(
-        `[openai-adapter] toPiContext | role=assistant | toolCallsCount=${toolCalls.length}` +
-        (toolCalls.length > 0 ? ` | toolNames=[${toolCalls.map(tc => tc.name).join(", ")}]` : "")
-      );
       messages.push({
         role: "assistant",
         content: [...parts, ...toolCalls],
@@ -161,20 +181,17 @@ export function toPiContext(body: {
     }
     if (msg.role === "tool") {
       const toolCallId = msg.tool_call_id ?? "";
+      const decoded = decodeToolCallId(toolCallId);
+      const toolName = toolNameById.get(toolCallId) ?? msg.name ?? decoded?.name ?? "tool";
       const content =
         typeof msg.content === "string"
           ? msg.content
           : String(msg.content ?? "");
-      console.log(
-        `[openai-adapter] toPiContext | role=tool | toolCallId=${toolCallId} | ` +
-        `toolName=${toolNameById.get(toolCallId) ?? msg.name ?? "tool"} | ` +
-        `contentLength=${content.length}`
-      );
       if (content) {
         messages.push({
           role: "toolResult",
           toolCallId,
-          toolName: toolNameById.get(toolCallId) ?? msg.name ?? "tool",
+          toolName,
           content: [makeTextContent(content)],
           isError: false,
           timestamp: Date.now(),
@@ -182,11 +199,6 @@ export function toPiContext(body: {
       }
     }
   }
-
-  console.log(
-    `[openai-adapter] toPiContext | finalMessageCount=${messages.length} | ` +
-    `hasSystemPrompt=${systemParts.length > 0}`
-  );
 
   return {
     systemPrompt: systemParts.length > 0 ? systemParts.join("\n\n") : undefined,
