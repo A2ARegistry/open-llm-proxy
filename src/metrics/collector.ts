@@ -13,6 +13,8 @@ export interface MetricDraft {
   tokens_input?: number | null;
   tokens_output?: number | null;
   tokens_cached?: number | null;
+  tokens_cache_read?: number | null;
+  tokens_cache_write?: number | null;
   cost_usd?: number | null;
   error_message?: string | null;
   cache_hit?: number;
@@ -31,6 +33,8 @@ function normalize(draft: MetricDraft): BufferedMetric {
     tokens_input: draft.tokens_input ?? null,
     tokens_output: draft.tokens_output ?? null,
     tokens_cached: draft.tokens_cached ?? null,
+    tokens_cache_read: draft.tokens_cache_read ?? null,
+    tokens_cache_write: draft.tokens_cache_write ?? null,
     cost_usd: draft.cost_usd ?? null,
     error_message: draft.error_message ?? null,
     cache_hit: draft.cache_hit ?? 0,
@@ -42,8 +46,9 @@ async function insertDirect(env: Env, row: BufferedMetric): Promise<void> {
     `INSERT OR IGNORE INTO request_metrics
       (id, organization_id, user_id, api_key_id, timestamp, provider, model, method,
        status_code, latency_ms, tokens_input, tokens_output, tokens_cached,
+       tokens_cache_read, tokens_cache_write,
        cost_usd, error_message, cache_hit)
-     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       `${row.organization_id}_${newUuid().replace(/-/g, "")}`,
@@ -58,6 +63,8 @@ async function insertDirect(env: Env, row: BufferedMetric): Promise<void> {
       row.tokens_input,
       row.tokens_output,
       row.tokens_cached,
+      row.tokens_cache_read,
+      row.tokens_cache_write,
       row.cost_usd,
       row.error_message,
       row.cache_hit,

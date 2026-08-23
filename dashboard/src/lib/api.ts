@@ -90,7 +90,8 @@ export interface InvitationView {
 }
 
 export interface CostDay {
-  day: string;
+  /** Unix timestamp (seconds) at UTC midnight for the day. */
+  day: number;
   cost_usd: number | null;
 }
 
@@ -116,6 +117,24 @@ export interface LatencyStat {
   avg: number;
 }
 
+/** Prompt-cache usage for one provider + model (GET /api/metrics/cache). */
+export interface CacheUsageRow {
+  provider: string;
+  model: string;
+  requests: number;
+  /** Uncached input tokens only — cache read/write reported separately. */
+  tokensInput: number;
+  /** Provider prompt-cache hits, in tokens served from the cache. */
+  tokensCacheRead: number;
+  /** Provider prompt-cache writes (cache creation input tokens). */
+  tokensCacheWrite: number;
+  /** Requests with at least one prompt-cache hit. */
+  promptCacheHits: number;
+  promptCacheHitRate: number;
+  /** Requests served from the proxy's own response cache. */
+  responseCacheHits: number;
+}
+
 export interface RequestRow {
   id: string;
   api_key_id: string | null;
@@ -128,6 +147,8 @@ export interface RequestRow {
   tokens_input: number | null;
   tokens_output: number | null;
   tokens_cached: number | null;
+  tokens_cache_read?: number | null;
+  tokens_cache_write?: number | null;
   cost_usd: number | null;
   error_message: string | null;
   cache_hit: number | null;

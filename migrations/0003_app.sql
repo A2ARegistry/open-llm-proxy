@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS request_metrics (
     tokens_input INTEGER,
     tokens_output INTEGER,
     tokens_cached INTEGER,
+    tokens_cache_read INTEGER,
+    tokens_cache_write INTEGER,
     cost_usd REAL,
     error_message TEXT,
     cache_hit INTEGER NOT NULL DEFAULT 0

@@ -91,6 +91,14 @@ export interface SpendSummary {
   errors: number;
   errorRate: number;
   avgLatencyMs: number;
+  /** Provider prompt-cache tokens read (hits) / written (cache creation). */
+  tokensCacheRead: number;
+  tokensCacheWrite: number;
+  /** Requests served from the proxy's own response cache. */
+  responseCacheHits: number;
+  /** Requests with at least one provider prompt-cache hit + their share. */
+  promptCacheHits: number;
+  promptCacheHitRate: number;
 }
 
 interface SpendRow {
@@ -100,6 +108,10 @@ interface SpendRow {
   tokens_output: number | null;
   errors: number;
   avg_latency_ms: number | null;
+  tokens_cache_read: number | null;
+  tokens_cache_write: number | null;
+  response_cache_hits: number | null;
+  prompt_cache_hits: number | null;
 }
 
 /** Aggregated spend for a tenant over [start, end); tenant-scoped by definition. */
@@ -132,7 +144,11 @@ export async function spendForRange(
        SUM(tokens_input) AS tokens_input,
        SUM(tokens_output) AS tokens_output,
        SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS errors,
-       AVG(latency_ms) AS avg_latency_ms
+       AVG(latency_ms) AS avg_latency_ms,
+       SUM(tokens_cache_read) AS tokens_cache_read,
+       SUM(tokens_cache_write) AS tokens_cache_write,
+       SUM(cache_hit) AS response_cache_hits,
+       COUNT(CASE WHEN tokens_cache_read > 0 THEN 1 END) AS prompt_cache_hits
      FROM request_metrics WHERE ${where.join(" AND ")}`,
   )
     .bind(...params)
@@ -140,6 +156,7 @@ export async function spendForRange(
 
   const requests = row?.requests ?? 0;
   const errors = row?.errors ?? 0;
+  const promptCacheHits = row?.prompt_cache_hits ?? 0;
   return {
     start,
     end,
@@ -150,6 +167,11 @@ export async function spendForRange(
     errors,
     errorRate: requests > 0 ? errors / requests : 0,
     avgLatencyMs: row?.avg_latency_ms ?? 0,
+    tokensCacheRead: row?.tokens_cache_read ?? 0,
+    tokensCacheWrite: row?.tokens_cache_write ?? 0,
+    responseCacheHits: row?.response_cache_hits ?? 0,
+    promptCacheHits,
+    promptCacheHitRate: requests > 0 ? promptCacheHits / requests : 0,
   };
 }
 
@@ -227,7 +249,8 @@ export function monthStartSeconds(now: number): number {
 }
 
 export interface DailyCostRow {
-  day: string;
+  /** Unix timestamp (seconds) at UTC midnight for the day. */
+  day: number;
   cost_usd: number;
   requests: number;
 }
@@ -239,18 +262,88 @@ export async function dailyCosts(
   start: number,
   end: number,
 ): Promise<DailyCostRow[]> {
+  // `timestamp` is stored as unix seconds; bucket each row to UTC midnight
+  // with pure integer math (no date-string round trip).
   const { results } = await env.DB.prepare(
-    `SELECT date(timestamp, 'unixepoch') AS day,
+    `SELECT (timestamp / 86400) * 86400 AS day,
        SUM(cost_usd) AS cost_usd, COUNT(*) AS requests
      FROM request_metrics
      WHERE organization_id = ? AND timestamp >= ? AND timestamp < ?
      GROUP BY day ORDER BY day ASC`,
   )
     .bind(organizationId, start, end)
-    .all<{ day: string; cost_usd: number; requests: number }>();
+    .all<{ day: number; cost_usd: number; requests: number }>();
   return results.map((r) => ({
     day: r.day,
     cost_usd: r.cost_usd ?? 0,
     requests: r.requests ?? 0,
   }));
+}
+
+export interface CacheUsageRow {
+  provider: string;
+  model: string;
+  requests: number;
+  tokensInput: number;
+  /** Provider prompt-cache hits (tokens served from the provider's cache). */
+  tokensCacheRead: number;
+  /** Provider prompt-cache writes (tokens written to the provider's cache). */
+  tokensCacheWrite: number;
+  /** Requests with at least one prompt-cache hit. */
+  promptCacheHits: number;
+  promptCacheHitRate: number;
+  /** Requests served from the proxy's own response cache. */
+  responseCacheHits: number;
+}
+
+/**
+ * Prompt/response cache usage grouped by provider + model over [start, end).
+ * `tokensInput` here is uncached input only (cache tokens are reported
+ * separately), which makes hit rates and savings directly comparable.
+ */
+export async function cacheUsageByModel(
+  env: Env,
+  organizationId: string,
+  start: number,
+  end: number,
+): Promise<CacheUsageRow[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT provider, model,
+       COUNT(*) AS requests,
+       SUM(tokens_input) AS tokens_input,
+       SUM(tokens_cache_read) AS tokens_cache_read,
+       SUM(tokens_cache_write) AS tokens_cache_write,
+       COUNT(CASE WHEN tokens_cache_read > 0 THEN 1 END) AS prompt_cache_hits,
+       SUM(cache_hit) AS response_cache_hits
+     FROM request_metrics
+     WHERE organization_id = ? AND timestamp >= ? AND timestamp < ?
+     GROUP BY provider, model
+     ORDER BY requests DESC`,
+  )
+    .bind(organizationId, start, end)
+    .all<{
+      provider: string;
+      model: string;
+      requests: number;
+      tokens_input: number | null;
+      tokens_cache_read: number | null;
+      tokens_cache_write: number | null;
+      prompt_cache_hits: number | null;
+      response_cache_hits: number | null;
+    }>();
+  return results.map((r) => {
+    const requests = r.requests ?? 0;
+    const promptCacheHits = r.prompt_cache_hits ?? 0;
+    return {
+      provider: r.provider,
+      model: r.model,
+      requests,
+      tokensInput: r.tokens_input ?? 0,
+      tokensCacheRead: r.tokens_cache_read ?? 0,
+      tokensCacheWrite: r.tokens_cache_write ?? 0,
+      promptCacheHits,
+      promptCacheHitRate: requests > 0 ? promptCacheHits / requests : 0,
+      responseCacheHits: r.response_cache_hits ?? 0,
+    };
+  });
 }

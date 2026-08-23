@@ -1,4 +1,10 @@
-import { Card, EmptyState, Spinner, StatCard } from "../components/ui";
+import {
+  Badge,
+  Card,
+  EmptyState,
+  Spinner,
+  StatCard,
+} from "../components/ui";
 import { apiGet } from "../lib/api";
 import { fmtDay, fmtUsd, fmtTokens } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
@@ -27,6 +33,14 @@ export function DashboardPage() {
           tokensInput: number | null;
           tokensOutput: number | null;
           requests: number;
+          /** Prompt-cache read/write tokens (0 for providers without caching). */
+          tokensCacheRead?: number | null;
+          tokensCacheWrite?: number | null;
+          /** Requests served from the proxy's own response cache. */
+          responseCacheHits?: number | null;
+          /** Requests with at least one provider prompt-cache hit + share. */
+          promptCacheHits?: number | null;
+          promptCacheHitRate?: number | null;
         };
       }>(`/api/usage/costs?start=${start}&end=${now}`),
   });
@@ -70,9 +84,25 @@ export function DashboardPage() {
     tokensInput: null,
     tokensOutput: null,
     requests: 0,
+    tokensCacheRead: 0,
+    tokensCacheWrite: 0,
+    responseCacheHits: 0,
+    promptCacheHits: 0,
+    promptCacheHitRate: 0,
   };
   const totalTokens = (summary.tokensInput ?? 0) + (summary.tokensOutput ?? 0);
   const totalCost = summary.costUsd;
+  // Prompt-cache reads are billed at a fraction of the normal input rate, so
+  // they're shown as their own metric rather than folded into "Total tokens".
+  const cacheReadTokens = summary.tokensCacheRead ?? 0;
+  const cacheWriteTokens = summary.tokensCacheWrite ?? 0;
+  const responseCacheHits = summary.responseCacheHits ?? 0;
+  const promptCacheHitRate = summary.promptCacheHitRate ?? 0;
+  const hasCacheData =
+    cacheReadTokens > 0 ||
+    cacheWriteTokens > 0 ||
+    responseCacheHits > 0 ||
+    (summary.promptCacheHits ?? 0) > 0;
 
   const alertMsg = (() => {
     for (const [label, check] of [
@@ -108,12 +138,64 @@ export function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard label="Total spend (30d)" value={fmtUsd(totalCost)} />
-        <StatCard label="Total tokens" value={fmtTokens(totalTokens)} />
+        <StatCard
+          label="Total tokens"
+          value={fmtTokens(totalTokens)}
+          hint={
+            hasCacheData
+              ? `${fmtTokens(cacheReadTokens)} cached reads · ${fmtTokens(cacheWriteTokens)} writes`
+              : undefined
+          }
+        />
         <StatCard
           label="Requests"
           value={(summary.requests ?? 0).toLocaleString()}
+          hint={
+            responseCacheHits > 0
+              ? `${responseCacheHits.toLocaleString()} response-cache hits`
+              : undefined
+          }
         />
       </div>
+
+      {hasCacheData && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Card title="Prompt cache" subtitle="Provider-side prompt caching">
+            <div className="flex items-baseline justify-between">
+              <div>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {(promptCacheHitRate * 100).toFixed(1)}%
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  hit rate · {fmtTokens(cacheReadTokens)} read /{" "}
+                  {fmtTokens(cacheWriteTokens)} written
+                </p>
+              </div>
+              <Badge tone="indigo">cached input is billed cheaper</Badge>
+            </div>
+          </Card>
+          <Card
+            title="Response cache"
+            subtitle="Proxy-level duplicate-request hits"
+          >
+            <div className="flex items-baseline justify-between">
+              <div>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {responseCacheHits.toLocaleString()}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  requests served without an upstream call
+                </p>
+              </div>
+              <Badge tone={responseCacheHits > 0 ? "green" : "gray"}>
+                {summary.requests
+                  ? `${((responseCacheHits / summary.requests) * 100).toFixed(1)}% of traffic`
+                  : "—"}
+              </Badge>
+            </div>
+          </Card>
+        </div>
+      )}
 
       <Card title="Daily cost" subtitle="USD per day">
         {days.length === 0 ? (

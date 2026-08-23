@@ -82,9 +82,11 @@ export function Card({
 
 export function Badge({
   tone = "gray",
+  title,
   children,
 }: {
   tone?: "gray" | "green" | "red" | "amber" | "blue" | "indigo";
+  title?: string;
   children: ReactNode;
 }) {
   const tones: Record<string, string> = {
@@ -97,6 +99,7 @@ export function Badge({
   };
   return (
     <span
+      title={title}
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone]}`}
     >
       {children}
@@ -294,7 +297,7 @@ export function StatCard({
   label: string;
   value: ReactNode;
   hint?: ReactNode;
-  tone?: "default" | "red";
+  tone?: "default" | "red" | "green";
 }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white px-5 py-4 shadow-sm">
@@ -303,7 +306,11 @@ export function StatCard({
       </p>
       <p
         className={`mt-1 text-2xl font-semibold ${
-          tone === "red" ? "text-red-600" : "text-gray-900"
+          tone === "red"
+            ? "text-red-600"
+            : tone === "green"
+              ? "text-green-600"
+              : "text-gray-900"
         }`}
       >
         {value}

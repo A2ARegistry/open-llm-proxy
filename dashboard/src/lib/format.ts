@@ -24,8 +24,13 @@ export function fmtDate(ts: number | null | undefined): string {
   });
 }
 
-export function fmtDay(ts: number): string {
-  return new Date(ts * 1000).toLocaleDateString(undefined, {
+export function fmtDay(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "—";
+  // Accept unix seconds or an ISO date string ("2026-08-21") defensively.
+  const d =
+    typeof value === "number" ? new Date(value * 1000) : new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
   });

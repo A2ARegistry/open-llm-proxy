@@ -12,6 +12,8 @@ export interface BufferedMetric {
   tokens_input: number | null;
   tokens_output: number | null;
   tokens_cached: number | null;
+  tokens_cache_read: number | null;
+  tokens_cache_write: number | null;
   cost_usd: number | null;
   error_message: string | null;
   cache_hit: number;
@@ -30,6 +32,8 @@ interface MetricRow {
   tokens_input: number | null;
   tokens_output: number | null;
   tokens_cached: number | null;
+  tokens_cache_read: number | null;
+  tokens_cache_write: number | null;
   cost_usd: number | null;
   error_message: string | null;
   cache_hit: number;
@@ -44,7 +48,10 @@ const FLUSH_ALARM_MS = 60_000;
  * path cheap. One DO instance per tenant (named by organization id).
  */
 export class MetricsBuffer extends DurableObject {
+  private schemaReady = false;
+
   private ensureTable(): void {
+    if (this.schemaReady) return;
     this.ctx.storage.sql.exec(
       `CREATE TABLE IF NOT EXISTS metrics_buffer (
         id TEXT PRIMARY KEY,
@@ -59,11 +66,30 @@ export class MetricsBuffer extends DurableObject {
         tokens_input INTEGER,
         tokens_output INTEGER,
         tokens_cached INTEGER,
+        tokens_cache_read INTEGER,
+        tokens_cache_write INTEGER,
         cost_usd REAL,
         error_message TEXT,
         cache_hit INTEGER NOT NULL DEFAULT 0
       )`,
     );
+    // In-place migration for DO shards created before the distinct cache
+    // token columns existed (0004_cache_tokens.sql equivalent).
+    const cols = this.ctx.storage.sql
+      .exec("PRAGMA table_info(metrics_buffer)")
+      .toArray() as unknown as Array<{ name: string }>;
+    const names = new Set(cols.map((c) => c.name));
+    if (!names.has("tokens_cache_read")) {
+      this.ctx.storage.sql.exec(
+        "ALTER TABLE metrics_buffer ADD COLUMN tokens_cache_read INTEGER",
+      );
+    }
+    if (!names.has("tokens_cache_write")) {
+      this.ctx.storage.sql.exec(
+        "ALTER TABLE metrics_buffer ADD COLUMN tokens_cache_write INTEGER",
+      );
+    }
+    this.schemaReady = true;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -98,8 +124,9 @@ export class MetricsBuffer extends DurableObject {
         `INSERT OR IGNORE INTO metrics_buffer
           (id, organization_id, api_key_id, timestamp, provider, model, method,
            status_code, latency_ms, tokens_input, tokens_output, tokens_cached,
+           tokens_cache_read, tokens_cache_write,
            cost_usd, error_message, cache_hit)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         e.organization_id.concat("_", String(Math.random())),
         e.organization_id,
         e.api_key_id,
@@ -112,6 +139,8 @@ export class MetricsBuffer extends DurableObject {
         e.tokens_input,
         e.tokens_output,
         e.tokens_cached,
+        e.tokens_cache_read,
+        e.tokens_cache_write,
         e.cost_usd,
         e.error_message,
         e.cache_hit,
@@ -130,6 +159,7 @@ export class MetricsBuffer extends DurableObject {
       .exec(
         `SELECT id, organization_id, api_key_id, timestamp, provider, model, method,
                 status_code, latency_ms, tokens_input, tokens_output, tokens_cached,
+                tokens_cache_read, tokens_cache_write,
                 cost_usd, error_message, cache_hit
          FROM metrics_buffer ORDER BY timestamp LIMIT 1000`,
       )
@@ -144,8 +174,9 @@ export class MetricsBuffer extends DurableObject {
           `INSERT OR IGNORE INTO request_metrics
             (id, organization_id, user_id, api_key_id, timestamp, provider, model, method,
              status_code, latency_ms, tokens_input, tokens_output, tokens_cached,
+             tokens_cache_read, tokens_cache_write,
              cost_usd, error_message, cache_hit)
-           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           (r as unknown as MetricRow).id,
           (r as unknown as MetricRow).organization_id,
@@ -159,6 +190,8 @@ export class MetricsBuffer extends DurableObject {
           (r as unknown as MetricRow).tokens_input,
           (r as unknown as MetricRow).tokens_output,
           (r as unknown as MetricRow).tokens_cached,
+          (r as unknown as MetricRow).tokens_cache_read,
+          (r as unknown as MetricRow).tokens_cache_write,
           (r as unknown as MetricRow).cost_usd,
           (r as unknown as MetricRow).error_message,
           (r as unknown as MetricRow).cache_hit,

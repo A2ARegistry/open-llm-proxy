@@ -322,6 +322,30 @@ interface GoogleGenerateContentResponse {
     promptTokenCount?: number;
     candidatesTokenCount?: number;
     totalTokenCount?: number;
+    cachedContentTokenCount?: number;
+  };
+}
+
+/**
+ * Map Gemini usageMetadata to pi-ai usage. Mirrors the pi-ai google-generative-ai
+ * convention: promptTokenCount INCLUDES cached tokens, so `input` excludes them
+ * and they are reported as cacheRead (prompt-cache hits). Gemini has no cache
+ * write count on this endpoint, so cacheWrite stays 0.
+ */
+export function googleUsageOf(meta: {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  totalTokenCount?: number;
+  cachedContentTokenCount?: number;
+}): AssistantMessage["usage"] {
+  const cacheRead = meta.cachedContentTokenCount || 0;
+  return {
+    input: Math.max(0, (meta.promptTokenCount || 0) - cacheRead),
+    output: meta.candidatesTokenCount || 0,
+    cacheRead,
+    cacheWrite: 0,
+    totalTokens: meta.totalTokenCount || 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   };
 }
 
@@ -627,14 +651,7 @@ export class GoogleDirectAdapter {
       api: "google-generative-ai",
       provider: "google-vertex",
       model,
-      usage: {
-        input: response.usageMetadata?.promptTokenCount || 0,
-        output: response.usageMetadata?.candidatesTokenCount || 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: response.usageMetadata?.totalTokenCount || 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
+      usage: googleUsageOf(response.usageMetadata ?? {}),
       stopReason,
       timestamp: Date.now(),
       responseId: `chatcmpl-${newUuid()}`,
@@ -788,14 +805,7 @@ export class GoogleDirectAdapter {
       await this.client.models.generateContentStream(requestOptions);
 
     const accumulatedContent: AssistantMessage["content"] = [];
-    let usage = {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    };
+    let usage = googleUsageOf({});
     let currentTextIndex = -1;
     let currentThinkingIndex = -1;
     let currentToolIndex = -1;
@@ -1007,14 +1017,7 @@ export class GoogleDirectAdapter {
       // Update usage if available
       if ((chunk as GoogleGenerateContentResponse).usageMetadata) {
         const meta = (chunk as GoogleGenerateContentResponse).usageMetadata!;
-        usage = {
-          input: meta.promptTokenCount || 0,
-          output: meta.candidatesTokenCount || 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          totalTokens: meta.totalTokenCount || 0,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-        };
+        usage = googleUsageOf(meta);
       }
     }
 

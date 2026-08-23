@@ -56,6 +56,9 @@ export async function recordChatRequest(
       usage.cacheRead + usage.cacheWrite > 0
         ? usage.cacheRead + usage.cacheWrite
         : null,
+    // Distinct prompt-cache accounting: read = hits, write = cache creation.
+    tokens_cache_read: usage.cacheRead > 0 ? usage.cacheRead : null,
+    tokens_cache_write: usage.cacheWrite > 0 ? usage.cacheWrite : null,
     cost_usd: costUsd,
     error_message: outcome.errorMessage ?? null,
   };

@@ -789,16 +789,28 @@ export async function chatCompletionsV2(
         `Upstream error (${upstream.status}): ${text.slice(0, 512)}`,
       );
     }
-    record({ statusCode: upstream.status });
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: {
-        "Content-Type": "text/event-stream",
-        ...(upstream.headers.get("cache-control")
-          ? { "Cache-Control": upstream.headers.get("cache-control")! }
-          : {}),
+    // Usage arrives in the final SSE chunk: pass the stream through a
+    // capturing transform and record once it completes (or is cancelled).
+    if (!upstream.body) {
+      record({ statusCode: upstream.status });
+      return new Response(null, { status: upstream.status });
+    }
+    return new Response(
+      upstream.body.pipeThrough(
+        usageCapturingTransform((usage) => {
+          record({ statusCode: upstream.status, usage });
+        }),
+      ),
+      {
+        status: upstream.status,
+        headers: {
+          "Content-Type": "text/event-stream",
+          ...(upstream.headers.get("cache-control")
+            ? { "Cache-Control": upstream.headers.get("cache-control")! }
+            : {}),
+        },
       },
-    });
+    );
   }
 
   if (cacheKey) {
@@ -860,27 +872,96 @@ function usageOf(message: AssistantMessage): TokenUsage {
   };
 }
 
+/** Map an OpenAI-compatible usage object to the proxy TokenUsage shape. */
+function openAiUsageOfObject(usage: {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+  prompt_cache_hit_tokens?: number;
+  prompt_cache_miss_tokens?: number;
+  completion_tokens_details?: { reasoning_tokens?: number };
+}): TokenUsage {
+  const cacheRead =
+    usage.prompt_tokens_details?.cached_tokens ??
+    usage.prompt_cache_hit_tokens ??
+    0;
+  return {
+    input: Math.max(0, (usage.prompt_tokens ?? 0) - cacheRead),
+    output: usage.completion_tokens ?? 0,
+    cacheRead,
+    cacheWrite: 0,
+  };
+}
+
 /** Best-effort usage extraction from an OpenAI-compatible non-stream body. */
 function openAiUsageOf(bodyText: string): TokenUsage | null {
   try {
     const parsed = JSON.parse(bodyText) as {
-      usage?: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        prompt_tokens_details?: { cached_tokens?: number };
-      };
+      usage?: Parameters<typeof openAiUsageOfObject>[0];
     };
-    const usage = parsed.usage;
-    if (!usage) return null;
-    return {
-      input: usage.prompt_tokens ?? 0,
-      output: usage.completion_tokens ?? 0,
-      cacheRead: usage.prompt_tokens_details?.cached_tokens ?? 0,
-      cacheWrite: 0,
-    };
+    if (!parsed.usage) return null;
+    return openAiUsageOfObject(parsed.usage);
   } catch {
     return null;
   }
+}
+
+/**
+ * Best-effort usage extraction from a buffered OpenAI-compatible SSE stream:
+ * scans `data:` lines and returns the usage of the last chunk that carries one
+ * (providers emit it in the final chunk; `[DONE]` and garbage are ignored).
+ */
+export function sseUsageOf(sseText: string): TokenUsage | null {
+  let usage: TokenUsage | null = null;
+  for (const line of sseText.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const parsed = JSON.parse(payload) as {
+        usage?: Parameters<typeof openAiUsageOfObject>[0];
+      };
+      if (parsed.usage) usage = openAiUsageOfObject(parsed.usage);
+    } catch {
+      // Ignore keep-alives / partial lines.
+    }
+  }
+  return usage;
+}
+
+const USAGE_TAIL_BYTES = 64 * 1024;
+
+/**
+ * Pass-through SSE transform that captures the upstream body so usage can be
+ * parsed when the stream ends (or is cancelled), then recorded exactly once.
+ */
+export function usageCapturingTransform(
+  record: (usage: TokenUsage | null) => void,
+): TransformStream<Uint8Array, Uint8Array> {
+  const decoder = new TextDecoder();
+  let tail = "";
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    record(sseUsageOf(tail));
+  };
+  return new TransformStream({
+    transform(chunk, controller) {
+      controller.enqueue(chunk);
+      tail += decoder.decode(chunk, { stream: true });
+      // Bound memory: usage only ever appears in the final chunks.
+      if (tail.length > USAGE_TAIL_BYTES * 2)
+        tail = tail.slice(-USAGE_TAIL_BYTES);
+    },
+    flush() {
+      finish();
+    },
+    cancel() {
+      finish();
+    },
+  });
 }
 
 /** Deterministic JSON for cache keys (sorted keys → key-order-insensitive). */

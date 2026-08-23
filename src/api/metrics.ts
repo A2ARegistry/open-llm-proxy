@@ -1,5 +1,5 @@
 import type { AppBindings } from "../app";
-import { spendForRange } from "../metrics/cost-tracker";
+import { cacheUsageByModel, spendForRange } from "../metrics/cost-tracker";
 import { Hono } from "hono";
 
 export const metricsRouter = new Hono<AppBindings>();
@@ -94,6 +94,18 @@ metricsRouter.get("/latency", async (c) => {
   return c.json({ start, end, latency });
 });
 
+// GET /api/metrics/cache — prompt-cache behavior per provider + model over
+// the window: cache read/write tokens, hit rates, proxy response-cache hits.
+metricsRouter.get("/cache", async (c) => {
+  const orgId = c.get("session")!.organizationId!;
+  const { start, end } = rangeParams(c);
+  const invalid = validateRange(start, end);
+  if (invalid) return c.json({ error: invalid }, 400);
+
+  const usage = await cacheUsageByModel(c.env, orgId, start, end);
+  return c.json({ start, end, usage });
+});
+
 // GET /api/metrics/requests — recent request rows (tenant-scoped).
 metricsRouter.get("/requests", async (c) => {
   const orgId = c.get("session")!.organizationId!;
@@ -116,7 +128,8 @@ metricsRouter.get("/requests", async (c) => {
 
   const { results } = await c.env.DB.prepare(
     `SELECT id, api_key_id, timestamp, provider, model, method, status_code, latency_ms,
-            tokens_input, tokens_output, tokens_cached, cost_usd, error_message, cache_hit
+            tokens_input, tokens_output, tokens_cached, tokens_cache_read,
+            tokens_cache_write, cost_usd, error_message, cache_hit
      FROM request_metrics WHERE ${where.join(" AND ")}
      ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
   )
