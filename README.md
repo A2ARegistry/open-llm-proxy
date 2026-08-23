@@ -2,8 +2,6 @@
 
 This is a serverless, multi-tenant LLM gateway built on [Cloudflare Workers](https://www.cloudflare.com/developer-platform/products/workers/) that integrates with multiple Large Language Model (LLM) APIs. Inspired by [LiteLLM](https://github.com/BerriAI/litellm) and [llm-proxy-on-cloudflare-workers](https://github.com/blue-pen5805/llm-proxy-on-cloudflare-workers.git).
 
-> This project branched from and borrows heavily from [llm-proxy-on-cloudflare-workers](https://github.com/blue-pen5805/llm-proxy-on-cloudflare-workers.git). We are deeply thankful to the original authors. It has since evolved into a multi-tenant gateway of its own — the two projects are separate codebases and should not be confused.
-
 ## Features
 
 - **Centralized API Key Management:** Manage all your LLM API keys in one place.
@@ -28,21 +26,10 @@ flowchart
 
 | Name             | OpenAI-Compatible | Direct | Pass-Through Route |
 | ---------------- | ----------------- | ------ | ------------------ |
-| OpenAI           | ✅                | ✅     | `openai`           |
 | Google AI Studio | ✅                | ✅     | `google-ai-studio` |
 | Google Vertex AI | ✅¹               | ✅     | `google-vertex`    |
+| OpenAI           | ✅                | ✅     | `openai`           |
 | Anthropic        | ✅                | ✅     | `anthropic`        |
-| Cerebras         | ✅                | ✅     | `cerebras`         |
-| Cohere           | ✅                | ✅     | `cohere`           |
-| DeepSeek         | ✅                | ✅     | `deepseek`         |
-| Grok             | ✅                | ✅     | `grok`             |
-| Groq             | ✅                | ✅     | `groq`             |
-| Mistral          | ✅                | ✅     | `mistral`          |
-| Perplexity       | ✅                | ✅     | `perplexity`       |
-| OpenRouter       | ✅                | ✅     | `openrouter`       |
-| Workers AI       | ✅                | ✅     | `workers-ai`       |
-| HuggingFace      | ❌                | ✅     | `huggingface`      |
-| Replicate        | ❌                | ✅     | `replicate`        |
 | Ollama           | ✅                | ✅     | `ollama`           |
 
 Provider API keys are managed from the dashboard (stored encrypted in D1) — no environment variables are required.
@@ -51,8 +38,6 @@ Provider API keys are managed from the dashboard (stored encrypted in D1) — no
 
 - **Service account** — uses the OpenAI-compatible endpoint (`/v1/chat/completions`-style) with a minted OAuth2 bearer token. Requires a GCP project ID and location.
 - **API key (Vertex AI Express Mode)** — only a Google Cloud/Gemini API key is needed, no project setup. Requests use the native `generateContent` API against the global endpoint.
-
-**Note**: Providers marked with ⚠️ have limited support for certain features (e.g., Tool Use, multimodal capabilities).
 
 ## Prerequisites
 
