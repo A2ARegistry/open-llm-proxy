@@ -44,9 +44,6 @@ async function doCheck(
 ): Promise<{ allowed: boolean; retryAfter?: number }> {
   const stub = await shard(env, organizationId);
   if (!stub) return { allowed: true };
-  console.log(
-    `[RateLimit.doCheck] shard=${!!stub} key=${input.key} capacity=${input.capacity} refill=${input.refillPerMinute}`,
-  );
   const res = await stub.fetch("http://internal/check", {
     method: "POST",
     body: JSON.stringify(input),
@@ -79,15 +76,10 @@ export async function checkRateLimits(
   const burst = rate?.burstSize ?? rpm ?? 0;
   const tpm = rate?.tokensPerMinute;
 
-  console.log(
-    `[checkRateLimits] orgId=${params.organizationId} key=${params.apiKeyId} rpm=${rpm} burst=${burst} tpm=${tpm} estimated=${params.estimatedTokens} stream=${params.stream}`,
-  );
-
   const checks: Promise<{ allowed: boolean; retryAfter?: number }>[] = [];
 
   if (rpm && rpm > 0) {
     const capacity = Math.max(rpm, burst);
-    console.log(`[checkRateLimits] RPM bucket: capacity=${capacity}`);
     checks.push(
       doCheck(env, params.organizationId, {
         key: `requests:org:${params.organizationId}`,
@@ -112,9 +104,6 @@ export async function checkRateLimits(
   // real token count so the budget is enforced retroactively.
   const estimated = params.estimatedTokens ?? 0;
   if (tpm && tpm > 0 && estimated > 0 && !params.stream) {
-    console.log(
-      `[checkRateLimits] Token bucket: capacity=${tpm} estimated=${estimated}`,
-    );
     checks.push(
       doCheck(env, params.organizationId, {
         key: `tokens:org:${params.organizationId}`,

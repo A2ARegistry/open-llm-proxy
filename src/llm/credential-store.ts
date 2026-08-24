@@ -28,6 +28,11 @@ export interface ProviderSettings {
   baseUrl?: string;
   chatCompletionPath?: string;
   modelsPath?: string;
+  /**
+   * Diagnostic Tracing: When enabled, logs full raw/converted request and
+   * response payloads for bug investigations. Should be enabled for testing only.
+   */
+  trace?: boolean;
   [key: string]: unknown;
 }
 

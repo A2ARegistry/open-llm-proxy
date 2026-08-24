@@ -1,3 +1,4 @@
+import { log } from "../utils/logger";
 import { createTenantCredentialStore } from "./credential-store";
 import {
   builtinModels,
@@ -48,9 +49,6 @@ export async function createTenantModels(
   options: TenantModelsOptions,
 ): Promise<StreamResult> {
   const { env, organizationId, enabledProviders } = options;
-  console.log(
-    `[models-factory] Creating tenant models | org=${organizationId} | providers=${enabledProviders.join(",")}`,
-  );
   const store = createTenantCredentialStore(env, organizationId);
 
   // Try dynamic import to avoid bundler issues
@@ -65,11 +63,8 @@ export async function createTenantModels(
         fileExists: async () => false,
       },
     });
-    console.log(
-      `[models-factory] Models instance created successfully via dynamic import`,
-    );
   } catch (err) {
-    console.log(`[models-factory] Dynamic import failed:`, err);
+    log.error(`[models-factory] Dynamic import failed`, err);
     throw err;
   }
 
@@ -77,20 +72,15 @@ export async function createTenantModels(
   for (const name of enabledProviders) {
     const spec = getPiAiProviderSpec(name);
     if (!spec) {
-      console.log(`[models-factory] No pi-ai spec for provider: ${name}`);
+      log.warn(`[models-factory] No pi-ai spec for provider: ${name}`);
       continue;
     }
     const provider = buildPiAiProvider(spec);
     models.setProvider(provider);
     registered.push({ id: spec.id, name: spec.name, mode: "pi-ai" });
-    console.log(
-      `[models-factory] Registered provider: ${name} (id=${spec.id})`,
-    );
+    log.debug(`[models-factory] Registered provider: ${name} (id=${spec.id})`);
   }
 
-  console.log(
-    `[models-factory] Tenant models ready | registered=${registered.length}`,
-  );
   return {
     registered,
     complete({ model, context, signal }) {

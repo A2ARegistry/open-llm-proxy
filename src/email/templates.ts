@@ -180,10 +180,12 @@ export async function seedTemplates(env: Env): Promise<number> {
       ),
     );
     await env.DB.batch(batch);
-    console.log(`[seedTemplates] Successfully seeded ${SEED_TEMPLATES.length} templates`);
+    console.log(
+      `[seedTemplates] Successfully seeded ${SEED_TEMPLATES.length} templates`,
+    );
     return SEED_TEMPLATES.length;
   } catch (error) {
-    console.error('[seedTemplates] Failed to seed templates:', error);
+    console.error("[seedTemplates] Failed to seed templates:", error);
     throw error;
   }
 }

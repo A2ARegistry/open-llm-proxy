@@ -1,4 +1,5 @@
 import { newUuid } from "../utils/crypto";
+import { log } from "../utils/logger";
 import type {
   AssistantMessage,
   AssistantMessageEvent,
@@ -123,6 +124,20 @@ interface OpenAIMessage {
   name?: string;
 }
 
+/**
+ * Diagnostic trace hooks (only wired when the provider has
+ * `settings.trace = true`): expose the raw upstream request/response payloads
+ * so a TraceSession can record them alongside the converted forms.
+ */
+export interface GoogleTraceHooks {
+  /** The native generateContent request payload sent to Google. */
+  onUpstreamRequest?(payload: unknown): void;
+  /** Non-streaming: the raw response JSON from Google. */
+  onUpstreamResponse?(payload: unknown): void;
+  /** Streaming: each raw chunk emitted by Google's SSE stream. */
+  onUpstreamStreamChunk?(chunk: unknown): void;
+}
+
 interface GoogleContent {
   role: string;
   parts: GooglePart[];
@@ -194,33 +209,18 @@ function convertUserContentToGoogleParts(
   if (!content) return [];
 
   if (typeof content === "string") {
-    console.log(
-      `[GoogleDirectAdapter] User string content (128b snippet):`,
-      JSON.stringify(content.slice(0, 128)),
-    );
     return content.trim().length > 0 ? [{ text: content }] : [];
   }
 
   if (Array.isArray(content)) {
-    console.log(
-      `[GoogleDirectAdapter] Processing array user content with ${content.length} items`,
-    );
-
     const parts: GooglePart[] = [];
     for (let i = 0; i < content.length; i++) {
       const item = content[i];
-      console.log(
-        `[GoogleDirectAdapter] Raw content item [${i}] (128b snippet):`,
-        JSON.stringify(item).slice(0, 128),
-      );
 
       if (typeof item === "string") {
         if (item.trim().length > 0) parts.push({ text: item });
       } else if (item && typeof item === "object") {
         const obj = item as Record<string, unknown>;
-        console.log(
-          `[GoogleDirectAdapter] Content item [${i}] | type=${obj.type} | keys=${Object.keys(obj).join(",")} | textSnippet=${typeof obj.text === "string" ? JSON.stringify(obj.text.slice(0, 100)) : undefined}`,
-        );
 
         // 1. Text part
         if (
@@ -242,14 +242,11 @@ function convertUserContentToGoogleParts(
           const parsed = parseImageData(rawUrl);
 
           if (parsed) {
-            console.log(
-              `[GoogleDirectAdapter] ✅ Converted image_url part to inlineData | mimeType=${parsed.mimeType} | dataBytes=${parsed.data.length}`,
-            );
             parts.push({ inlineData: parsed });
           } else {
-            console.warn(
-              `[GoogleDirectAdapter] ⚠️ Could not parse image_url payload snippet:`,
-              JSON.stringify(rawUrl).slice(0, 100),
+            // Never log payload contents (may be base64 user data).
+            log.warn(
+              `[GoogleDirectAdapter] Could not parse image_url payload | bytes=${rawUrl.length} | scheme=${rawUrl.slice(0, 8)}`,
             );
             if (
               rawUrl.startsWith("http://") ||
@@ -273,13 +270,10 @@ function convertUserContentToGoogleParts(
           };
           const parsed = parseImageData(src.data || "");
           if (parsed) {
-            console.log(
-              `[GoogleDirectAdapter] ✅ Converted Anthropic image part to inlineData | mimeType=${parsed.mimeType} | dataBytes=${parsed.data.length}`,
-            );
             parts.push({ inlineData: parsed });
           } else {
-            console.warn(
-              `[GoogleDirectAdapter] ⚠️ Could not parse Anthropic image source`,
+            log.warn(
+              `[GoogleDirectAdapter] Could not parse Anthropic image source`,
             );
           }
         }
@@ -287,9 +281,6 @@ function convertUserContentToGoogleParts(
         else if (obj.inlineData && typeof obj.inlineData === "object") {
           const inline = obj.inlineData as { mimeType?: string; data?: string };
           if (inline.data) {
-            console.log(
-              `[GoogleDirectAdapter] ✅ Preserved native inlineData part | mimeType=${inline.mimeType} | dataBytes=${inline.data.length}`,
-            );
             parts.push({
               inlineData: {
                 mimeType: inline.mimeType || "image/png",
@@ -298,9 +289,8 @@ function convertUserContentToGoogleParts(
             });
           }
         } else {
-          console.log(
-            `[GoogleDirectAdapter] Unhandled content object structure:`,
-            Object.keys(obj),
+          log.warn(
+            `[GoogleDirectAdapter] Unhandled content object keys=${Object.keys(obj).join(",")}`,
           );
         }
       }
@@ -491,28 +481,10 @@ export class GoogleDirectAdapter {
       }
     }
 
-    // Log the tail of incoming OpenAI messages for debugging
-    const tailMessages = messages.slice(-3);
-    console.log(
-      `[GoogleDirectAdapter] Input tail (${tailMessages.length}/${messages.length}):`,
-      JSON.stringify(
-        tailMessages.map((m) => ({
-          role: m.role,
-          contentSnippet:
-            typeof m.content === "string" ? m.content.slice(0, 50) : undefined,
-          hasToolCalls: !!(m.tool_calls && m.tool_calls.length > 0),
-          toolCallId: m.tool_call_id
-            ? m.tool_call_id.slice(0, 30) + "..."
-            : undefined,
-        })),
-      ),
-    );
-
     // Ensure conversation starts with user message
     while (contents.length > 0 && contents[0].role !== "user") {
-      console.warn(
-        "[GoogleDirectAdapter] Removing leading non-user message:",
-        contents[0].role,
+      log.debug(
+        `[GoogleDirectAdapter] Removing leading non-user message: ${contents[0].role}`,
       );
       contents.shift();
     }
@@ -524,30 +496,11 @@ export class GoogleDirectAdapter {
       contents.length > 0 &&
       contents[contents.length - 1].role !== "user"
     ) {
-      console.warn(
-        "[GoogleDirectAdapter] Removing trailing non-user message:",
-        contents[contents.length - 1].role,
+      log.debug(
+        `[GoogleDirectAdapter] Removing trailing non-user message: ${contents[contents.length - 1].role}`,
       );
       contents.pop();
     }
-
-    const tailContents = contents.slice(-3);
-    console.log(
-      `[GoogleDirectAdapter] Converted ${messages.length} messages to ${contents.length} Google content entries. Final tail:`,
-      JSON.stringify(
-        tailContents.map((c) => ({
-          role: c.role,
-          partKinds: c.parts.map((p) => {
-            if (p.text) return "text";
-            if (p.inlineData) return `inlineData:${p.inlineData.mimeType}`;
-            if (p.functionCall) return `funcCall:${p.functionCall.name}`;
-            if (p.functionResponse)
-              return `funcResp:${p.functionResponse.name}`;
-            return "unknown";
-          }),
-        })),
-      ),
-    );
 
     return contents;
   }
@@ -674,6 +627,7 @@ export class GoogleDirectAdapter {
     }>;
     temperature?: number;
     maxTokens?: number;
+    trace?: GoogleTraceHooks;
   }): Promise<AssistantMessage> {
     const systemPrompt = this.extractSystemPrompt(input.messages);
     const contents = this.convertMessagesToGoogleFormat(input.messages);
@@ -726,9 +680,12 @@ export class GoogleDirectAdapter {
       ] as any;
     }
 
+    input.trace?.onUpstreamRequest?.(requestOptions);
     const response = (await this.client.models.generateContent(
       requestOptions,
     )) as GoogleGenerateContentResponse;
+
+    input.trace?.onUpstreamResponse?.(response);
 
     return this.convertToAssistantMessage(response, input.model);
   }
@@ -749,6 +706,7 @@ export class GoogleDirectAdapter {
     }>;
     temperature?: number;
     maxTokens?: number;
+    trace?: GoogleTraceHooks;
   }): AsyncIterable<AssistantMessageEvent> {
     const systemPrompt = this.extractSystemPrompt(input.messages);
     const contents = this.convertMessagesToGoogleFormat(input.messages);
@@ -801,6 +759,7 @@ export class GoogleDirectAdapter {
       ] as any;
     }
 
+    input.trace?.onUpstreamRequest?.(requestOptions);
     const stream =
       await this.client.models.generateContentStream(requestOptions);
 
@@ -813,6 +772,7 @@ export class GoogleDirectAdapter {
     const toolCallsById = new Map<string, number>();
 
     for await (const chunk of stream) {
+      input.trace?.onUpstreamStreamChunk?.(chunk);
       const candidate = (chunk as GoogleGenerateContentResponse)
         .candidates?.[0];
       if (!candidate) continue;
@@ -836,10 +796,6 @@ export class GoogleDirectAdapter {
               : part.text || "";
 
           if (thoughtText) {
-            console.log(
-              `[GoogleDirectAdapter] Gemini thought delta (${thoughtText.length}b): ${JSON.stringify(thoughtText.slice(0, 30))}`,
-            );
-
             if (
               currentThinkingIndex === -1 ||
               accumulatedContent[currentThinkingIndex]?.type !== "thinking"
@@ -944,10 +900,6 @@ export class GoogleDirectAdapter {
               toolCallCount,
               part.functionCall.name,
               partSig,
-            );
-
-            console.log(
-              `[GoogleDirectAdapter] Outgoing stream tool_call | name=${part.functionCall.name} | args=${JSON.stringify(args)} | toolCallId=${toolCallId.slice(0, 30)}...`,
             );
 
             const toolCall: {

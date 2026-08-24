@@ -254,6 +254,9 @@ providerConfigRouter.put("/:provider", async (c) => {
         throw new Error("settings.baseUrl is required for custom providers");
       }
     }
+    if ("trace" in settings && typeof settings.trace !== "boolean") {
+      throw new Error("settings.trace must be a boolean");
+    }
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400);
   }
@@ -287,8 +290,16 @@ providerConfigRouter.put("/:provider", async (c) => {
     settings,
   };
 
+  // Capture prior trace state so we can warn on the enabling transition.
+  const wasTraceEnabled =
+    settings.trace === true
+      ? (await getProviderConfig(c.env, orgId, provider))?.settings?.trace ===
+        true
+      : false;
+
   try {
     const saved = await saveProviderConfig(c.env, orgId, provider, input);
+    const traceEnabled = saved.settings?.trace === true;
     await auditLog(c.env, {
       organizationId: orgId,
       userId: session.userId,
@@ -301,18 +312,29 @@ providerConfigRouter.put("/:provider", async (c) => {
         enabled: saved.enabled,
         keysChanged: keys !== undefined,
         keyCount: saved.keys.length,
+        trace: traceEnabled,
       },
     });
+    // Warn loudly when diagnostic tracing was just turned on (testing only).
+    const warnings: string[] = [];
+    if (traceEnabled && !wasTraceEnabled) {
+      warnings.push(
+        "Diagnostic tracing is ENABLED for this provider. Full request and response payloads — including user message content — will be written to worker logs. Use only while testing and disable it afterwards.",
+      );
+    }
     return c.json(
-      publicProviderView({
-        provider: saved.provider,
-        name: saved.name,
-        configured: true,
-        enabled: saved.enabled,
-        settings: saved.settings,
-        keyCount: saved.keys.length,
-        updatedAt: saved.updatedAt,
-      }),
+      {
+        ...publicProviderView({
+          provider: saved.provider,
+          name: saved.name,
+          configured: true,
+          enabled: saved.enabled,
+          settings: saved.settings,
+          keyCount: saved.keys.length,
+          updatedAt: saved.updatedAt,
+        }),
+        ...(warnings.length > 0 ? { warnings } : {}),
+      },
       200,
     );
   } catch (err) {

@@ -70,10 +70,6 @@ export class RateLimiter extends DurableObject {
       tokens = capacity;
     }
 
-    console.log(
-      `[RateLimiter] check key=${key} capacity=${capacity} cost=${cost} row=${!!row} tokens_before=${tokens}`,
-    );
-
     if (tokens - cost < 0 && !force) {
       const retryAfterSeconds = Math.max(1, Math.ceil(60 / refillPerMinute));
       return Response.json(

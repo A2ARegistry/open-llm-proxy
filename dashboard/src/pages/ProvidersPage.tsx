@@ -190,6 +190,9 @@ export function ProvidersPage() {
                   <Badge tone={p.enabled ? "green" : "gray"}>
                     {p.enabled ? "Enabled" : "Disabled"}
                   </Badge>
+                  {p.settings?.trace === true && (
+                    <Badge tone="amber">TRACE</Badge>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
@@ -500,6 +503,10 @@ function ProviderFormModal({
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
   const [testing, setTesting] = useState(false);
   const [fetchingModels, setFetchingModels] = useState(false);
+  const [traceEnabled, setTraceEnabled] = useState(
+    initialSettings?.trace === true,
+  );
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
 
   const applyPreset = (preset: {
     name: string;
@@ -572,6 +579,9 @@ function ProviderFormModal({
     const keys = enteredKeys();
     const keysSetting = keys.length ? { keys } : {};
 
+    // Always send the trace flag so disabling it persists too.
+    const traceSetting = { trace: traceEnabled };
+
     // For custom providers, send name as top-level field
     const nameSetting =
       showCustomFields && customName.trim() ? { name: customName.trim() } : {};
@@ -585,6 +595,7 @@ function ProviderFormModal({
             authMode,
             projectId: projectId.trim(),
             location: location.trim(),
+            ...traceSetting,
             ...defaultModelSetting,
           },
         };
@@ -594,6 +605,7 @@ function ProviderFormModal({
         ...nameSetting,
         settings: {
           authMode,
+          ...traceSetting,
           ...defaultModelSetting,
         },
       };
@@ -607,6 +619,7 @@ function ProviderFormModal({
           ...(chatPath.trim() ? { chatCompletionPath: chatPath.trim() } : {}),
           ...(modelsPath.trim() ? { modelsPath: modelsPath.trim() } : {}),
           customModels: parseCustomModels(),
+          ...traceSetting,
           ...defaultModelSetting,
         },
       };
@@ -614,18 +627,33 @@ function ProviderFormModal({
     return {
       ...keysSetting,
       ...nameSetting,
-      settings: defaultModelSetting,
+      settings: { ...traceSetting, ...defaultModelSetting },
     };
   };
 
   const submit = async () => {
     setError(null);
+    setSaveWarning(null);
+    if (traceEnabled && initialSettings?.trace !== true) {
+      const ok = confirm(
+        "Enable diagnostic tracing?\n\n" +
+          "Full request and response payloads — including user message content — " +
+          "will be written to the server logs for every request to this provider.\n\n" +
+          "This is intended for testing/debugging only. Remember to disable it afterwards.",
+      );
+      if (!ok) return;
+    }
     setSaving(true);
     try {
-      await apiSend("PUT", `/api/providers/${targetProvider}`, {
-        ...buildBody(),
-        enabled: true,
-      });
+      const saved = await apiSend<{ warnings?: string[] }>(
+        "PUT",
+        `/api/providers/${targetProvider}`,
+        {
+          ...buildBody(),
+          enabled: true,
+        },
+      );
+      if (saved.warnings?.length) setSaveWarning(saved.warnings.join(" "));
       onSaved();
     } catch (err) {
       setError((err as Error).message);
@@ -1005,6 +1033,32 @@ function ProviderFormModal({
           </div>
         )}
 
+        <div
+          className={`rounded-lg border p-3 ${
+            traceEnabled
+              ? "border-amber-300 bg-amber-50"
+              : "border-gray-200 bg-gray-50/50"
+          }`}
+        >
+          <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-gray-700 select-none">
+            <input
+              type="checkbox"
+              checked={traceEnabled}
+              onChange={(e) => {
+                setTraceEnabled(e.target.checked);
+                setSaveWarning(null);
+              }}
+              className="h-3.5 w-3.5 accent-amber-600"
+            />
+            Diagnostic tracing (testing only)
+          </label>
+          <p className="mt-1 text-[11px] text-gray-500">
+            When enabled, every request to this provider logs the full raw +
+            converted request/response payloads for debugging — including user
+            message content. Keep it off in production.
+          </p>
+        </div>
+
         {testResult && (
           <div>
             <p
@@ -1025,6 +1079,11 @@ function ProviderFormModal({
           </div>
         )}
         {error && <p className="text-xs text-red-600">{error}</p>}
+        {saveWarning && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+            {saveWarning}
+          </p>
+        )}
       </div>
     </Modal>
   );

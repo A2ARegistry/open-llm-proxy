@@ -41,7 +41,9 @@ import { V1OpenAICompatibleClient } from "../llm/v1-provider";
 import type { TokenUsage } from "../metrics/cost-tracker";
 import { recordChatRequest } from "../metrics/request-logger";
 import { maybeDisableAfterSpend } from "../metrics/spend-guard";
+import { TraceSession, textCaptureTransform } from "../tracing/collector";
 import { ApiKeyAuth } from "../types";
+import { log } from "../utils/logger";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 interface ChatCompletionsInput {
@@ -112,7 +114,7 @@ export async function chatCompletionsV2(
   const { env, apiKeyAuth, request, ctx } = input;
   const organizationId = apiKeyAuth.organizationId;
 
-  console.log(
+  log.info(
     `[chat-completions] Request started | org=${organizationId} | keyId=${apiKeyAuth.keyId} | boundProvider=${apiKeyAuth.scopes.defaultProvider || "none"}`,
   );
 
@@ -121,7 +123,7 @@ export async function chatCompletionsV2(
 
   const tenantBlocked = assertTenantActive(settings);
   if (tenantBlocked) {
-    console.log(`[chat-completions] Tenant blocked: ${tenantBlocked.message}`);
+    log.warn(`[chat-completions] Tenant blocked: ${tenantBlocked.message}`);
     return errorBody(tenantBlocked.code, tenantBlocked.message);
   }
 
@@ -129,39 +131,31 @@ export async function chatCompletionsV2(
   const tenantSpendDisabledUntil = settings.spendDisabledUntil as
     number | undefined;
   if (sbDisabledUntil && Date.now() / 1000 < sbDisabledUntil) {
-    console.log(`[chat-completions] API key spend cap reached`);
+    log.warn(`[chat-completions] API key spend cap reached`);
     return errorBody("spend_limit_exceeded", "API key spend cap reached");
   }
   if (
     tenantSpendDisabledUntil &&
     Date.now() / 1000 < tenantSpendDisabledUntil
   ) {
-    console.log(`[chat-completions] Tenant spend limit reached`);
+    log.warn(`[chat-completions] Tenant spend limit reached`);
     return errorBody("spend_limit_exceeded", "Tenant spend limit reached");
   }
 
   const body = parseBody(await request.text());
   if (!body) {
-    console.log(`[chat-completions] Invalid request body`);
+    log.warn(`[chat-completions] Invalid request body`);
     return errorBody("invalid_model", "Invalid request body");
   }
   const chatBody = body as unknown as ChatCompletionsRequest;
 
-  // Log raw incoming HTTP request user message directly from request body
-  if (chatBody.messages && Array.isArray(chatBody.messages)) {
-    const lastUserMsg = [...chatBody.messages]
-      .reverse()
-      .find((m) => m && m.role === "user");
-    if (lastUserMsg) {
-      console.log(
-        `[chat-completions] Raw incoming HTTP request last user message content:`,
-        JSON.stringify(lastUserMsg.content).slice(0, 300),
-      );
-    }
-  }
+  // Never log message contents: prompts may contain user-sensitive data.
+  // Log only structural metadata (message count) for correlation.
+  const messageCount = Array.isArray(chatBody.messages)
+    ? chatBody.messages.length
+    : 0;
 
   const rawModel = typeof body.model === "string" ? body.model.trim() : "";
-  console.log(`[chat-completions] Raw model string: "${rawModel}"`);
 
   // An API key may be bound to a provider (scopes.defaultProvider): the key
   // then only ever routes to that provider and users can send bare model ids.
@@ -267,6 +261,24 @@ export async function chatCompletionsV2(
   const stream = chatBody.stream === true;
   const signal = request.signal;
 
+  // Diagnostic tracing (provider `settings.trace`) — opt-in, testing only.
+  // Captures raw + converted request/response payloads for bug investigation.
+  const trace =
+    config.settings?.trace === true
+      ? new TraceSession({
+          organizationId,
+          apiKeyId: apiKeyAuth.keyId,
+          provider: providerName,
+          model: modelId,
+          stream,
+        }).setInboundRequest(chatBody)
+      : null;
+  /** Submit the trace event in the background when tracing is enabled. */
+  const submitTrace = (): void => {
+    if (!trace) return;
+    ctx.waitUntil(trace.finish());
+  };
+
   // Google Vertex AI routing:
   // - Express Mode (api-key): Use GoogleDirectAdapter for proper tool call handling
   // - Service Account mode: Use OpenAI-compatible endpoint (existing V1 path)
@@ -277,18 +289,14 @@ export async function chatCompletionsV2(
     config.settings?.authMode === "service-account";
   const piSpec = getPiAiProviderSpec(providerName);
 
-  console.log(
-    `[chat-completions] Resolved provider | provider=${providerName} | model=${modelId} | stream=${stream} | piSpec=${!!piSpec} | vertexOpenAiCompat=${vertexOpenAiCompat} | vertexExpressMode=${vertexExpressMode} | authMode=${config.settings?.authMode} | isVertex=${isVertexProvider(providerName)}`,
+  log.debug(
+    `[chat-completions] Resolved provider | provider=${providerName} | model=${modelId} | stream=${stream} | messages=${messageCount} | piSpec=${!!piSpec} | vertexOpenAiCompat=${vertexOpenAiCompat} | vertexExpressMode=${vertexExpressMode} | authMode=${config.settings?.authMode} | isVertex=${isVertexProvider(providerName)}`,
   );
 
   const maxTokens = numberParam(
     chatBody.max_tokens ?? chatBody.max_completion_tokens,
   );
   const estimatedTokens = maxTokens ?? 0;
-
-  console.log(
-    `[chat-completions] Rate limit check | org=${organizationId} key=${apiKeyAuth.keyId} rpm=${settings.rateLimit?.requestsPerMinute} burst=${settings.rateLimit?.burstSize} estimated=${estimatedTokens} stream=${stream}`,
-  );
 
   // Phase 4.1 — per-tenant/per-key rate limits (429 + Retry-After).
   const rate = await checkRateLimits(env, {
@@ -298,10 +306,10 @@ export async function chatCompletionsV2(
     estimatedTokens,
     stream,
   });
-  console.log(
-    `[chat-completions] Rate limit result | allowed=${rate.allowed}${rate.retryAfter ? ` retryAfter=${rate.retryAfter}` : ``}`,
-  );
   if (!rate.allowed) {
+    log.warn(
+      `[chat-completions] Rate limited | org=${organizationId} key=${apiKeyAuth.keyId} retryAfter=${rate.retryAfter ?? 1}`,
+    );
     return new Response(
       JSON.stringify({
         error: {
@@ -386,10 +394,6 @@ export async function chatCompletionsV2(
       );
     }
 
-    console.log(
-      `[chat-completions] Using GoogleDirectAdapter for Vertex Express Mode | model=${modelId}`,
-    );
-
     const googleAdapter = new GoogleDirectAdapter({ apiKey });
 
     // Extract tools from request
@@ -419,6 +423,8 @@ export async function chatCompletionsV2(
         const cached = await getCachedResponse(env, organizationId, cacheKey);
         if (cached !== null) {
           record({ statusCode: 200, cacheHit: 1 });
+          trace?.setOutboundResponse("(served from response cache)");
+          submitTrace();
           return new Response(cached, {
             headers: {
               "Content-Type": "application/json",
@@ -430,26 +436,30 @@ export async function chatCompletionsV2(
 
       let message: AssistantMessage;
       try {
-        console.log(
-          `[chat-completions] Calling GoogleDirectAdapter.generateContent | model=${modelId}`,
-        );
         message = await googleAdapter.generateContent({
           model: modelId,
           messages: chatBody.messages as never[],
           tools,
           temperature: numberParam(chatBody.temperature),
           maxTokens: maxTokens,
+          trace: trace
+            ? {
+                onUpstreamRequest: (body) =>
+                  trace.setUpstreamRequest({ method: "POST", body }),
+                onUpstreamResponse: (body) =>
+                  trace.setUpstreamResponse({ body }),
+              }
+            : undefined,
         });
-        console.log(
-          `[chat-completions] GoogleDirectAdapter returned | stopReason=${message.stopReason} | ` +
-            `contentParts=${message.content.length} | ` +
-            `hasToolCalls=${message.content.some((p) => p.type === "toolCall")}`,
-        );
       } catch (err) {
         record({
           statusCode: 500,
           errorMessage: err instanceof Error ? err.message : String(err),
         });
+        trace?.setUpstreamResponse({
+          error: err instanceof Error ? err.message : String(err),
+        });
+        submitTrace();
         throw err;
       }
       if (message.stopReason === "error" || message.stopReason === "aborted") {
@@ -459,6 +469,8 @@ export async function chatCompletionsV2(
           costUsd: message.usage?.cost?.total ?? null,
           errorMessage: message.errorMessage ?? "Upstream provider error",
         });
+        trace?.setOutboundResponse(message.errorMessage ?? "Upstream error");
+        submitTrace();
         return errorBody(
           "upstream_error",
           message.errorMessage ?? "Upstream provider error",
@@ -472,9 +484,8 @@ export async function chatCompletionsV2(
       const bodyText = JSON.stringify(
         assistantToOpenAI(message, chatBody.model as string),
       );
-      console.log(
-        `[chat-completions] Returning non-streaming response | bodyLength=${bodyText.length}`,
-      );
+      trace?.setOutboundResponse(bodyText);
+      submitTrace();
       if (cacheKey) {
         ctx.waitUntil(
           putCachedResponse(env, organizationId, cacheKey, bodyText, cacheTtl),
@@ -490,9 +501,6 @@ export async function chatCompletionsV2(
     const state = { emittedRole: false };
     const responseId = `chatcmpl-${Math.random().toString(36).slice(2)}`;
     let finalMessage: AssistantMessage | undefined;
-    console.log(
-      `[chat-completions] Starting GoogleDirectAdapter streaming | model=${modelId} | responseId=${responseId}`,
-    );
     try {
       for await (const event of googleAdapter.streamGenerateContent({
         model: modelId,
@@ -500,6 +508,13 @@ export async function chatCompletionsV2(
         tools,
         temperature: numberParam(chatBody.temperature),
         maxTokens,
+        trace: trace
+          ? {
+              onUpstreamRequest: (body) =>
+                trace.setUpstreamRequest({ method: "POST", body }),
+              onUpstreamStreamChunk: (chunk) => trace.addUpstreamChunk(chunk),
+            }
+          : undefined,
       })) {
         if (event.type === "done") finalMessage = event.message;
         if (event.type === "error") finalMessage = event.error;
@@ -512,10 +527,9 @@ export async function chatCompletionsV2(
           chunks.push(chunk);
         }
       }
-      console.log(
-        `[chat-completions] GoogleDirectAdapter streaming completed | chunks=${chunks.length} | ` +
-          `finalStopReason=${finalMessage?.stopReason} | ` +
-          `hasToolCalls=${finalMessage?.content.some((p) => p.type === "toolCall")}`,
+      log.debug(
+        `[chat-completions] Streaming completed | provider=${providerName} | model=${modelId} | responseId=${responseId} | chunks=${chunks.length} | ` +
+          `finalStopReason=${finalMessage?.stopReason}`,
       );
     } catch (err) {
       record({
@@ -524,6 +538,10 @@ export async function chatCompletionsV2(
         costUsd: finalMessage?.usage?.cost?.total ?? null,
         errorMessage: err instanceof Error ? err.message : String(err),
       });
+      trace?.setUpstreamResponse({
+        error: err instanceof Error ? err.message : String(err),
+      });
+      submitTrace();
       throw err;
     }
     record({
@@ -535,7 +553,10 @@ export async function chatCompletionsV2(
           ? (finalMessage.errorMessage ?? "Stream ended with an error")
           : null,
     });
-    return new Response(encodeSse(chunks), {
+    const sseText = encodeSse(chunks);
+    trace?.setOutboundResponse(sseText);
+    submitTrace();
+    return new Response(sseText, {
       headers: { "Content-Type": "text/event-stream" },
     });
   }
@@ -580,6 +601,8 @@ export async function chatCompletionsV2(
         const cached = await getCachedResponse(env, organizationId, cacheKey);
         if (cached !== null) {
           record({ statusCode: 200, cacheHit: 1 });
+          trace?.setOutboundResponse("(served from response cache)");
+          submitTrace();
           return new Response(cached, {
             headers: {
               "Content-Type": "application/json",
@@ -591,24 +614,20 @@ export async function chatCompletionsV2(
 
       let message: AssistantMessage;
       try {
-        console.log(
-          `[chat-completions] Calling models.complete | provider=${providerName} | model=${modelId}`,
-        );
         message = await models.complete({
           model: piModel,
           context,
           signal,
         });
-        console.log(
-          `[chat-completions] models.complete returned | stopReason=${message.stopReason} | ` +
-            `contentParts=${message.content.length} | ` +
-            `hasToolCalls=${message.content.some((p) => p.type === "toolCall")}`,
-        );
       } catch (err) {
         record({
           statusCode: 500,
           errorMessage: err instanceof Error ? err.message : String(err),
         });
+        trace?.setUpstreamResponse({
+          error: err instanceof Error ? err.message : String(err),
+        });
+        submitTrace();
         throw err;
       }
       if (message.stopReason === "error" || message.stopReason === "aborted") {
@@ -618,6 +637,8 @@ export async function chatCompletionsV2(
           costUsd: message.usage?.cost?.total ?? null,
           errorMessage: message.errorMessage ?? "Upstream provider error",
         });
+        trace?.setOutboundResponse(message.errorMessage ?? "Upstream error");
+        submitTrace();
         return errorBody(
           "upstream_error",
           message.errorMessage ?? "Upstream provider error",
@@ -631,9 +652,10 @@ export async function chatCompletionsV2(
       const bodyText = JSON.stringify(
         assistantToOpenAI(message, chatBody.model as string),
       );
-      console.log(
-        `[chat-completions] Returning non-streaming response | bodyLength=${bodyText.length}`,
-      );
+      // pi-ai does not expose the raw upstream exchange; only inbound +
+      // converted outbound are available on this route.
+      trace?.setOutboundResponse(bodyText);
+      submitTrace();
       if (cacheKey) {
         ctx.waitUntil(
           putCachedResponse(env, organizationId, cacheKey, bodyText, cacheTtl),
@@ -648,9 +670,6 @@ export async function chatCompletionsV2(
     const state = { emittedRole: false };
     const responseId = `chatcmpl-${Math.random().toString(36).slice(2)}`;
     let finalMessage: AssistantMessage | undefined;
-    console.log(
-      `[chat-completions] Starting streaming | provider=${providerName} | model=${modelId} | responseId=${responseId}`,
-    );
     try {
       for await (const event of models.stream({
         model: piModel,
@@ -668,12 +687,11 @@ export async function chatCompletionsV2(
           chunks.push(chunk);
         }
       }
-      console.log(
-        `[chat-completions] Streaming completed | chunks=${chunks.length} | ` +
-          `finalStopReason=${finalMessage?.stopReason} | ` +
-          `hasToolCalls=${finalMessage?.content.some((p) => p.type === "toolCall")}` +
+      log.debug(
+        `[chat-completions] Streaming completed | provider=${providerName} | model=${modelId} | responseId=${responseId} | chunks=${chunks.length} | ` +
+          `finalStopReason=${finalMessage?.stopReason}` +
           (finalMessage?.stopReason === "error"
-            ? ` | ERROR: ${finalMessage?.errorMessage ?? "no error message"}`
+            ? ` | error=${finalMessage?.errorMessage ?? "unknown"}`
             : ""),
       );
     } catch (err) {
@@ -683,6 +701,10 @@ export async function chatCompletionsV2(
         costUsd: finalMessage?.usage?.cost?.total ?? null,
         errorMessage: err instanceof Error ? err.message : String(err),
       });
+      trace?.setUpstreamResponse({
+        error: err instanceof Error ? err.message : String(err),
+      });
+      submitTrace();
       throw err;
     }
     record({
@@ -694,7 +716,12 @@ export async function chatCompletionsV2(
           ? (finalMessage.errorMessage ?? "Stream ended with an error")
           : null,
     });
-    return new Response(encodeSse(chunks), {
+    const sseText = encodeSse(chunks);
+    // pi-ai does not expose the raw upstream exchange; only inbound +
+    // converted outbound are available on this route.
+    trace?.setOutboundResponse(sseText);
+    submitTrace();
+    return new Response(sseText, {
       headers: { "Content-Type": "text/event-stream" },
     });
   }
@@ -704,9 +731,6 @@ export async function chatCompletionsV2(
   let client: V1OpenAICompatibleClient;
   let upstreamModelId = modelId;
   if (isVertexProvider(providerName)) {
-    console.log(
-      `[chat-completions] Setting up Vertex AI client (service-account mode)`,
-    );
     let vertexAuth: Record<string, string>;
     try {
       const vertex = parseVertexConfig({
@@ -720,8 +744,8 @@ export async function chatCompletionsV2(
         vertex.settings.projectId,
         vertex.settings.location,
       );
-      console.log(
-        `[chat-completions] Vertex Service Account | baseUrl=${baseUrl} | chatPath=${chatPath}`,
+      log.debug(
+        `[chat-completions] Vertex service-account upstream | baseUrl=${baseUrl}`,
       );
       client = new V1OpenAICompatibleClient({
         provider: providerName,
@@ -735,7 +759,7 @@ export async function chatCompletionsV2(
         authHeaders: vertexAuth,
       });
     } catch (err) {
-      console.log(`[chat-completions] Vertex setup error:`, err);
+      log.error(`[chat-completions] Vertex setup failed`, err);
       return errorBody(
         "not_configured",
         err instanceof Error ? err.message : "Vertex AI is not configured",
@@ -767,6 +791,11 @@ export async function chatCompletionsV2(
       ? { max_tokens: chatBody.max_tokens ?? chatBody.max_completion_tokens }
       : {}),
   });
+  trace?.setUpstreamRequest({
+    endpoint: client.chatCompletionsUrl(),
+    method: "POST",
+    body: upstreamBody,
+  });
   let upstream: Response;
   if (stream) {
     try {
@@ -776,6 +805,10 @@ export async function chatCompletionsV2(
         statusCode: 500,
         errorMessage: err instanceof Error ? err.message : String(err),
       });
+      trace?.setUpstreamResponse({
+        error: err instanceof Error ? err.message : String(err),
+      });
+      submitTrace();
       throw err;
     }
     if (!upstream.ok) {
@@ -784,6 +817,8 @@ export async function chatCompletionsV2(
         statusCode: upstream.status,
         errorMessage: `Upstream error (${upstream.status}): ${text.slice(0, 512)}`,
       });
+      trace?.setUpstreamResponse({ status: upstream.status, body: text });
+      submitTrace();
       return errorBody(
         "upstream_error",
         `Upstream error (${upstream.status}): ${text.slice(0, 512)}`,
@@ -793,30 +828,48 @@ export async function chatCompletionsV2(
     // capturing transform and record once it completes (or is cancelled).
     if (!upstream.body) {
       record({ statusCode: upstream.status });
+      submitTrace();
       return new Response(null, { status: upstream.status });
     }
-    return new Response(
-      upstream.body.pipeThrough(
-        usageCapturingTransform((usage) => {
-          record({ statusCode: upstream.status, usage });
-        }),
-      ),
-      {
-        status: upstream.status,
-        headers: {
-          "Content-Type": "text/event-stream",
-          ...(upstream.headers.get("cache-control")
-            ? { "Cache-Control": upstream.headers.get("cache-control")! }
-            : {}),
-        },
-      },
+    const capturedText = trace ? textCaptureTransform() : null;
+    const sseStream = upstream.body.pipeThrough(
+      usageCapturingTransform((usage) => {
+        record({ statusCode: upstream.status, usage });
+      }),
     );
+    const tracedStream = capturedText
+      ? sseStream.pipeThrough(capturedText.stream)
+      : sseStream;
+    if (trace && capturedText) {
+      ctx.waitUntil(
+        capturedText.done.then((sse) => {
+          // Raw pass-through stream: what we capture is both the raw upstream
+          // response and the outbound body.
+          trace.setUpstreamResponse({
+            status: upstream.status,
+            body: sse,
+          });
+          return trace.setOutboundResponse(sse).finish();
+        }),
+      );
+    }
+    return new Response(tracedStream, {
+      status: upstream.status,
+      headers: {
+        "Content-Type": "text/event-stream",
+        ...(upstream.headers.get("cache-control")
+          ? { "Cache-Control": upstream.headers.get("cache-control")! }
+          : {}),
+      },
+    });
   }
 
   if (cacheKey) {
     const cached = await getCachedResponse(env, organizationId, cacheKey);
     if (cached !== null) {
       record({ statusCode: 200, cacheHit: 1 });
+      trace?.setOutboundResponse("(served from response cache)");
+      submitTrace();
       return new Response(cached, {
         headers: { "Content-Type": "application/json", "X-Cache": "HIT" },
       });
@@ -830,6 +883,10 @@ export async function chatCompletionsV2(
       statusCode: 500,
       errorMessage: err instanceof Error ? err.message : String(err),
     });
+    trace?.setUpstreamResponse({
+      error: err instanceof Error ? err.message : String(err),
+    });
+    submitTrace();
     throw err;
   }
   const upstreamText = await upstream.text();
@@ -838,6 +895,8 @@ export async function chatCompletionsV2(
       statusCode: upstream.status,
       errorMessage: `Upstream error (${upstream.status}): ${upstreamText.slice(0, 512)}`,
     });
+    trace?.setUpstreamResponse({ status: upstream.status, body: upstreamText });
+    submitTrace();
     return errorBody(
       "upstream_error",
       `Upstream error (${upstream.status}): ${upstreamText.slice(0, 512)}`,
@@ -847,6 +906,9 @@ export async function chatCompletionsV2(
     statusCode: upstream.status,
     usage: openAiUsageOf(upstreamText),
   });
+  trace?.setUpstreamResponse({ status: upstream.status, body: upstreamText });
+  trace?.setOutboundResponse(upstreamText);
+  submitTrace();
   if (cacheKey) {
     ctx.waitUntil(
       putCachedResponse(env, organizationId, cacheKey, upstreamText, cacheTtl),

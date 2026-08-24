@@ -29,6 +29,9 @@
   "vars": {
     "BASE_URL": "http://localhost:8787",
     "ENVIRONMENT": "development",
+    // Log verbosity: debug | info | warn | error. Unset defaults to
+    // `debug` in development and `info` in production.
+    "LOG_LEVEL": "debug",
     "SESSION_CACHE_TTL_SECONDS": "60",
     "RATE_LIMITER_SHARDS": "4",
     "METRICS_BUFFER_SHARDS": "4",
@@ -107,6 +110,7 @@
       "vars": {
         "BASE_URL": "https://your-domain.com",
         "ENVIRONMENT": "production",
+        "LOG_LEVEL": "info",
         "DASHBOARD_URL": "https://your-domain.com",
         "SESSION_CACHE_TTL_SECONDS": "3600",
         "RATE_LIMITER_SHARDS": "8",

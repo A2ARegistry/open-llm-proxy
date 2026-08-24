@@ -5,6 +5,7 @@ import { RateLimiter } from "./durable/rate-limiter";
 import { ResponseCache } from "./durable/response-cache";
 import { SessionManager } from "./durable/session-manager";
 import { sha256Hex } from "./utils/crypto";
+import { initLogger } from "./utils/logger";
 // Cloudflare Durable Objects
 import { EmailingCacheDO } from "@contentgrowth/content-emailing/backend/EmailingCacheDO.js";
 
@@ -39,6 +40,7 @@ async function isTenantApiKey(request: Request, env: Env): Promise<boolean> {
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
+    initLogger(env);
     const url = new URL(request.url);
 
     // Admin/auth dashboard + tenant-key LLM traffic → Hono app.
@@ -78,6 +80,7 @@ export default {
 
   /** Cron trigger: evaluate spend + error-rate alerts for every tenant. */
   async scheduled(_event, env, ctx) {
+    initLogger(env);
     ctx.waitUntil(runAlertChecks(env));
   },
 } satisfies ExportedHandler<Env>;

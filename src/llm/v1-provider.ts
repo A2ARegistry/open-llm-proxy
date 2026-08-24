@@ -82,6 +82,11 @@ export class V1OpenAICompatibleClient {
     return `${base}${normalized}`;
   }
 
+  /** Resolved chat-completions endpoint (for diagnostic tracing). */
+  chatCompletionsUrl(): string {
+    return this.fullUrl(this.chatCompletionPath);
+  }
+
   async chatCompletions(
     body: string,
     init?: { signal?: AbortSignal },

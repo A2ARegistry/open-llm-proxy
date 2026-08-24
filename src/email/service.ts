@@ -45,7 +45,9 @@ class EmailServiceWithConsole extends BaseEmailService {
       console.log("[EmailService] 📧 Console Email (Development Mode)");
       console.log("=".repeat(80));
       console.log(`To: ${to}`);
-      console.log(`From: ${from?.name || settings.fromName} <${from?.address || settings.fromAddress}>`);
+      console.log(
+        `From: ${from?.name || settings.fromName} <${from?.address || settings.fromAddress}>`,
+      );
       console.log(`Subject: ${subject}`);
       console.log(`Template: ${templateId}`);
       if (userId) console.log(`User ID: ${userId}`);
@@ -64,7 +66,9 @@ class EmailServiceWithConsole extends BaseEmailService {
           .replace(/&gt;/g, ">")
           .replace(/&quot;/g, '"')
           .replace(/&#39;/g, "'");
-        console.log(plainText.substring(0, 1000) + (plainText.length > 1000 ? "..." : ""));
+        console.log(
+          plainText.substring(0, 1000) + (plainText.length > 1000 ? "..." : ""),
+        );
       }
       console.log("=".repeat(80) + "\n");
 
@@ -82,7 +86,7 @@ class EmailServiceWithConsole extends BaseEmailService {
             batchId,
             metadata,
           });
-        } catch (e) {
+        } catch {
           // ignore
         }
       }
@@ -107,7 +111,6 @@ class EmailServiceWithConsole extends BaseEmailService {
     } as any);
   }
 }
-
 
 export interface EmailSettings {
   provider?: string;
@@ -174,7 +177,7 @@ export function buildEmailConfig(env: Env) {
   // Use EMAIL_PROVIDER env var if set, otherwise default to 'console' for development
   // Supported providers: 'console' (logs only), 'mailchannels', 'sendgrid', 'resend', 'sendpulse'
   const defaultProvider = (env as any).EMAIL_PROVIDER || "console";
-  
+
   return {
     emailTablePrefix: "system_email_",
     settingsTableName: "system_settings",

@@ -1,4 +1,5 @@
 import { newUuid } from "../utils/crypto";
+import { log } from "../utils/logger";
 import { decodeToolCallId } from "./google-direct-adapter";
 import {
   canonicalProviderName,
@@ -299,16 +300,6 @@ export function assistantToOpenAI(
   const mappedFinishReason = finishReasonFromStop(originalStopReason);
   const finishReason = toolCalls.length > 0 ? "tool_calls" : mappedFinishReason;
 
-  console.log(
-    `[openai-adapter] assistantToOpenAI | model=${requestModel} | ` +
-      `provider=${message.provider} | stopReason=${originalStopReason} | ` +
-      `mappedFinishReason=${mappedFinishReason} | toolCallsCount=${toolCalls.length} | ` +
-      `finalFinishReason=${finishReason}` +
-      (toolCalls.length > 0
-        ? ` | toolNames=[${toolCalls.map((tc) => tc.function.name).join(", ")}]`
-        : ""),
-  );
-
   return {
     id: message.responseId ?? `chatcmpl-${newUuid()}`,
     object: "chat.completion",
@@ -392,9 +383,6 @@ export function eventToOpenAIChunks(
     case "thinking_start":
       break;
     case "thinking_delta":
-      console.log(
-        `[openai-adapter] Emitting reasoning_content chunk (${event.delta.length}b): ${JSON.stringify(event.delta.slice(0, 30))}`,
-      );
       chunks.push(
         JSON.stringify({
           ...chunkBase(requestModel, responseId),
@@ -526,10 +514,9 @@ export function eventToOpenAIChunks(
         .filter((part) => part.type === "toolCall")
         .map((part) => (part as { name: string }).name);
 
-      console.log(
-        `[openai-adapter] streaming done | model=${requestModel} | ` +
-          `stopReason=${originalStopReason} | mappedFinishReason=${mappedFinishReason} | ` +
-          `hasToolCalls=${hasToolCalls} | finalFinishReason=${finishReason}` +
+      log.debug(
+        `[openai-adapter] Streaming done | model=${requestModel} | ` +
+          `stopReason=${originalStopReason} | finishReason=${finishReason}` +
           (toolCallNames.length > 0
             ? ` | toolNames=[${toolCallNames.join(", ")}]`
             : ""),
@@ -553,8 +540,8 @@ export function eventToOpenAIChunks(
     case "error":
       // If we have already streamed, the response terminates with [DONE];
       // otherwise surface a clean stop.
-      console.log(
-        `[openai-adapter] streaming error | model=${requestModel} | ` +
+      log.warn(
+        `[openai-adapter] Streaming error | model=${requestModel} | ` +
           `errorMessage=${event.error.errorMessage ?? "no error message"}`,
       );
       chunks.push(
