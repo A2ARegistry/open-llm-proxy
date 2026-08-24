@@ -18,6 +18,12 @@
  *                    Sets BASE_URL/DASHBOARD_URL — required for dashboard
  *                    sign-in (the auth server rejects mismatching origins).
  *   --dashboard-url <url> Override DASHBOARD_URL separately (defaults to --base-url)
+ *   --admin-email <email>    Initial admin account email  (or env ADMIN_EMAIL).
+ *                    Seeded ONLY on first boot against an empty database —
+ *                    the email cannot be changed from the portal later.
+ *   --admin-password <pw>    Initial admin password     (or env ADMIN_PASSWORD).
+ *                    Min 12 chars. Seeded only on first boot; forced rotation
+ *                    on first sign-in regardless.
  *   --migrate-only   Apply D1 migrations and exit
  *   --skip-migrate   Deploy without applying migrations
  *   --skip-build     Skip `npm run build` (tsc + dashboard)
@@ -101,6 +107,8 @@ const { values: opts, positionals } = (() => {
         kv: { type: "string" },
         "base-url": { type: "string" },
         "dashboard-url": { type: "string" },
+        "admin-email": { type: "string" },
+        "admin-password": { type: "string" },
         "migrate-only": { type: "boolean", default: false },
         "skip-build": { type: "boolean", default: false },
         "skip-migrate": { type: "boolean", default: false },
@@ -183,6 +191,32 @@ if (nextBaseUrl) {
   prod.vars.DASHBOARD_URL = nextDashboardUrl;
 }
 
+// Initial admin (seeded only on first boot against an empty database).
+// Defaults: admin@example.com / AwesomeProxy!!. The email cannot be changed
+// from the portal, so operators should set it before the first deploy.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 12; // matches the auth password policy
+const rawAdminEmail = opts["admin-email"] ?? process.env.ADMIN_EMAIL;
+const rawAdminPassword = opts["admin-password"] ?? process.env.ADMIN_PASSWORD;
+const adminEmail = rawAdminEmail?.trim().toLowerCase();
+if (rawAdminEmail && !EMAIL_RE.test(adminEmail)) {
+  die(`--admin-email does not look like an email address: "${rawAdminEmail}"`);
+}
+if (
+  rawAdminPassword !== undefined &&
+  rawAdminPassword.length < MIN_PASSWORD_LENGTH
+) {
+  die(
+    `--admin-password must be at least ${MIN_PASSWORD_LENGTH} characters (auth policy).`,
+  );
+}
+if (adminEmail || rawAdminPassword !== undefined) {
+  prod.vars ??= {};
+  if (adminEmail) prod.vars.INITIAL_ADMIN_EMAIL = adminEmail;
+  if (rawAdminPassword !== undefined)
+    prod.vars.INITIAL_ADMIN_PASSWORD = rawAdminPassword;
+}
+
 if (opts["migrate-only"]) {
   console.log("D1 : %s (%s)", d1Binding.database_name, nextD1);
   console.log("KV : skipped (--migrate-only)");
@@ -193,6 +227,17 @@ if (opts["migrate-only"]) {
     console.log(`URL: ${nextBaseUrl}`);
     if (nextDashboardUrl !== nextBaseUrl)
       console.log(`    dashboard: ${nextDashboardUrl}`);
+  }
+  if (adminEmail || rawAdminPassword !== undefined) {
+    const parts = [];
+    if (adminEmail) parts.push(`email=${adminEmail}`);
+    if (rawAdminPassword !== undefined)
+      parts.push(`password=(set, ${rawAdminPassword.length} chars)`);
+    console.log(`ADMIN (first boot only): ${parts.join(" ") || "defaults"}`);
+  } else {
+    console.log(
+      "ADMIN: defaults (admin@example.com / AwesomeProxy!!) — pass --admin-email/--admin-password to customize before first deploy",
+    );
   }
 }
 

@@ -45,6 +45,10 @@
     "APP_NAME": "Open LLM Proxy",
     // Repository shown on the landing page (empty = built-in default).
     "GITHUB_REPO_URL": "",
+    // Initial admin account — consumed ONLY when the database is empty
+    // (first boot). The email cannot be changed from the portal afterwards.
+    "INITIAL_ADMIN_EMAIL": "",
+    "INITIAL_ADMIN_PASSWORD": "",
     "DASHBOARD_URL": "http://localhost:5173"
   },
   // Cron trigger for the alerting engine (Phase 5.3): evaluate spend +
@@ -134,7 +138,9 @@
         "RATE_LIMITER_SHARDS": "8",
         "METRICS_BUFFER_SHARDS": "8",
         "APP_NAME": "Open LLM Proxy",
-        "GITHUB_REPO_URL": ""
+        "GITHUB_REPO_URL": "",
+        "INITIAL_ADMIN_EMAIL": "",
+        "INITIAL_ADMIN_PASSWORD": ""
       },
       // Cron trigger for the alerting engine (spend + error-rate alerts).
       "triggers": {

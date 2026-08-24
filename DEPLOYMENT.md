@@ -83,7 +83,9 @@ npx wrangler kv namespace list
 npm run deploy -- \
   --d1 <D1_DATABASE_ID> \
   --kv <KV_NAMESPACE_ID> \
-  --base-url https://<your-worker>.<your-subdomain>.workers.dev
+  --base-url https://<your-worker>.<your-subdomain>.workers.dev \
+  --admin-email you@yourdomain.com \
+  --admin-password 'AtLeast12Chars!'
 ```
 
 > **Note the `--`** — npm requires it before flags so they reach the script instead of being swallowed by npm itself.
@@ -94,8 +96,11 @@ Example:
 npm run deploy -- \
   --d1 4f2a1b3c-9d8e-4f01-a2b3-c4d5e6f70819 \
   --kv 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d \
-  --base-url https://open-llm-proxy.mysubdomain.workers.dev
+  --base-url https://open-llm-proxy.mysubdomain.workers.dev \
+  --admin-email ning@zervice.me
 ```
+
+**Initial admin account**: without flags it seeds `admin@example.com` / `AwesomeProxy!!`. Set `--admin-email` / `--admin-password` (min 12 chars) to customize — **this only applies on the very first boot against an empty database**, and the email can never be changed from the portal afterwards, so decide before your first deploy. The password is still force-rotated on first sign-in.
 
 `--base-url` is **recommended** but no longer strictly required: when it is unset (or still the repo placeholder), the backend automatically trusts whichever domain actually serves your Worker (e.g. the Cloudflare-assigned workers.dev subdomain), so sign-in works out of the box. Setting it explicitly is still preferred once you know your final URL — email verification/reset links and the API endpoint shown on key pages use it, and they stay correct even before you visit the deployed site.
 
@@ -119,6 +124,8 @@ When it finishes you get a `*.workers.dev` URL (add a custom domain later, see S
 | `--d1-name <name>`      | Override `database_name` if yours differs from `open-llm-proxy-prod`                                                                       |
 | `--base-url <url>`      | Real public URL — sets `BASE_URL`/`DASHBOARD_URL`. Scheme optional (`www.zervice.me` → `https://www.zervice.me`), trailing slashes trimmed |
 | `--dashboard-url <url>` | Separate dashboard URL (defaults to `--base-url`)                                                                                          |
+| `--admin-email <email>` | Initial admin email — seeded on first boot only; not changeable from the portal later (or env `ADMIN_EMAIL`)                               |
+| `--admin-password <pw>` | Initial admin password, min 12 chars — first boot only, force-rotated at first sign-in (or env `ADMIN_PASSWORD`)                           |
 
 So `npm run migrate` alone becomes:
 
@@ -130,7 +137,7 @@ Anything after the known flags is forwarded to `wrangler deploy`, e.g. `npm run 
 
 ### 2.4 Alternative: Environment Variables (CI-friendly)
 
-Instead of CLI flags, the wrapper also reads `D1_DATABASE_ID`, `KV_NAMESPACE_ID`, and `PUBLIC_BASE_URL` from the environment:
+Instead of CLI flags, the wrapper also reads `D1_DATABASE_ID`, `KV_NAMESPACE_ID`, `PUBLIC_BASE_URL`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` from the environment:
 
 ```bash
 D1_DATABASE_ID=4f2a… KV_NAMESPACE_ID=1a2b… npm run deploy
@@ -174,15 +181,17 @@ In the build configuration screen:
 npm ci && npm run deploy
 ```
 
-Because Git builds cannot pass CLI flags, provide your private resource IDs as **build environment variables** (same page, **Variables** section):
+Because Git builds cannot pass CLI flags, provide your configuration as **build environment variables** (same page, **Variables** section):
 
-| Variable          | Value                                                 |
-| ----------------- | ----------------------------------------------------- |
-| `D1_DATABASE_ID`  | your real D1 database id                              |
-| `KV_NAMESPACE_ID` | your real KV namespace id                             |
-| `PUBLIC_BASE_URL` | `https://open-llm-proxy.mysubdomain.workers.dev` etc. |
+| Variable          | Required                          | Description                                                                | Default when unset                                                                                    |
+| ----------------- | --------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `D1_DATABASE_ID`  | **Yes — deploy fails without it** | Your real D1 database id                                                   | — (placeholder in repo; wrapper refuses to deploy)                                                    |
+| `KV_NAMESPACE_ID` | **Yes — deploy fails without it** | Your real KV namespace id                                                  | — (placeholder in repo; wrapper refuses to deploy)                                                    |
+| `PUBLIC_BASE_URL` | Recommended                       | The URL users visit, e.g. `https://open-llm-proxy.mysubdomain.workers.dev` | Falls back to whichever domain serves the request (sign-in works); email links may be wrong until set |
+| `ADMIN_EMAIL`     | No                                | Initial admin account email                                                | `admin@example.com` — seeded on first boot only; cannot be changed from the portal afterwards         |
+| `ADMIN_PASSWORD`  | No                                | Initial admin password (min 12 chars)                                      | `AwesomeProxy!!` — seeded on first boot only, force-rotated at first sign-in                          |
 
-The deploy wrapper reads these automatically. They are stored in the Cloudflare build settings — never in the repository.
+The two **required** variables must be set before the first deploy; the deploy fails fast with a clear error message when they are missing. The optional ones have working fallbacks, so you can add them any time.
 
 **Note**: The `npm run deploy` script will:
 
@@ -325,16 +334,17 @@ Values you will typically want to override:
 
 **Optional Variables** (defaults are usually fine):
 
-| Variable                    | Value (Example)                                 | Description                                             |
-| --------------------------- | ----------------------------------------------- | ------------------------------------------------------- |
-| `APP_NAME`                  | `Open LLM Proxy`                                | App name in UI and emails                               |
-| `GITHUB_REPO_URL`           | `https://github.com/A2ARegistry/open-llm-proxy` | Repository linked from the landing page (default shown) |
-| `RATE_LIMITER_SHARDS`       | `8`                                             | Number of rate limiter shards (default: 4)              |
-| `METRICS_BUFFER_SHARDS`     | `8`                                             | Number of metrics buffer shards (default: 4)            |
-| `SESSION_CACHE_TTL_SECONDS` | `3600`                                          | Session cache TTL in seconds (default: 60)              |
-| `EMAIL_PROVIDER`            | `console`                                       | Email provider (see options below)                      |
-| `EMAIL_FROM_NAME`           | `Open LLM Proxy`                                | Email sender name                                       |
-| `EMAIL_FROM_ADDRESS`        | `noreply@yourdomain.com`                        | Email sender address                                    |
+| Variable                                         | Value (Example)                                 | Description                                             |
+| ------------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------- |
+| `APP_NAME`                                       | `Open LLM Proxy`                                | App name in UI and emails                               |
+| `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` | see Step 2.2                                    | Initial admin account — first boot only, then ignored   |
+| `GITHUB_REPO_URL`                                | `https://github.com/A2ARegistry/open-llm-proxy` | Repository linked from the landing page (default shown) |
+| `RATE_LIMITER_SHARDS`                            | `8`                                             | Number of rate limiter shards (default: 4)              |
+| `METRICS_BUFFER_SHARDS`                          | `8`                                             | Number of metrics buffer shards (default: 4)            |
+| `SESSION_CACHE_TTL_SECONDS`                      | `3600`                                          | Session cache TTL in seconds (default: 60)              |
+| `EMAIL_PROVIDER`                                 | `console`                                       | Email provider (see options below)                      |
+| `EMAIL_FROM_NAME`                                | `Open LLM Proxy`                                | Email sender name                                       |
+| `EMAIL_FROM_ADDRESS`                             | `noreply@yourdomain.com`                        | Email sender address                                    |
 
 **Email Provider Options**:
 
@@ -575,6 +585,7 @@ Before going live:
 - [ ] `D1_DATABASE_ID` / `KV_NAMESPACE_ID` provided via CLI flags or build variables (never committed)
 - [ ] `BASE_URL` and `DASHBOARD_URL` set to your domain
 - [ ] Email provider configured (or set to `console`)
+- [ ] Initial admin email customized (`--admin-email`, first boot) or default accepted
 - [ ] Changed default admin password
 - [ ] Custom domain with HTTPS enabled
 - [ ] Tested API health endpoint
