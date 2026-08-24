@@ -152,8 +152,20 @@ kvBinding.id = nextKv;
 // Public URL: the auth server rejects sign-in requests whose Origin does not
 // match BASE_URL / DASHBOARD_URL, so a real value is required for deploys.
 const PLACEHOLDER_URL = "https://your-domain.com";
-const nextBaseUrl = opts["base-url"] ?? process.env.PUBLIC_BASE_URL;
-const nextDashboardUrl = opts["dashboard-url"] ?? nextBaseUrl;
+const rawBaseUrl = (opts["base-url"] ?? process.env.PUBLIC_BASE_URL ?? "")
+  .trim()
+  .replace(/\/+$/, "");
+// Normalize: default to https:// when the scheme is omitted (www.zervice.me
+// → https://www.zervice.me). An explicit http:// is kept as-is.
+const schemeMissing =
+  rawBaseUrl && !/^[a-z][a-z0-9+.-]*:\/\//i.test(rawBaseUrl);
+const nextBaseUrl = schemeMissing ? `https://${rawBaseUrl}` : rawBaseUrl;
+if (schemeMissing) {
+  console.log(`i  --base-url normalized to ${nextBaseUrl}`);
+}
+const nextDashboardUrl = opts["dashboard-url"]
+  ? opts["dashboard-url"].trim().replace(/\/+$/, "")
+  : nextBaseUrl;
 if (
   !opts["migrate-only"] &&
   (!nextBaseUrl || nextBaseUrl === PLACEHOLDER_URL)
@@ -163,7 +175,7 @@ if (
   );
 }
 if (nextBaseUrl && !/^https?:\/\/.+$/.test(nextBaseUrl)) {
-  die(`--base-url must be an http(s) URL: "${nextBaseUrl}"`);
+  die(`--base-url must be an http(s) URL: "${rawBaseUrl}"`);
 }
 if (nextBaseUrl) {
   prod.vars ??= {};

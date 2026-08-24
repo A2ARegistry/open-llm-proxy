@@ -110,15 +110,15 @@ When it finishes you get a `*.workers.dev` URL (add a custom domain later, see S
 
 ### 2.3 Useful Flags
 
-| Flag                    | Purpose                                                                  |
-| ----------------------- | ------------------------------------------------------------------------ |
-| `--dry-run`             | Show what would run without changing anything                            |
-| `--migrate-only`        | Only apply D1 migrations and exit                                        |
-| `--skip-build`          | Skip `npm run build` (when already built)                                |
-| `--skip-migrate`        | Deploy without touching migrations                                       |
-| `--d1-name <name>`      | Override `database_name` if yours differs from `open-llm-proxy-prod`     |
-| `--base-url <url>`      | Real public URL — sets `BASE_URL`/`DASHBOARD_URL` (required for sign-in) |
-| `--dashboard-url <url>` | Separate dashboard URL (defaults to `--base-url`)                        |
+| Flag                    | Purpose                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--dry-run`             | Show what would run without changing anything                                                                                              |
+| `--migrate-only`        | Only apply D1 migrations and exit                                                                                                          |
+| `--skip-build`          | Skip `npm run build` (when already built)                                                                                                  |
+| `--skip-migrate`        | Deploy without touching migrations                                                                                                         |
+| `--d1-name <name>`      | Override `database_name` if yours differs from `open-llm-proxy-prod`                                                                       |
+| `--base-url <url>`      | Real public URL — sets `BASE_URL`/`DASHBOARD_URL`. Scheme optional (`www.zervice.me` → `https://www.zervice.me`), trailing slashes trimmed |
+| `--dashboard-url <url>` | Separate dashboard URL (defaults to `--base-url`)                                                                                          |
 
 So `npm run migrate` alone becomes:
 
