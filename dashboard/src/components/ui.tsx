@@ -91,19 +91,48 @@ export function Badge({
 }) {
   const tones: Record<string, string> = {
     gray: "bg-gray-100 text-gray-700",
-    green: "bg-green-100 text-green-800",
-    red: "bg-red-100 text-red-700",
-    amber: "bg-amber-100 text-amber-800",
-    blue: "bg-blue-100 text-blue-800",
-    indigo: "bg-indigo-100 text-indigo-700",
+    green: "bg-emerald-50 text-emerald-700 border border-emerald-200/60",
+    red: "bg-red-50 text-red-700 border border-red-200/60",
+    amber: "bg-amber-50 text-amber-700 border border-amber-200/60",
+    blue: "bg-sky-50 text-sky-700 border border-sky-200/60",
+    indigo: "bg-indigo-50 text-indigo-700 border border-indigo-200/60",
   };
   return (
     <span
       title={title}
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone]}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone]}`}
     >
       {children}
     </span>
+  );
+}
+
+/**
+ * Clean hover tooltip component with smooth floating card styling.
+ */
+export function Tooltip({
+  content,
+  children,
+}: {
+  content: ReactNode;
+  children: ReactNode;
+}) {
+  const [show, setShow] = useState(false);
+
+  return (
+    <div
+      className="relative inline-flex"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      {children}
+      {show && (
+        <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-2 text-xs font-normal text-white shadow-xl">
+          {content}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -379,5 +408,53 @@ export function Modal({
         )}
       </div>
     </div>
+  );
+}
+
+export function ConfirmModal({
+  open,
+  onClose,
+  onConfirm,
+  title = "Are you sure?",
+  message,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  tone = "danger",
+  loading = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title?: string;
+  message: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: "danger" | "warning" | "primary";
+  loading?: boolean;
+}) {
+  if (!open) return null;
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={loading}>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={tone === "danger" ? "danger" : "primary"}
+            onClick={onConfirm}
+            loading={loading}
+          >
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <div className="text-sm text-gray-600 leading-relaxed">{message}</div>
+    </Modal>
   );
 }

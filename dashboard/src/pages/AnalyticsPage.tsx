@@ -1,4 +1,11 @@
-import { Badge, Card, EmptyState, Spinner, StatCard } from "../components/ui";
+import {
+  Badge,
+  Card,
+  EmptyState,
+  Spinner,
+  StatCard,
+  Tooltip,
+} from "../components/ui";
 import { apiGet } from "../lib/api";
 import { CacheUsageRow, LatencyStat, RequestRow } from "../lib/api";
 import { fmtDay, fmtMs, fmtTokens, fmtUsd, pct } from "../lib/format";
@@ -167,7 +174,7 @@ export function AnalyticsPage() {
 
       <Card
         title="Cache efficiency by model"
-        subtitle="Provider prompt-cache reads/writes and proxy response-cache hits"
+        subtitle="Prompt cache savings (reused context) and proxy duplicate-request hits"
       >
         {cacheRows.length === 0 ? (
           <EmptyState
@@ -184,16 +191,16 @@ export function AnalyticsPage() {
                   <th className="px-5 py-3 font-medium">Requests</th>
                   <th className="px-5 py-3 font-medium">Hit rate</th>
                   <th className="px-5 py-3 text-right font-medium">
-                    Input (uncached)
+                    Uncached Input
                   </th>
                   <th className="px-5 py-3 text-right font-medium">
-                    Cache read
+                    Cached Read
                   </th>
                   <th className="px-5 py-3 text-right font-medium">
-                    Cache write
+                    Cache Write
                   </th>
                   <th className="px-5 py-3 text-right font-medium">
-                    Resp. hits
+                    Proxy Hits
                   </th>
                 </tr>
               </thead>
@@ -210,7 +217,13 @@ export function AnalyticsPage() {
                     </td>
                     <td className="px-5 py-3">
                       {row.promptCacheHits > 0 ? (
-                        <Badge tone="green">{pct(row.promptCacheHitRate)}</Badge>
+                        <Tooltip
+                          content={`${row.promptCacheHits.toLocaleString()} of ${row.requests.toLocaleString()} requests had prompt cache hits`}
+                        >
+                          <Badge tone="green">
+                            {pct(row.promptCacheHitRate)} hit
+                          </Badge>
+                        </Tooltip>
                       ) : (
                         <span className="text-gray-400">—</span>
                       )}
@@ -218,14 +231,20 @@ export function AnalyticsPage() {
                     <td className="px-5 py-3 text-right text-gray-600">
                       {fmtTokens(row.tokensInput)}
                     </td>
-                    <td className="px-5 py-3 text-right text-gray-600">
+                    <td className="px-5 py-3 text-right font-medium text-emerald-700">
                       {fmtTokens(row.tokensCacheRead)}
                     </td>
                     <td className="px-5 py-3 text-right text-gray-600">
                       {fmtTokens(row.tokensCacheWrite)}
                     </td>
                     <td className="px-5 py-3 text-right text-gray-600">
-                      {row.responseCacheHits.toLocaleString()}
+                      {row.responseCacheHits > 0 ? (
+                        <Badge tone="green">
+                          {row.responseCacheHits.toLocaleString()}
+                        </Badge>
+                      ) : (
+                        "0"
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -277,25 +296,65 @@ export function AnalyticsPage() {
                     </td>
                     <td className="px-5 py-3">
                       {r.cache_hit ? (
-                        <Badge tone="green" title="Served from proxy response cache — no upstream call">
-                          response hit
-                        </Badge>
+                        <Tooltip content="Served 100% from the proxy response cache without making an upstream LLM API call ($0 cost)">
+                          <Badge tone="green">
+                            <span className="font-semibold">⚡ Instant</span>
+                          </Badge>
+                        </Tooltip>
                       ) : (r.tokens_cache_read ?? 0) > 0 ? (
-                        <Badge
-                          tone="blue"
-                          title={`${fmtTokens(r.tokens_cache_read)} input tokens served from the provider prompt cache`}
+                        <Tooltip
+                          content={
+                            <div className="space-y-1">
+                              <p className="font-semibold text-sky-300">
+                                Provider Prompt Cache Hit
+                              </p>
+                              <p>
+                                {fmtTokens(r.tokens_cache_read)} tokens reused from
+                                cache ({pct((r.tokens_cache_read ?? 0) / ((r.tokens_input ?? 0) + (r.tokens_cache_read ?? 0)))} of input).
+                              </p>
+                              <p className="text-[10px] text-gray-300">
+                                Billed at a discount vs fresh input tokens.
+                              </p>
+                            </div>
+                          }
                         >
-                          prompt · {fmtTokens(r.tokens_cache_read)}
-                        </Badge>
+                          <Badge tone="blue">
+                            <span>
+                              {pct(
+                                (r.tokens_cache_read ?? 0) /
+                                  ((r.tokens_input ?? 0) +
+                                    (r.tokens_cache_read ?? 0)),
+                              )}{" "}
+                              cached
+                            </span>
+                            <span className="text-[10px] opacity-75 font-mono">
+                              ({fmtTokens(r.tokens_cache_read)})
+                            </span>
+                          </Badge>
+                        </Tooltip>
                       ) : (r.tokens_cache_write ?? 0) > 0 ? (
-                        <Badge
-                          tone="amber"
-                          title={`${fmtTokens(r.tokens_cache_write)} input tokens written to the provider prompt cache`}
+                        <Tooltip
+                          content={
+                            <div className="space-y-1">
+                              <p className="font-semibold text-amber-300">
+                                Prompt Cache Creation
+                              </p>
+                              <p>
+                                {fmtTokens(r.tokens_cache_write)} input tokens
+                                written to the provider cache for faster future requests.
+                              </p>
+                            </div>
+                          }
                         >
-                          write · {fmtTokens(r.tokens_cache_write)}
-                        </Badge>
+                          <Badge tone="amber">
+                            <span>cache write</span>
+                            <span className="text-[10px] opacity-75 font-mono">
+                              ({fmtTokens(r.tokens_cache_write)})
+                            </span>
+                          </Badge>
+                        </Tooltip>
                       ) : (
-                        <span className="text-gray-300">—</span>
+                        <span className="text-gray-300 select-none">—</span>
                       )}
                     </td>
                     <td className="px-5 py-3">{fmtMs(r.latency_ms)}</td>

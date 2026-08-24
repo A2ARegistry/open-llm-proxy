@@ -2,6 +2,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmModal,
   EmptyState,
   Input,
   Label,
@@ -86,6 +87,7 @@ export function ProvidersPage() {
     keyCount?: number;
   } | null>(null);
   const [adding, setAdding] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ProviderView | null>(null);
 
   const providers = useQuery({
     queryKey: ["providers"],
@@ -229,14 +231,7 @@ export function ProvidersPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Remove ${p.name}? Its credentials will be deleted.`,
-                        )
-                      )
-                        remove.mutate(p.provider);
-                    }}
+                    onClick={() => setDeleteTarget(p)}
                   >
                     <Trash2 size={13} className="text-red-500" />
                   </Button>
@@ -301,6 +296,27 @@ export function ProvidersPage() {
           }}
         />
       )}
+
+      <ConfirmModal
+        open={deleteTarget != null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) {
+            remove.mutate(deleteTarget.provider);
+            setDeleteTarget(null);
+          }
+        }}
+        title={`Remove ${deleteTarget?.name ?? "provider"}?`}
+        confirmLabel="Remove Provider"
+        tone="danger"
+        message={
+          <p>
+            Are you sure you want to remove{" "}
+            <strong>{deleteTarget?.name}</strong>? Its credentials will be
+            permanently deleted and requests targeting this provider will fail.
+          </p>
+        }
+      />
     </div>
   );
 }
@@ -506,6 +522,7 @@ function ProviderFormModal({
   const [traceEnabled, setTraceEnabled] = useState(
     initialSettings?.trace === true,
   );
+  const [showTraceConfirm, setShowTraceConfirm] = useState(false);
   const [saveWarning, setSaveWarning] = useState<string | null>(null);
 
   const applyPreset = (preset: {
@@ -631,18 +648,7 @@ function ProviderFormModal({
     };
   };
 
-  const submit = async () => {
-    setError(null);
-    setSaveWarning(null);
-    if (traceEnabled && initialSettings?.trace !== true) {
-      const ok = confirm(
-        "Enable diagnostic tracing?\n\n" +
-          "Full request and response payloads — including user message content — " +
-          "will be written to the server logs for every request to this provider.\n\n" +
-          "This is intended for testing/debugging only. Remember to disable it afterwards.",
-      );
-      if (!ok) return;
-    }
+  const doSave = async () => {
     setSaving(true);
     try {
       const saved = await apiSend<{ warnings?: string[] }>(
@@ -659,6 +665,16 @@ function ProviderFormModal({
       setError((err as Error).message);
       setSaving(false);
     }
+  };
+
+  const submit = async () => {
+    setError(null);
+    setSaveWarning(null);
+    if (traceEnabled && initialSettings?.trace !== true) {
+      setShowTraceConfirm(true);
+      return;
+    }
+    await doSave();
   };
 
   const runTest = async () => {
@@ -1085,6 +1101,31 @@ function ProviderFormModal({
           </p>
         )}
       </div>
+
+      <ConfirmModal
+        open={showTraceConfirm}
+        onClose={() => setShowTraceConfirm(false)}
+        onConfirm={() => {
+          setShowTraceConfirm(false);
+          doSave();
+        }}
+        title="Enable diagnostic tracing?"
+        confirmLabel="Enable & Save"
+        tone="warning"
+        message={
+          <div className="space-y-2">
+            <p>
+              Full request and response payloads —{" "}
+              <strong>including user message content</strong> — will be written
+              to the server logs for every request to this provider.
+            </p>
+            <p className="text-xs text-gray-500">
+              This is intended for testing/debugging only. Remember to disable
+              it afterwards to protect user privacy and avoid excess log volume.
+            </p>
+          </div>
+        }
+      />
     </Modal>
   );
 }

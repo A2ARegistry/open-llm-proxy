@@ -2,6 +2,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmModal,
   EmptyState,
   Input,
   Label,
@@ -19,6 +20,7 @@ export function ApiKeysPage() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [editingKey, setEditingKey] = useState<ApiKeyView | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<ApiKeyView | null>(null);
   const [created, setCreated] = useState<{
     id: string;
     key: string;
@@ -186,10 +188,7 @@ export function ApiKeysPage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => {
-                              if (confirm(`Revoke key "${k.name}"?`))
-                                revoke.mutate(k.id);
-                            }}
+                            onClick={() => setRevokeTarget(k)}
                             title="Revoke"
                           >
                             <Trash2 size={13} className="text-red-500" />
@@ -243,6 +242,26 @@ export function ApiKeysPage() {
           {error}
         </div>
       )}
+
+      <ConfirmModal
+        open={revokeTarget != null}
+        onClose={() => setRevokeTarget(null)}
+        onConfirm={() => {
+          if (revokeTarget) {
+            revoke.mutate(revokeTarget.id);
+            setRevokeTarget(null);
+          }
+        }}
+        title={`Revoke key "${revokeTarget?.name}"?`}
+        confirmLabel="Revoke Key"
+        tone="danger"
+        message={
+          <p>
+            Are you sure you want to revoke <strong>{revokeTarget?.name}</strong>?
+            Any applications or SDKs using this key will immediately receive 401 Unauthorized errors.
+          </p>
+        }
+      />
     </div>
   );
 }

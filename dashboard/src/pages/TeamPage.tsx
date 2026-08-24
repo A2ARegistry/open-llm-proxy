@@ -2,6 +2,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmModal,
   EmptyState,
   Input,
   Label,
@@ -20,6 +21,13 @@ export function TeamPage() {
   const qc = useQueryClient();
   const [inviting, setInviting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    tone?: "danger" | "warning" | "primary";
+    action: () => void;
+  } | null>(null);
 
   const membersQuery = useQuery({
     queryKey: ["team-members"],
@@ -140,8 +148,13 @@ export function TeamPage() {
                           );
                           return;
                         }
-                        if (confirm(`Change ${m.name}'s role to ${v}?`))
-                          setRole.mutate({ id: m.id, role: v as string });
+                        setConfirmAction({
+                          title: "Change member role?",
+                          message: `Are you sure you want to change ${m.name}'s role from ${m.role} to ${v}?`,
+                          confirmLabel: "Change Role",
+                          tone: "primary",
+                          action: () => setRole.mutate({ id: m.id, role: v as string }),
+                        });
                       }}
                       options={["owner", "admin", "member", "viewer"].map(
                         (r) => ({
@@ -158,12 +171,13 @@ export function TeamPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        if (
-                          confirm(
-                            `Transfer ownership to ${m.name}? You will become an admin.`,
-                          )
-                        )
-                          transfer.mutate(m.id);
+                        setConfirmAction({
+                          title: "Transfer workspace ownership?",
+                          message: `Are you sure you want to transfer ownership to ${m.name}? You will become an admin and will no longer have exclusive owner privileges.`,
+                          confirmLabel: "Transfer Ownership",
+                          tone: "warning",
+                          action: () => transfer.mutate(m.id),
+                        });
                       }}
                     >
                       <Award size={13} /> Make owner
@@ -174,8 +188,13 @@ export function TeamPage() {
                       size="sm"
                       variant="ghost"
                       onClick={() => {
-                        if (confirm(`Remove ${m.name} from this workspace?`))
-                          removeMember.mutate(m.id);
+                        setConfirmAction({
+                          title: `Remove ${m.name}?`,
+                          message: `Are you sure you want to remove ${m.name} from this workspace? They will lose access to all resources immediately.`,
+                          confirmLabel: "Remove Member",
+                          tone: "danger",
+                          action: () => removeMember.mutate(m.id),
+                        });
                       }}
                     >
                       <UserMinus size={13} className="text-red-500" />
@@ -211,8 +230,13 @@ export function TeamPage() {
                       size="sm"
                       variant="ghost"
                       onClick={() => {
-                        if (confirm(`Cancel the invitation to ${inv.email}?`))
-                          cancelInvite.mutate(inv.id);
+                        setConfirmAction({
+                          title: "Cancel invitation?",
+                          message: `Are you sure you want to cancel the pending invitation to ${inv.email}?`,
+                          confirmLabel: "Cancel Invitation",
+                          tone: "danger",
+                          action: () => cancelInvite.mutate(inv.id),
+                        });
                       }}
                     >
                       Cancel
@@ -236,6 +260,21 @@ export function TeamPage() {
           defaultEmail=""
         />
       )}
+
+      <ConfirmModal
+        open={confirmAction != null}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={() => {
+          if (confirmAction) {
+            confirmAction.action();
+            setConfirmAction(null);
+          }
+        }}
+        title={confirmAction?.title ?? "Confirm Action"}
+        confirmLabel={confirmAction?.confirmLabel ?? "Confirm"}
+        tone={confirmAction?.tone ?? "danger"}
+        message={<p>{confirmAction?.message}</p>}
+      />
     </div>
   );
 }
