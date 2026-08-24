@@ -12,12 +12,12 @@
     "dashboard"
   ],
   "scripts": {
-    "deploy": "npm run build && npm run migrate && wrangler deploy --env production",
-    "deploy:full": "npm run build:dashboard && npm run deploy",
+    "deploy": "node scripts/deploy-production.mjs",
+    "deploy:full": "node scripts/deploy-production.mjs",
     "deploy:check": "bash scripts/deploy-check.sh",
-    "migrate": "wrangler d1 migrations apply DB --env production --remote",
+    "migrate": "node scripts/deploy-production.mjs --migrate-only --skip-build",
     "dev": "npm run db:migrate:local && wrangler dev --port 8787",
-    "release": "npm run build:dashboard && npm run migrate && npm run deploy",
+    "release": "node scripts/deploy-production.mjs",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "cf-typegen": "wrangler types",
     "cf:login": "wrangler login",

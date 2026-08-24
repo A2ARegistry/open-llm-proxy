@@ -105,6 +105,11 @@
   // sensitive values (real domain URLs, production D1/KV bindings, secrets) are configured
   // directly in the Cloudflare Dashboard (Settings -> Variables and Secrets / Bindings)
   // so this public open-source repository contains only placeholders.
+  //
+  // NOTE: bindings, triggers, migrations, and assets are NON-inheritable keys:
+  // each environment must declare them itself or they are silently dropped
+  // (wrangler warns for durable_objects only). Keep this section in sync with
+  // the top-level configuration above.
   "env": {
     "production": {
       "vars": {
@@ -117,6 +122,52 @@
         "METRICS_BUFFER_SHARDS": "8",
         "APP_NAME": "Open LLM Proxy"
       },
+      // Cron trigger for the alerting engine (spend + error-rate alerts).
+      "triggers": {
+        "crons": ["*/5 * * * *"]
+      },
+      // Admin dashboard SPA served through the ASSETS binding.
+      "assets": {
+        "directory": "./dashboard/dist",
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application"
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "EMAIL_TEMPLATE_CACHE",
+            "class_name": "EmailingCacheDO"
+          },
+          {
+            "name": "METRICS_BUFFER",
+            "class_name": "MetricsBuffer"
+          },
+          {
+            "name": "RATE_LIMITER",
+            "class_name": "RateLimiter"
+          },
+          {
+            "name": "RESPONSE_CACHE",
+            "class_name": "ResponseCache"
+          },
+          {
+            "name": "SESSION_MANAGER",
+            "class_name": "SessionManager"
+          }
+        ]
+      },
+      "migrations": [
+        {
+          "tag": "v2.0",
+          "new_sqlite_classes": [
+            "EmailingCacheDO",
+            "MetricsBuffer",
+            "RateLimiter",
+            "ResponseCache",
+            "SessionManager"
+          ]
+        }
+      ],
       "d1_databases": [
         {
           "binding": "DB",
