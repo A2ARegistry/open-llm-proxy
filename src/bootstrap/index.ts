@@ -49,11 +49,22 @@ export interface BootstrapStatus {
   initialized: boolean;
   initialAdmin: InitialAdminInfo | undefined;
   defaultCredentials: { email: string; password: string } | undefined;
+  /** Repository shown on the landing page (configurable, sensible default). */
+  githubRepoUrl: string;
 }
+
+/** Default repository used when the `GITHUB_REPO_URL` var is not set. */
+export const DEFAULT_GITHUB_REPO_URL =
+  "https://github.com/A2ARegistry/open-llm-proxy";
 
 /** Current bootstrap state, shown to unauthenticated visitors on the login page. */
 export async function bootstrapStatus(env: Env): Promise<BootstrapStatus> {
   const initialAdmin = await getInitialAdmin(env);
+  const githubRepoUrl =
+    (env as { GITHUB_REPO_URL?: string }).GITHUB_REPO_URL?.trim().replace(
+      /\/+$/,
+      "",
+    ) || DEFAULT_GITHUB_REPO_URL;
   return {
     initialized: Boolean(initialAdmin),
     initialAdmin,
@@ -63,6 +74,7 @@ export async function bootstrapStatus(env: Env): Promise<BootstrapStatus> {
           password: (env as any).INITIAL_ADMIN_PASSWORD || "AwesomeProxy!!",
         }
       : undefined,
+    githubRepoUrl,
   };
 }
 

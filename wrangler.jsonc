@@ -43,6 +43,8 @@
     "RATE_LIMITER_SHARDS": "4",
     "METRICS_BUFFER_SHARDS": "4",
     "APP_NAME": "Open LLM Proxy",
+    // Repository shown on the landing page (empty = built-in default).
+    "GITHUB_REPO_URL": "",
     "DASHBOARD_URL": "http://localhost:5173"
   },
   // Cron trigger for the alerting engine (Phase 5.3): evaluate spend +
@@ -131,7 +133,8 @@
         "SESSION_CACHE_TTL_SECONDS": "3600",
         "RATE_LIMITER_SHARDS": "8",
         "METRICS_BUFFER_SHARDS": "8",
-        "APP_NAME": "Open LLM Proxy"
+        "APP_NAME": "Open LLM Proxy",
+        "GITHUB_REPO_URL": ""
       },
       // Cron trigger for the alerting engine (spend + error-rate alerts).
       "triggers": {

@@ -5,6 +5,7 @@ import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EmailPage } from "./pages/EmailPage";
+import { LandingPage } from "./pages/LandingPage";
 import { ProvidersPage } from "./pages/ProvidersPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TeamPage } from "./pages/TeamPage";
@@ -18,6 +19,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route path="/signin" element={<SignInPage />} />
       <Route path="/signup" element={<SignUpPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />

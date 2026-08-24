@@ -325,15 +325,16 @@ Values you will typically want to override:
 
 **Optional Variables** (defaults are usually fine):
 
-| Variable                    | Value (Example)          | Description                                  |
-| --------------------------- | ------------------------ | -------------------------------------------- |
-| `APP_NAME`                  | `Open LLM Proxy`         | App name in UI and emails                    |
-| `RATE_LIMITER_SHARDS`       | `8`                      | Number of rate limiter shards (default: 4)   |
-| `METRICS_BUFFER_SHARDS`     | `8`                      | Number of metrics buffer shards (default: 4) |
-| `SESSION_CACHE_TTL_SECONDS` | `3600`                   | Session cache TTL in seconds (default: 60)   |
-| `EMAIL_PROVIDER`            | `console`                | Email provider (see options below)           |
-| `EMAIL_FROM_NAME`           | `Open LLM Proxy`         | Email sender name                            |
-| `EMAIL_FROM_ADDRESS`        | `noreply@yourdomain.com` | Email sender address                         |
+| Variable                    | Value (Example)                                 | Description                                             |
+| --------------------------- | ----------------------------------------------- | ------------------------------------------------------- |
+| `APP_NAME`                  | `Open LLM Proxy`                                | App name in UI and emails                               |
+| `GITHUB_REPO_URL`           | `https://github.com/A2ARegistry/open-llm-proxy` | Repository linked from the landing page (default shown) |
+| `RATE_LIMITER_SHARDS`       | `8`                                             | Number of rate limiter shards (default: 4)              |
+| `METRICS_BUFFER_SHARDS`     | `8`                                             | Number of metrics buffer shards (default: 4)            |
+| `SESSION_CACHE_TTL_SECONDS` | `3600`                                          | Session cache TTL in seconds (default: 60)              |
+| `EMAIL_PROVIDER`            | `console`                                       | Email provider (see options below)                      |
+| `EMAIL_FROM_NAME`           | `Open LLM Proxy`                                | Email sender name                                       |
+| `EMAIL_FROM_ADDRESS`        | `noreply@yourdomain.com`                        | Email sender address                                    |
 
 **Email Provider Options**:
 
