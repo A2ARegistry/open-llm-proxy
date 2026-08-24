@@ -2,6 +2,7 @@ import { auditLog } from "../audit/audit-logger";
 import { getAuthSecret } from "../bootstrap/secrets";
 import { sendTemplateEmail } from "../email/service";
 import { handleSignup } from "../tenants/onboarding";
+import { normalizeConfiguredUrl } from "../utils/base-url";
 import { createAuth } from "@contentgrowth/content-auth/backend";
 import { organization } from "better-auth/plugins";
 
@@ -78,27 +79,62 @@ export function buildAuthEmailCallbacks(ctx: AuthEmailContext) {
 
 export type AppAuth = ReturnType<typeof createAuth>;
 
-const authCache = new WeakMap<Env, Promise<AppAuth>>();
+const authCache = new WeakMap<Env, Map<string, Promise<AppAuth>>>();
+/** Bound per-isolate cache entries so untrusted origins can't grow it forever. */
+const AUTH_CACHE_MAX_KEYS = 16;
 
 /**
- * Create (cached per isolate) a Better Auth instance wired to our D1 + tenant
- * onboarding + emailing. The signing secret is auto-generated and persisted in
+ * Create (cached) a Better Auth instance wired to our D1 + tenant onboarding +
+ * emailing. The signing secret is auto-generated and persisted in
  * `system_settings` on first boot (override with a `BETTER_AUTH_SECRET` env).
+ *
+ * `requestOrigin` is the origin serving the current request. It is always
+ * included in the trusted origins, and when `BASE_URL` is unset (or still a
+ * public-repo placeholder) it also becomes the effective base URL — so
+ * sign-in, email links, and cookies work out of the box on whatever domain
+ * Cloudflare assigns, without any configuration.
  */
-export function getAuthFor(env: Env): Promise<AppAuth> {
-  let cached = authCache.get(env);
+export function getAuthFor(env: Env, requestOrigin?: string): Promise<AppAuth> {
+  const baseUrl =
+    normalizeConfiguredUrl(env.BASE_URL) ??
+    requestOrigin ??
+    "http://localhost:8787";
+  const dashboardUrl = normalizeConfiguredUrl(env.DASHBOARD_URL) ?? baseUrl;
+  // Same-origin requests are safe to accept: browsers control the Origin
+  // header, so a cross-site attacker's Origin can never equal our host.
+  const trusted = [
+    ...new Set(
+      [baseUrl, dashboardUrl, requestOrigin].filter((o): o is string =>
+        Boolean(o),
+      ),
+    ),
+  ];
+
+  let byKey = authCache.get(env);
+  if (!byKey) {
+    byKey = new Map();
+    authCache.set(env, byKey);
+  }
+  const cacheKey = `${baseUrl}|${dashboardUrl}|${requestOrigin ?? ""}`;
+  let cached = byKey.get(cacheKey);
   if (!cached) {
-    cached = buildAuth(env);
-    authCache.set(env, cached);
+    if (byKey.size >= AUTH_CACHE_MAX_KEYS && !byKey.has(cacheKey)) {
+      const oldest = byKey.keys().next().value;
+      if (oldest !== undefined) byKey.delete(oldest);
+    }
+    cached = buildAuth(env, { baseUrl, trusted });
+    byKey.set(cacheKey, cached);
   }
   return cached;
 }
 
-async function buildAuth(env: Env): Promise<AppAuth> {
+async function buildAuth(
+  env: Env,
+  urls: { baseUrl: string; trusted: string[] },
+): Promise<AppAuth> {
   const brandName = env.APP_NAME || "Open LLM Proxy";
   const secret = await getAuthSecret(env);
-  const baseUrl = env.BASE_URL || "http://localhost:8787";
-  const dashboardUrl = env.DASHBOARD_URL || baseUrl;
+  const baseUrl = urls.baseUrl;
   const { sendVerificationEmail, sendResetPassword, sendInvitationEmail } =
     buildAuthEmailCallbacks({ env, brandName, baseUrl });
 
@@ -141,6 +177,6 @@ async function buildAuth(env: Env): Promise<AppAuth> {
         },
       }),
     ],
-    trustedOrigins: [baseUrl, dashboardUrl],
+    trustedOrigins: urls.trusted,
   });
 }

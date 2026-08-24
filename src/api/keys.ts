@@ -9,6 +9,7 @@ import { reconcileKeyDisable } from "../metrics/spend-guard";
 import { newId } from "../tenants/encryption";
 import { getTenantPrefixInfo } from "../tenants/prefixes";
 import { ApiKeyScopes } from "../types";
+import { effectiveBaseUrl } from "../utils/base-url";
 import { randomBytes, sha256Hex, nowSeconds } from "../utils/crypto";
 import { Hono } from "hono";
 
@@ -134,7 +135,7 @@ keysRouter.get("/", async (c) => {
     ? (prefixInfo.customPrefix ??
       (prefixInfo.isRoot ? "" : (prefixInfo.systemPrefix ?? "")))
     : "";
-  const baseUrl = c.env.BASE_URL || "http://localhost:8787";
+  const baseUrl = effectiveBaseUrl(c.env.BASE_URL, c.req.raw.url);
   const endpoint = basePath ? `${baseUrl}/${basePath}` : baseUrl;
 
   return c.json({ keys: results.map((r) => publicKeyView(r, endpoint)) });
@@ -219,7 +220,7 @@ keysRouter.post("/", async (c) => {
     ? (prefixInfo.customPrefix ??
       (prefixInfo.isRoot ? "" : (prefixInfo.systemPrefix ?? "")))
     : "";
-  const baseUrl = c.env.BASE_URL || "http://localhost:8787";
+  const baseUrl = effectiveBaseUrl(c.env.BASE_URL, c.req.raw.url);
   const endpoint = basePath ? `${baseUrl}/${basePath}` : baseUrl;
 
   return c.json(
@@ -372,7 +373,7 @@ keysRouter.post("/:id/rotate", async (c) => {
     ? (prefixInfo.customPrefix ??
       (prefixInfo.isRoot ? "" : (prefixInfo.systemPrefix ?? "")))
     : "";
-  const baseUrl = c.env.BASE_URL || "http://localhost:8787";
+  const baseUrl = effectiveBaseUrl(c.env.BASE_URL, c.req.raw.url);
   const endpoint = basePath ? `${baseUrl}/${basePath}` : baseUrl;
 
   return c.json({

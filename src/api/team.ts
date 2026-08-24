@@ -49,7 +49,7 @@ function publicInvitationView(row: InvitationRow) {
 function authFor(c: Context<AppBindings>): Promise<AppAuth> {
   const auth = c.get("auth");
   if (auth) return Promise.resolve(auth);
-  return getAuthFor(c.env);
+  return getAuthFor(c.env, new URL(c.req.raw.url).origin);
 }
 
 /** Run a Better Auth organization plugin call, mapping failures to HTTP errors. */

@@ -57,7 +57,7 @@ export function createApp(): Hono<AppBindings> {
     await next();
   });
   app.all("/api/auth/*", async (c) => {
-    const auth = await getAuthFor(c.env);
+    const auth = await getAuthFor(c.env, new URL(c.req.raw.url).origin);
     return auth.handler(c.req.raw);
   });
 

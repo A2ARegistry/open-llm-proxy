@@ -14,6 +14,10 @@
  *   --d1 <id>        D1 database_id for env.production   (or env D1_DATABASE_ID)
  *   --d1-name <name> Override database_name              (default: from config)
  *   --kv <id>        KV namespace id for SESSION_CACHE   (or env KV_NAMESPACE_ID)
+ *   --base-url <url> Real public URL of this deployment   (or env PUBLIC_BASE_URL).
+ *                    Sets BASE_URL/DASHBOARD_URL — required for dashboard
+ *                    sign-in (the auth server rejects mismatching origins).
+ *   --dashboard-url <url> Override DASHBOARD_URL separately (defaults to --base-url)
  *   --migrate-only   Apply D1 migrations and exit
  *   --skip-migrate   Deploy without applying migrations
  *   --skip-build     Skip `npm run build` (tsc + dashboard)
@@ -95,6 +99,8 @@ const { values: opts, positionals } = (() => {
         d1: { type: "string" },
         "d1-name": { type: "string" },
         kv: { type: "string" },
+        "base-url": { type: "string" },
+        "dashboard-url": { type: "string" },
         "migrate-only": { type: "boolean", default: false },
         "skip-build": { type: "boolean", default: false },
         "skip-migrate": { type: "boolean", default: false },
@@ -143,12 +149,39 @@ d1Binding.database_id = nextD1;
 if (opts["d1-name"]) d1Binding.database_name = opts["d1-name"];
 kvBinding.id = nextKv;
 
+// Public URL: the auth server rejects sign-in requests whose Origin does not
+// match BASE_URL / DASHBOARD_URL, so a real value is required for deploys.
+const PLACEHOLDER_URL = "https://your-domain.com";
+const nextBaseUrl = opts["base-url"] ?? process.env.PUBLIC_BASE_URL;
+const nextDashboardUrl = opts["dashboard-url"] ?? nextBaseUrl;
+if (
+  !opts["migrate-only"] &&
+  (!nextBaseUrl || nextBaseUrl === PLACEHOLDER_URL)
+) {
+  die(
+    'Missing real public URL. Pass --base-url <https://...> (or set PUBLIC_BASE_URL) — e.g. your workers.dev or custom domain. Sign-in will fail with "Invalid origin" otherwise.',
+  );
+}
+if (nextBaseUrl && !/^https?:\/\/.+$/.test(nextBaseUrl)) {
+  die(`--base-url must be an http(s) URL: "${nextBaseUrl}"`);
+}
+if (nextBaseUrl) {
+  prod.vars ??= {};
+  prod.vars.BASE_URL = nextBaseUrl;
+  prod.vars.DASHBOARD_URL = nextDashboardUrl;
+}
+
 if (opts["migrate-only"]) {
   console.log("D1 : %s (%s)", d1Binding.database_name, nextD1);
   console.log("KV : skipped (--migrate-only)");
 } else {
   console.log(`\nD1 : ${d1Binding.database_name} (${nextD1})`);
   console.log(`KV : ${kvBinding.binding} (${nextKv})`);
+  if (nextBaseUrl) {
+    console.log(`URL: ${nextBaseUrl}`);
+    if (nextDashboardUrl !== nextBaseUrl)
+      console.log(`    dashboard: ${nextDashboardUrl}`);
+  }
 }
 
 const generated = { ...cfg, $schema: undefined };

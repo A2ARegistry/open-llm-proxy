@@ -26,6 +26,13 @@
   "placement": {
     "mode": "off"
   },
+  // Serve the Worker on https://<name>.<subdomain>.workers.dev.
+  // Flip "env.production"."workers_dev" to false once a custom domain is
+  // attached so the raw workers.dev URL stops serving production traffic.
+  "workers_dev": true,
+  // Per-version preview URLs (<version>-<name>.workers.dev) are unnecessary
+  // public exposure for a production API proxy — disable them.
+  "preview_urls": false,
   "vars": {
     "BASE_URL": "http://localhost:8787",
     "ENVIRONMENT": "development",
@@ -112,6 +119,10 @@
   // the top-level configuration above.
   "env": {
     "production": {
+      // Set to false once a custom domain is attached (see DEPLOYMENT.md
+      // Step 6) so production traffic only reaches your own domain.
+      "workers_dev": true,
+      "preview_urls": false,
       "vars": {
         "BASE_URL": "https://your-domain.com",
         "ENVIRONMENT": "production",

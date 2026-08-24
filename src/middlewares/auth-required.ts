@@ -73,7 +73,7 @@ export const sessionAuthMiddleware = createMiddleware<AppBindings>(
       return;
     }
 
-    const auth = await getAuthFor(env);
+    const auth = await getAuthFor(env, new URL(c.req.raw.url).origin);
     c.set("auth", auth);
     const result = await auth.api.getSession({
       headers: c.req.raw.headers,

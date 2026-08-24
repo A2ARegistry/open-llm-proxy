@@ -80,7 +80,10 @@ npx wrangler kv namespace list
 ### 2.2 Deploy
 
 ```bash
-npm run deploy -- --d1 <D1_DATABASE_ID> --kv <KV_NAMESPACE_ID>
+npm run deploy -- \
+  --d1 <D1_DATABASE_ID> \
+  --kv <KV_NAMESPACE_ID> \
+  --base-url https://<your-worker>.<your-subdomain>.workers.dev
 ```
 
 > **Note the `--`** — npm requires it before flags so they reach the script instead of being swallowed by npm itself.
@@ -90,27 +93,32 @@ Example:
 ```bash
 npm run deploy -- \
   --d1 4f2a1b3c-9d8e-4f01-a2b3-c4d5e6f70819 \
-  --kv 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d
+  --kv 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d \
+  --base-url https://open-llm-proxy.mysubdomain.workers.dev
 ```
+
+`--base-url` is **recommended** but no longer strictly required: when it is unset (or still the repo placeholder), the backend automatically trusts whichever domain actually serves your Worker (e.g. the Cloudflare-assigned workers.dev subdomain), so sign-in works out of the box. Setting it explicitly is still preferred once you know your final URL — email verification/reset links and the API endpoint shown on key pages use it, and they stay correct even before you visit the deployed site.
 
 The command will:
 
 1. Build TypeScript + the admin dashboard (`npm run build`)
 2. Apply all pending D1 migrations to your remote database
-3. Generate `wrangler.production.local.json` (git-ignored, deleted afterwards) with your real IDs under `env.production`
+3. Generate `wrangler.production.local.json` (git-ignored, deleted afterwards) with your real IDs and `BASE_URL`/`DASHBOARD_URL` under `env.production`
 4. Run `wrangler deploy --env production --config wrangler.production.local.json`
 
 When it finishes you get a `*.workers.dev` URL (add a custom domain later, see Step 6).
 
 ### 2.3 Useful Flags
 
-| Flag               | Purpose                                                              |
-| ------------------ | -------------------------------------------------------------------- |
-| `--dry-run`        | Show what would run without changing anything                        |
-| `--migrate-only`   | Only apply D1 migrations and exit                                    |
-| `--skip-build`     | Skip `npm run build` (when already built)                            |
-| `--skip-migrate`   | Deploy without touching migrations                                   |
-| `--d1-name <name>` | Override `database_name` if yours differs from `open-llm-proxy-prod` |
+| Flag                    | Purpose                                                                  |
+| ----------------------- | ------------------------------------------------------------------------ |
+| `--dry-run`             | Show what would run without changing anything                            |
+| `--migrate-only`        | Only apply D1 migrations and exit                                        |
+| `--skip-build`          | Skip `npm run build` (when already built)                                |
+| `--skip-migrate`        | Deploy without touching migrations                                       |
+| `--d1-name <name>`      | Override `database_name` if yours differs from `open-llm-proxy-prod`     |
+| `--base-url <url>`      | Real public URL — sets `BASE_URL`/`DASHBOARD_URL` (required for sign-in) |
+| `--dashboard-url <url>` | Separate dashboard URL (defaults to `--base-url`)                        |
 
 So `npm run migrate` alone becomes:
 
@@ -122,7 +130,7 @@ Anything after the known flags is forwarded to `wrangler deploy`, e.g. `npm run 
 
 ### 2.4 Alternative: Environment Variables (CI-friendly)
 
-Instead of CLI flags, the wrapper also reads `D1_DATABASE_ID` and `KV_NAMESPACE_ID` from the environment:
+Instead of CLI flags, the wrapper also reads `D1_DATABASE_ID`, `KV_NAMESPACE_ID`, and `PUBLIC_BASE_URL` from the environment:
 
 ```bash
 D1_DATABASE_ID=4f2a… KV_NAMESPACE_ID=1a2b… npm run deploy
@@ -168,10 +176,11 @@ npm ci && npm run deploy
 
 Because Git builds cannot pass CLI flags, provide your private resource IDs as **build environment variables** (same page, **Variables** section):
 
-| Variable          | Value                     |
-| ----------------- | ------------------------- |
-| `D1_DATABASE_ID`  | your real D1 database id  |
-| `KV_NAMESPACE_ID` | your real KV namespace id |
+| Variable          | Value                                                 |
+| ----------------- | ----------------------------------------------------- |
+| `D1_DATABASE_ID`  | your real D1 database id                              |
+| `KV_NAMESPACE_ID` | your real KV namespace id                             |
+| `PUBLIC_BASE_URL` | `https://open-llm-proxy.mysubdomain.workers.dev` etc. |
 
 The deploy wrapper reads these automatically. They are stored in the Cloudflare build settings — never in the repository.
 
@@ -179,7 +188,7 @@ The deploy wrapper reads these automatically. They are stored in the Cloudflare 
 
 1. Build TypeScript and dashboard (`npm run build`)
 2. Apply database migrations to your D1 database
-3. Generate a temporary git-ignored config with your IDs and deploy (`wrangler deploy --env production`)
+3. Generate a temporary git-ignored config with your IDs and URLs, then deploy (`wrangler deploy --env production`)
 
 **Note**: Node.js 22 is automatically used based on the `.node-version` file in the repository.
 
@@ -373,6 +382,8 @@ Cloudflare will automatically:
 - Provision SSL/TLS certificates
 - Enable HTTPS
 
+**Disable the workers.dev URL after switching**: once your custom domain works, set `"workers_dev": false` under `env.production` in `wrangler.jsonc` (or toggle **Settings → Domains & Routes → workers.dev**) and redeploy, so the raw `open-llm-proxy.<subdomain>.workers.dev` URL no longer serves production traffic.
+
 **Note**: Your domain must use Cloudflare nameservers for automatic DNS setup.
 
 ---
@@ -482,6 +493,16 @@ tsconfig.json:15:27 - error TS5101: Option 'baseUrl' is deprecated
 
 1. Ensure the `.node-version` file exists in your repository root
 2. Retry the deployment from the **Deployments** tab
+
+### Issue: Sign-in fails with 403 "Invalid origin"
+
+**Cause**: The auth server accepts requests whose `Origin` matches `BASE_URL`/`DASHBOARD_URL` **or** the domain actually serving the request. Deployments of older code had placeholder URLs (`https://your-domain.com`) and no serving-origin fallback.
+
+**Solution**:
+
+- Redeploy current code — the backend now also trusts the serving domain automatically, so sign-in works on your workers.dev URL even without configuration
+- Recommended: pass `--base-url <the URL you use in the browser>` (or set `PUBLIC_BASE_URL` for Git builds) so email verification/reset links are correct
+- If you changed the value in the dashboard instead, deploy with `--keep-vars` so config values do not overwrite it
 
 ### Issue: "No D1 database binding found for 'DB'"
 
