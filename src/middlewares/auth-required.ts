@@ -1,23 +1,10 @@
 import { getAuthFor } from "../auth/setup";
 import { AppBindings, SessionAuth } from "../types";
 import { nowSeconds, safeJsonParse, sha256Hex } from "../utils/crypto";
+import { getSessionToken } from "@contentgrowth/content-auth/backend";
 import { createMiddleware } from "hono/factory";
 
-const SESSION_COOKIE = "better-auth.session_token";
 const CACHE_TTL = 60;
-
-function getSessionToken(headers: Headers): string | null {
-  const cookie = headers.get("cookie");
-  if (!cookie) return null;
-  for (const part of cookie.split(";")) {
-    const idx = part.indexOf("=");
-    if (idx === -1) continue;
-    const key = part.slice(0, idx).trim();
-    const value = part.slice(idx + 1).trim();
-    if (key === SESSION_COOKIE && value) return value;
-  }
-  return null;
-}
 
 async function loadFromCache(
   env: Env,
@@ -61,7 +48,7 @@ export async function invalidateSessionCache(
 export const sessionAuthMiddleware = createMiddleware<AppBindings>(
   async (c, next) => {
     const env = c.env;
-    const token = getSessionToken(c.req.raw.headers);
+    const token = getSessionToken(c.req.raw);
     if (!token) {
       return c.json({ error: "Not authenticated" }, 401);
     }
