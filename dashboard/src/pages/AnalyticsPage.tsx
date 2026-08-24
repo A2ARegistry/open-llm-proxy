@@ -8,7 +8,7 @@ import {
 } from "../components/ui";
 import { apiGet } from "../lib/api";
 import { CacheUsageRow, LatencyStat, RequestRow } from "../lib/api";
-import { fmtDay, fmtMs, fmtTokens, fmtUsd, pct } from "../lib/format";
+import { fmtDateTime, fmtMs, fmtTokens, fmtUsd, pct } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 
 const now = Math.floor(Date.now() / 1000);
@@ -275,97 +275,107 @@ export function AnalyticsPage() {
                 </tr>
               </thead>
               <tbody>
-                {requests.data!.requests.map((r) => (
-                  <tr
-                    key={r.id}
-                    className="border-b border-gray-50 last:border-0"
-                  >
-                    <td className="px-5 py-3 text-gray-500">
-                      {fmtDay(r.timestamp)}
-                    </td>
-                    <td className="px-5 py-3 font-medium">{r.provider}</td>
-                    <td className="px-5 py-3 text-gray-600">
-                      {r.model || "—"}
-                    </td>
-                    <td className="px-5 py-3">
-                      {r.status_code < 400 ? (
-                        <Badge tone="green">{r.status_code}</Badge>
-                      ) : (
-                        <Badge tone="red">{r.status_code}</Badge>
-                      )}
-                    </td>
-                    <td className="px-5 py-3">
-                      {r.cache_hit ? (
-                        <Tooltip content="Served 100% from the proxy response cache without making an upstream LLM API call ($0 cost)">
-                          <Badge tone="green">
-                            <span className="font-semibold">⚡ Instant</span>
-                          </Badge>
-                        </Tooltip>
-                      ) : (r.tokens_cache_read ?? 0) > 0 ? (
-                        <Tooltip
-                          content={
-                            <div className="space-y-1">
-                              <p className="font-semibold text-sky-300">
-                                Provider Prompt Cache Hit
-                              </p>
-                              <p>
-                                {fmtTokens(r.tokens_cache_read)} tokens reused from
-                                cache ({pct((r.tokens_cache_read ?? 0) / ((r.tokens_input ?? 0) + (r.tokens_cache_read ?? 0)))} of input).
-                              </p>
-                              <p className="text-[10px] text-gray-300">
-                                Billed at a discount vs fresh input tokens.
-                              </p>
-                            </div>
-                          }
-                        >
-                          <Badge tone="blue">
-                            <span>
-                              {pct(
-                                (r.tokens_cache_read ?? 0) /
-                                  ((r.tokens_input ?? 0) +
-                                    (r.tokens_cache_read ?? 0)),
-                              )}{" "}
-                              cached
-                            </span>
-                            <span className="text-[10px] opacity-75 font-mono">
-                              ({fmtTokens(r.tokens_cache_read)})
-                            </span>
-                          </Badge>
-                        </Tooltip>
-                      ) : (r.tokens_cache_write ?? 0) > 0 ? (
-                        <Tooltip
-                          content={
-                            <div className="space-y-1">
-                              <p className="font-semibold text-amber-300">
-                                Prompt Cache Creation
-                              </p>
-                              <p>
-                                {fmtTokens(r.tokens_cache_write)} input tokens
-                                written to the provider cache for faster future requests.
-                              </p>
-                            </div>
-                          }
-                        >
-                          <Badge tone="amber">
-                            <span>cache write</span>
-                            <span className="text-[10px] opacity-75 font-mono">
-                              ({fmtTokens(r.tokens_cache_write)})
-                            </span>
-                          </Badge>
-                        </Tooltip>
-                      ) : (
-                        <span className="text-gray-300 select-none">—</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3">{fmtMs(r.latency_ms)}</td>
-                    <td className="px-5 py-3 text-right text-gray-600">
-                      {r.tokens_input ?? 0} / {r.tokens_output ?? 0}
-                    </td>
-                    <td className="px-5 py-3 text-right text-gray-700">
-                      {fmtUsd(r.cost_usd)}
-                    </td>
-                  </tr>
-                ))}
+                {requests.data!.requests.map((r) => {
+                  const dt = fmtDateTime(r.timestamp);
+                  return (
+                    <tr
+                      key={r.id}
+                      className="border-b border-gray-50 last:border-0"
+                    >
+                      <td className="px-5 py-3 whitespace-nowrap">
+                        <div className="flex flex-col">
+                          <span className="font-medium text-gray-800">
+                            {dt.time}
+                          </span>
+                          <span className="text-[11px] text-gray-400 font-normal">
+                            {dt.date}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 font-medium">{r.provider}</td>
+                      <td className="px-5 py-3 text-gray-600">
+                        {r.model || "—"}
+                      </td>
+                      <td className="px-5 py-3">
+                        {r.status_code < 400 ? (
+                          <Badge tone="green">{r.status_code}</Badge>
+                        ) : (
+                          <Badge tone="red">{r.status_code}</Badge>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        {r.cache_hit ? (
+                          <Tooltip content="Served 100% from the proxy response cache without making an upstream LLM API call ($0 cost)">
+                            <Badge tone="green">
+                              <span className="font-semibold">⚡ Instant</span>
+                            </Badge>
+                          </Tooltip>
+                        ) : (r.tokens_cache_read ?? 0) > 0 ? (
+                          <Tooltip
+                            content={
+                              <div className="space-y-1">
+                                <p className="font-semibold text-sky-300">
+                                  Provider Prompt Cache Hit
+                                </p>
+                                <p>
+                                  {fmtTokens(r.tokens_cache_read)} tokens reused from
+                                  cache ({pct((r.tokens_cache_read ?? 0) / ((r.tokens_input ?? 0) + (r.tokens_cache_read ?? 0)))} of input).
+                                </p>
+                                <p className="text-[10px] text-gray-300">
+                                  Billed at a discount vs fresh input tokens.
+                                </p>
+                              </div>
+                            }
+                          >
+                            <Badge tone="blue">
+                              <span>
+                                {pct(
+                                  (r.tokens_cache_read ?? 0) /
+                                    ((r.tokens_input ?? 0) +
+                                      (r.tokens_cache_read ?? 0)),
+                                )}{" "}
+                                cached
+                              </span>
+                              <span className="text-[10px] opacity-75 font-mono">
+                                ({fmtTokens(r.tokens_cache_read)})
+                              </span>
+                            </Badge>
+                          </Tooltip>
+                        ) : (r.tokens_cache_write ?? 0) > 0 ? (
+                          <Tooltip
+                            content={
+                              <div className="space-y-1">
+                                <p className="font-semibold text-amber-300">
+                                  Prompt Cache Creation
+                                </p>
+                                <p>
+                                  {fmtTokens(r.tokens_cache_write)} input tokens
+                                  written to the provider cache for faster future requests.
+                                </p>
+                              </div>
+                            }
+                          >
+                            <Badge tone="amber">
+                              <span>cache write</span>
+                              <span className="text-[10px] opacity-75 font-mono">
+                                ({fmtTokens(r.tokens_cache_write)})
+                              </span>
+                            </Badge>
+                          </Tooltip>
+                        ) : (
+                          <span className="text-gray-300 select-none">—</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">{fmtMs(r.latency_ms)}</td>
+                      <td className="px-5 py-3 text-right text-gray-600">
+                        {r.tokens_input ?? 0} / {r.tokens_output ?? 0}
+                      </td>
+                      <td className="px-5 py-3 text-right text-gray-700">
+                        {fmtUsd(r.cost_usd)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

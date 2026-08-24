@@ -21,7 +21,34 @@ export function fmtDate(ts: number | null | undefined): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
   });
+}
+
+/** Formats a timestamp into date + time in the user's local timezone. */
+export function fmtDateTime(value: number | string | null | undefined): {
+  date: string;
+  time: string;
+  full: string;
+} {
+  if (value === null || value === undefined || value === "") {
+    return { date: "—", time: "", full: "—" };
+  }
+  const d =
+    typeof value === "number" ? new Date(value * 1000) : new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return { date: "—", time: "", full: "—" };
+  }
+  const date = d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+  const time = d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  return { date, time, full: `${date} ${time}` };
 }
 
 export function fmtDay(value: number | string | null | undefined): string {
