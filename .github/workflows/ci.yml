@@ -25,11 +25,11 @@ jobs:
         run: npm --prefix dashboard ci
       - name: Type check (Backend)
         run: npm run tsc
+      - name: Build Dashboard (Frontend)
+        run: npm run build:dashboard
       - name: Unit & Integration Tests
         run: npm run test
       - name: Lint
         run: npm run lint
       - name: Prettier
         run: npm run prettier-ci
-      - name: Build Dashboard (Frontend)
-        run: npm run build:dashboard
