@@ -179,7 +179,7 @@ export function resolveTestTarget(input: {
   if (key) headers.authorization = `Bearer ${key}`;
   // Normalize URL construction to avoid double slashes and avoid duplicate /v1
   // if baseUrl already ends in /v1.
-  let base = baseUrl.replace(/\/+$/, "");
+  const base = baseUrl.replace(/\/+$/, "");
   let path = modelsPath.startsWith("/") ? modelsPath : `/${modelsPath}`;
   if (base.endsWith("/v1") && path.startsWith("/v1/")) {
     path = path.slice(3);
@@ -270,7 +270,7 @@ export function resolveChatProbe(input: {
   if (key) headers.authorization = `Bearer ${key}`;
   // Normalize URL construction to avoid double slashes and avoid duplicate /v1
   // if baseUrl already ends in /v1.
-  let base = baseUrl.replace(/\/+$/, "");
+  const base = baseUrl.replace(/\/+$/, "");
   let path = chatCompletionPath.startsWith("/")
     ? chatCompletionPath
     : `/${chatCompletionPath}`;

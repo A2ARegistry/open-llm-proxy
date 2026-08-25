@@ -64,7 +64,8 @@ export function AnalyticsPage() {
 
   if (summary.isLoading || latency.isLoading || requests.isLoading) {
     return <Spinner label="Loading analytics…" />;
-  }  if (summary.error || latency.error || requests.error) {
+  }
+  if (summary.error || latency.error || requests.error) {
     return (
       <EmptyState
         title="Could not load analytics"
@@ -219,9 +220,7 @@ export function AnalyticsPage() {
                   >
                     <td className="px-5 py-3 font-medium">{row.provider}</td>
                     <td className="px-5 py-3 text-gray-600">{row.model}</td>
-                    <td className="px-5 py-3">
-                      {fmtCount(row.requests)}
-                    </td>
+                    <td className="px-5 py-3">{fmtCount(row.requests)}</td>
                     <td className="px-5 py-3">
                       {row.promptCacheHits > 0 ? (
                         <Tooltip
@@ -325,8 +324,14 @@ export function AnalyticsPage() {
                                   Provider Prompt Cache Hit
                                 </p>
                                 <p>
-                                  {fmtTokens(r.tokens_cache_read)} tokens reused from
-                                  cache ({pct((r.tokens_cache_read ?? 0) / ((r.tokens_input ?? 0) + (r.tokens_cache_read ?? 0)))} of input).
+                                  {fmtTokens(r.tokens_cache_read)} tokens reused
+                                  from cache (
+                                  {pct(
+                                    (r.tokens_cache_read ?? 0) /
+                                      ((r.tokens_input ?? 0) +
+                                        (r.tokens_cache_read ?? 0)),
+                                  )}{" "}
+                                  of input).
                                 </p>
                                 <p className="text-[10px] text-gray-300">
                                   Billed at a discount vs fresh input tokens.
@@ -357,7 +362,8 @@ export function AnalyticsPage() {
                                 </p>
                                 <p>
                                   {fmtTokens(r.tokens_cache_write)} input tokens
-                                  written to the provider cache for faster future requests.
+                                  written to the provider cache for faster
+                                  future requests.
                                 </p>
                               </div>
                             }

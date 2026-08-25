@@ -1,10 +1,4 @@
-import {
-  Badge,
-  Card,
-  EmptyState,
-  Spinner,
-  StatCard,
-} from "../components/ui";
+import { Badge, Card, EmptyState, Spinner, StatCard } from "../components/ui";
 import { apiGet } from "../lib/api";
 import { fmtCount, fmtDay, fmtUsd, fmtTokens } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";

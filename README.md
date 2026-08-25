@@ -20,15 +20,16 @@ A serverless, multi-tenant LLM gateway built on [Cloudflare Workers](https://www
 
 ## Supported Providers
 
-| Provider | Modes Supported | Streaming | Tool Calls | Prompt Caching |
-|---|---|---|---|---|
-| **Google Vertex AI** | Express Mode (API Key) & Service Account (OAuth2) | ✅ | ✅ (with thought signatures) | ✅ |
-| **Google AI Studio** | Native Gemini API Key | ✅ | ✅ | ✅ |
-| **OpenAI** | Standard API Key | ✅ | ✅ | ✅ |
-| **Anthropic** | Standard API Key | ✅ | ✅ | ✅ |
-| **Custom OpenAI-Compatible** | Any baseUrl (Ollama, vLLM, OpenRouter, DeepSeek, etc.) | ✅ | ✅ | Provider-dependent |
+| Provider                     | Modes Supported                                        | Streaming | Tool Calls                   | Prompt Caching     |
+| ---------------------------- | ------------------------------------------------------ | --------- | ---------------------------- | ------------------ |
+| **Google Vertex AI**         | Express Mode (API Key) & Service Account (OAuth2)      | ✅        | ✅ (with thought signatures) | ✅                 |
+| **Google AI Studio**         | Native Gemini API Key                                  | ✅        | ✅                           | ✅                 |
+| **OpenAI**                   | Standard API Key                                       | ✅        | ✅                           | ✅                 |
+| **Anthropic**                | Standard API Key                                       | ✅        | ✅                           | ✅                 |
+| **Custom OpenAI-Compatible** | Any baseUrl (Ollama, vLLM, OpenRouter, DeepSeek, etc.) | ✅        | ✅                           | Provider-dependent |
 
 > **Google Vertex AI Auth Modes:**
+>
 > - **API Key (Vertex Express Mode):** Uses Google Cloud API Key with native `generateContent` protocol. Supports thought signature filtering and tool call execution.
 > - **Service Account:** Uses GCP Project ID, location, and service account JSON to mint OAuth2 tokens against the Vertex OpenAI-compatible endpoint.
 
@@ -39,7 +40,7 @@ A serverless, multi-tenant LLM gateway built on [Cloudflare Workers](https://www
 ```mermaid
 flowchart TD
     User["Client / SDK (OpenAI SDK, LangChain, Cursor, etc.)"] -->|Custom Domain / Tenant Prefix| Worker["Cloudflare Worker (Hono Router)"]
-    
+
     subgraph Edge ["Cloudflare Global Network"]
         Worker --> Assets["Static Assets (React Dashboard SPA)"]
         Worker --> DO_RL["Durable Objects (Rate Limiter)"]
@@ -48,7 +49,7 @@ flowchart TD
         Worker --> D1[("Cloudflare D1 SQL (Encrypted Credentials, Keys, Metrics)")]
         Worker --> KV[("Cloudflare KV (Session Cache)")]
     end
-    
+
     Worker -->|"pi-ai / Native Adapter"| Vertex["Google Vertex AI / Gemini"]
     Worker -->|"Native SSE / REST"| OpenAI["OpenAI / Anthropic"]
     Worker -->|"OpenAI-Compatible"| Custom["Custom Endpoints (Ollama, vLLM, etc.)"]
@@ -59,10 +60,12 @@ flowchart TD
 ## Quick Start (Local Development)
 
 ### Prerequisites
+
 - **Node.js:** `22.x` or later
 - **npm:** `10.x` or later
 
 ### Installation & Local Dev
+
 ```bash
 # 1. Clone repository
 git clone https://github.com/your-org/open-llm-proxy.git
@@ -80,10 +83,12 @@ npm run dev
 ```
 
 Visit `http://localhost:8787` to open the local dashboard. Sign in with the seeded credentials:
+
 ```
 admin@example.com / AwesomeProxy!!
 ```
-*(You will be prompted to set a new admin password upon first login).*
+
+_(You will be prompted to set a new admin password upon first login)._
 
 ---
 
@@ -94,6 +99,7 @@ This repository is structured for **zero-leak public deployment**. No private do
 Refer to **[DEPLOYMENT.md](DEPLOYMENT.md)** for the complete guide on deploying via the Cloudflare Dashboard with automated GitHub CI/CD.
 
 ### Summary of Deployment Setup
+
 1. **Cloudflare Dashboard → Workers & Pages → Connect to Git**
 2. **Build Settings:**
    - Build command: `npm run build:dashboard`
@@ -113,6 +119,7 @@ Refer to **[DEPLOYMENT.md](DEPLOYMENT.md)** for the complete guide on deploying 
 ## Usage Examples
 
 ### 1. OpenAI SDK (Bound API Key with Bare Model ID)
+
 When using an API key bound to a default provider (e.g. `google-vertex`), send bare model IDs directly:
 
 ```python
@@ -135,6 +142,7 @@ for chunk in response:
 ```
 
 ### 2. cURL (Explicit Provider Routing)
+
 For unbound keys, specify the provider in the model name (`provider/model`):
 
 ```bash
@@ -148,6 +156,7 @@ curl -X POST https://proxy.yourdomain.com/v1/chat/completions \
 ```
 
 ### 3. Dedicated Tenant Base URL
+
 Tenants with a prefix can route without provider prefixes:
 
 ```bash
@@ -160,6 +169,7 @@ curl https://proxy.yourdomain.com/proxy_a1b2c3/v1/models \
 ## Analytics & Cache Observability
 
 The dashboard includes detailed tracking for LLM token usage and caching efficiency:
+
 - **Prompt Cache Hit Rate:** Percentage of requests benefiting from provider prompt caching.
 - **Cache Read vs. Write Tokens:** Differentiates tokens read from cache (billed at reduced rate) vs. tokens written.
 - **Proxy Response Cache Hits:** Tracks exact duplicate requests served directly by Cloudflare Durable Objects with zero upstream latency.
@@ -170,6 +180,7 @@ The dashboard includes detailed tracking for LLM token usage and caching efficie
 ## Testing & CI
 
 Run the automated test suite locally:
+
 ```bash
 # Run all backend unit & integration tests
 npm run test

@@ -153,7 +153,8 @@ export function TeamPage() {
                           message: `Are you sure you want to change ${m.name}'s role from ${m.role} to ${v}?`,
                           confirmLabel: "Change Role",
                           tone: "primary",
-                          action: () => setRole.mutate({ id: m.id, role: v as string }),
+                          action: () =>
+                            setRole.mutate({ id: m.id, role: v as string }),
                         });
                       }}
                       options={["owner", "admin", "member", "viewer"].map(

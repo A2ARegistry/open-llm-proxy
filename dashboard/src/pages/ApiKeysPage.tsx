@@ -257,8 +257,9 @@ export function ApiKeysPage() {
         tone="danger"
         message={
           <p>
-            Are you sure you want to revoke <strong>{revokeTarget?.name}</strong>?
-            Any applications or SDKs using this key will immediately receive 401 Unauthorized errors.
+            Are you sure you want to revoke{" "}
+            <strong>{revokeTarget?.name}</strong>? Any applications or SDKs
+            using this key will immediately receive 401 Unauthorized errors.
           </p>
         }
       />
