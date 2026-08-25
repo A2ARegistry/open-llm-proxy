@@ -26,6 +26,9 @@ function buildApp(): Hono<AppBindings> {
 
 beforeAll(async () => {
   await env.DB.exec(
+    "CREATE TABLE IF NOT EXISTS organizations (id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT NOT NULL, created_at INTEGER NOT NULL, is_root_tenant INTEGER NOT NULL DEFAULT 0, system_prefix TEXT, custom_prefix TEXT);",
+  );
+  await env.DB.exec(
     "CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, name TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE, key_prefix TEXT NOT NULL, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, last_used_at INTEGER, expires_at INTEGER, status TEXT NOT NULL DEFAULT 'active', scopes TEXT NOT NULL DEFAULT '{}');",
   );
   await env.DB.exec(

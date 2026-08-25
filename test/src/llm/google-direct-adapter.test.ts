@@ -1,4 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
+import {
+  encodeToolCallId,
+  decodeToolCallId,
+} from "~/src/llm/google-direct-adapter";
 
 describe("GoogleDirectAdapter message conversion", () => {
   it("should convert tool results to functionResponse format", () => {
@@ -222,10 +226,7 @@ describe("GoogleDirectAdapter stop reason mapping", () => {
 });
 
 describe("GoogleDirectAdapter tool_call_id encoding and decoding", () => {
-  it("should encode and decode name and thought_signature into tool_call_id", async () => {
-    const { encodeToolCallId, decodeToolCallId } =
-      await import("../../src/llm/google-direct-adapter");
-
+  it("should encode and decode name and thought_signature into tool_call_id", () => {
     const originalSignature = "sig_xyz123_encrypted_token/+=?";
     const index = 0;
     const toolName = "read";
@@ -244,10 +245,7 @@ describe("GoogleDirectAdapter tool_call_id encoding and decoding", () => {
     expect(decoded?.thoughtSignature).toBe(originalSignature);
   });
 
-  it("should encode and decode multiple tool call IDs preserving index order and tool names", async () => {
-    const { encodeToolCallId, decodeToolCallId } =
-      await import("../../src/llm/google-direct-adapter");
-
+  it("should encode and decode multiple tool call IDs preserving index order and tool names", () => {
     const sig = "shared_thought_signature";
     const id0 = encodeToolCallId(0, "grep", sig);
     const id1 = encodeToolCallId(1, "write", sig);
@@ -266,10 +264,7 @@ describe("GoogleDirectAdapter tool_call_id encoding and decoding", () => {
     expect(decoded1?.thoughtSignature).toBe(sig);
   });
 
-  it("should safely handle tool call IDs without signature", async () => {
-    const { encodeToolCallId, decodeToolCallId } =
-      await import("../../src/llm/google-direct-adapter");
-
+  it("should safely handle tool call IDs without signature", () => {
     const toolCallId = encodeToolCallId(2, "bash");
 
     expect(toolCallId).toMatch(/^call_2_bash__nosig_[0-9a-f]{16}$/);

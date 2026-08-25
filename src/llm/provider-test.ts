@@ -177,9 +177,13 @@ export function resolveTestTarget(input: {
   if (needsKey && !key) return { error: "No API key provided to test" };
   const headers: Record<string, string> = {};
   if (key) headers.authorization = `Bearer ${key}`;
-  // Normalize URL construction to avoid double slashes
-  const base = baseUrl.replace(/\/+$/, "");
-  const path = modelsPath.startsWith("/") ? modelsPath : `/${modelsPath}`;
+  // Normalize URL construction to avoid double slashes and avoid duplicate /v1
+  // if baseUrl already ends in /v1.
+  let base = baseUrl.replace(/\/+$/, "");
+  let path = modelsPath.startsWith("/") ? modelsPath : `/${modelsPath}`;
+  if (base.endsWith("/v1") && path.startsWith("/v1/")) {
+    path = path.slice(3);
+  }
   return {
     target: { url: `${base}${path}`, headers },
     needsKey,
@@ -264,11 +268,15 @@ export function resolveChatProbe(input: {
   if (needsKey && !key) return { error: "No API key provided to test" };
   const headers: Record<string, string> = {};
   if (key) headers.authorization = `Bearer ${key}`;
-  // Normalize URL construction to avoid double slashes
-  const base = baseUrl.replace(/\/+$/, "");
-  const path = chatCompletionPath.startsWith("/")
+  // Normalize URL construction to avoid double slashes and avoid duplicate /v1
+  // if baseUrl already ends in /v1.
+  let base = baseUrl.replace(/\/+$/, "");
+  let path = chatCompletionPath.startsWith("/")
     ? chatCompletionPath
     : `/${chatCompletionPath}`;
+  if (base.endsWith("/v1") && path.startsWith("/v1/")) {
+    path = path.slice(3);
+  }
   return {
     request: {
       target: {
