@@ -8,7 +8,14 @@ import {
 } from "../components/ui";
 import { apiGet } from "../lib/api";
 import { CacheUsageRow, LatencyStat, RequestRow } from "../lib/api";
-import { fmtDateTime, fmtMs, fmtTokens, fmtUsd, pct } from "../lib/format";
+import {
+  fmtCount,
+  fmtDateTime,
+  fmtMs,
+  fmtTokens,
+  fmtUsd,
+  pct,
+} from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 
 const now = Math.floor(Date.now() / 1000);
@@ -89,12 +96,12 @@ export function AnalyticsPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-        <StatCard label="Requests" value={requestCount.toLocaleString()} />
+        <StatCard label="Requests" value={fmtCount(requestCount)} />
         <StatCard label="Tokens" value={fmtTokens(tokens)} />
         <StatCard label="Spend" value={fmtUsd((s.costUsd as number) ?? null)} />
         <StatCard
           label="Errors"
-          value={errorCount.toLocaleString()}
+          value={fmtCount(errorCount)}
           tone={errorCount > 0 ? "red" : "default"}
           hint={
             requestCount
@@ -127,7 +134,7 @@ export function AnalyticsPage() {
         />
         <StatCard
           label="Response cache hits"
-          value={totalResponseHits.toLocaleString()}
+          value={fmtCount(totalResponseHits)}
           tone={totalResponseHits > 0 ? "green" : "default"}
           hint="served by the proxy, no upstream call"
         />
@@ -159,7 +166,7 @@ export function AnalyticsPage() {
                     className="border-b border-gray-50 last:border-0"
                   >
                     <td className="px-5 py-3 font-medium">{l.provider}</td>
-                    <td className="px-5 py-3">{l.requests.toLocaleString()}</td>
+                    <td className="px-5 py-3">{fmtCount(l.requests)}</td>
                     <td className="px-5 py-3">{fmtMs(l.p50)}</td>
                     <td className="px-5 py-3">{fmtMs(l.p95)}</td>
                     <td className="px-5 py-3">{fmtMs(l.p99)}</td>
@@ -213,12 +220,12 @@ export function AnalyticsPage() {
                     <td className="px-5 py-3 font-medium">{row.provider}</td>
                     <td className="px-5 py-3 text-gray-600">{row.model}</td>
                     <td className="px-5 py-3">
-                      {row.requests.toLocaleString()}
+                      {fmtCount(row.requests)}
                     </td>
                     <td className="px-5 py-3">
                       {row.promptCacheHits > 0 ? (
                         <Tooltip
-                          content={`${row.promptCacheHits.toLocaleString()} of ${row.requests.toLocaleString()} requests had prompt cache hits`}
+                          content={`${fmtCount(row.promptCacheHits)} of ${fmtCount(row.requests)} requests had prompt cache hits`}
                         >
                           <Badge tone="green">
                             {pct(row.promptCacheHitRate)} hit
@@ -240,7 +247,7 @@ export function AnalyticsPage() {
                     <td className="px-5 py-3 text-right text-gray-600">
                       {row.responseCacheHits > 0 ? (
                         <Badge tone="green">
-                          {row.responseCacheHits.toLocaleString()}
+                          {fmtCount(row.responseCacheHits)}
                         </Badge>
                       ) : (
                         "0"

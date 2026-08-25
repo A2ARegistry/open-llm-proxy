@@ -108,6 +108,73 @@ function numberParam(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
 
+/**
+ * Extract the upstream HTTP status and a short, human-readable message from a
+ * provider SDK error. @google/genai throws `ApiError` with a numeric `.status`
+ * and a JSON-serialized error body as `.message`; other errors are passed
+ * through best-effort. Output is bounded so logs stay small.
+ */
+export function upstreamErrorInfo(err: unknown): {
+  status?: number;
+  code?: string;
+  message: string;
+} {
+  const anyErr = err as { status?: unknown; message?: unknown };
+  const status =
+    typeof anyErr?.status === "number" &&
+    anyErr.status >= 400 &&
+    anyErr.status <= 599
+      ? anyErr.status
+      : undefined;
+  let raw =
+    typeof anyErr?.message === "string" && anyErr.message
+      ? anyErr.message
+      : String(err ?? "unknown error");
+  let code: string | undefined;
+  if (raw.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw) as {
+        error?: { message?: unknown; status?: unknown };
+      };
+      const nestedMessage = parsed.error?.message;
+      const nestedStatus = parsed.error?.status;
+      if (typeof nestedMessage === "string" && nestedMessage)
+        raw = nestedMessage;
+      if (typeof nestedStatus === "string" && nestedStatus) code = nestedStatus;
+    } catch {
+      // Not JSON after all — keep the raw message.
+    }
+  }
+  const message = raw.length > 300 ? `${raw.slice(0, 300)}…` : raw;
+  return { status, code, message };
+}
+
+/** Map an upstream failure to an honest client-facing response:
+ * pass through the upstream 4xx/5xx (429 gets Retry-After), else 500. */
+export function upstreamErrorResponse(info: {
+  status?: number;
+  code?: string;
+  message: string;
+}): Response {
+  const status = info.status ?? 500;
+  const isRateLimit = info.status === 429 || info.code === "RESOURCE_EXHAUSTED";
+  const body = JSON.stringify({
+    error: {
+      message: `Upstream provider error (${info.status ?? "unknown"}${info.code ? ` ${info.code}` : ""}): ${info.message}`,
+      type: isRateLimit ? "rate_limit_error" : "upstream_error",
+      param: null,
+      code: isRateLimit ? "rate_limit_exceeded" : "upstream_error",
+    },
+  });
+  return new Response(body, {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...(isRateLimit ? { "Retry-After": "30" } : {}),
+    },
+  });
+}
+
 export async function chatCompletionsV2(
   input: ChatCompletionsInput,
 ): Promise<Response> {
@@ -452,15 +519,21 @@ export async function chatCompletionsV2(
             : undefined,
         });
       } catch (err) {
+        const info = upstreamErrorInfo(err);
+        log.warn(
+          `[chat-completions] Upstream request failed | provider=${providerName} | model=${modelId} | stream=false | ` +
+            `status=${info.status ?? "unknown"}${info.code ? ` ${info.code}` : ""} | error=${info.message}`,
+        );
         record({
-          statusCode: 500,
-          errorMessage: err instanceof Error ? err.message : String(err),
+          statusCode: info.status ?? 500,
+          errorMessage: `Upstream error (${info.status ?? "unknown"}): ${info.message}`,
         });
         trace?.setUpstreamResponse({
-          error: err instanceof Error ? err.message : String(err),
+          status: info.status,
+          error: info.message,
         });
         submitTrace();
-        throw err;
+        return upstreamErrorResponse(info);
       }
       if (message.stopReason === "error" || message.stopReason === "aborted") {
         record({
@@ -532,17 +605,20 @@ export async function chatCompletionsV2(
           `finalStopReason=${finalMessage?.stopReason}`,
       );
     } catch (err) {
+      const info = upstreamErrorInfo(err);
+      log.warn(
+        `[chat-completions] Upstream stream failed | provider=${providerName} | model=${modelId} | stream=true | ` +
+          `status=${info.status ?? "unknown"}${info.code ? ` ${info.code}` : ""} | error=${info.message}`,
+      );
       record({
-        statusCode: 500,
+        statusCode: info.status ?? 500,
         usage: finalMessage ? usageOf(finalMessage) : null,
         costUsd: finalMessage?.usage?.cost?.total ?? null,
-        errorMessage: err instanceof Error ? err.message : String(err),
+        errorMessage: `Upstream error (${info.status ?? "unknown"}): ${info.message}`,
       });
-      trace?.setUpstreamResponse({
-        error: err instanceof Error ? err.message : String(err),
-      });
+      trace?.setUpstreamResponse({ status: info.status, error: info.message });
       submitTrace();
-      throw err;
+      return upstreamErrorResponse(info);
     }
     record({
       statusCode: 200,

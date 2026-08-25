@@ -14,6 +14,15 @@ export function fmtTokens(value: number | null | undefined): string {
   return String(value);
 }
 
+/** Formats counts/numbers: raw if < 1000, else rounded to K, M, B (e.g. 1.2K, 3.4M) */
+export function fmtCount(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "0";
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return String(Math.round(value));
+}
+
 export function fmtDate(ts: number | null | undefined): string {
   if (!ts) return "—";
   return new Date(ts * 1000).toLocaleString(undefined, {

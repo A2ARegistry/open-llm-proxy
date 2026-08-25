@@ -6,7 +6,7 @@ import {
   StatCard,
 } from "../components/ui";
 import { apiGet } from "../lib/api";
-import { fmtDay, fmtUsd, fmtTokens } from "../lib/format";
+import { fmtCount, fmtDay, fmtUsd, fmtTokens } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import {
@@ -149,10 +149,10 @@ export function DashboardPage() {
         />
         <StatCard
           label="Requests"
-          value={(summary.requests ?? 0).toLocaleString()}
+          value={fmtCount(summary.requests)}
           hint={
             responseCacheHits > 0
-              ? `${responseCacheHits.toLocaleString()} response-cache hits`
+              ? `${fmtCount(responseCacheHits)} response-cache hits`
               : undefined
           }
         />
@@ -181,7 +181,7 @@ export function DashboardPage() {
             <div className="flex items-baseline justify-between">
               <div>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {responseCacheHits.toLocaleString()}
+                  {fmtCount(responseCacheHits)}
                 </p>
                 <p className="mt-1 text-xs text-gray-500">
                   requests served without an upstream call
