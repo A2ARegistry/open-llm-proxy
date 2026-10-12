@@ -1,3 +1,4 @@
+import { TenantService } from "../db/tenant";
 import { getProviderConfig } from "../llm/credential-store";
 import { resolveDefaultModel } from "../llm/model-catalog";
 import {
@@ -10,7 +11,6 @@ import {
   isOpenAICompatibleProvider,
 } from "../llm/provider-registry";
 import { V1OpenAICompatibleClient } from "../llm/v1-provider";
-import { TenantService } from "../db/tenant";
 import { ApiKeyAuth } from "../types";
 
 export interface EmbeddingsInput {
@@ -39,23 +39,45 @@ export async function embeddingsV2(input: EmbeddingsInput): Promise<Response> {
     ? canonicalProviderName(apiKeyAuth.scopes.defaultProvider)
     : undefined;
   const provider = canonicalProviderName(
-    slash > 0 ? rawModel.slice(0, slash) : boundProvider ?? "",
+    slash > 0 ? rawModel.slice(0, slash) : (boundProvider ?? ""),
   );
   const model = slash > 0 ? rawModel.slice(slash + 1) : rawModel;
   if (!provider || !model) {
     return errorBody("invalid_request_error", "model must be provider/model");
   }
-  const providerError = assertProviderAllowed(settings, apiKeyAuth.scopes, provider);
-  if (providerError) return errorBody(providerError.code, providerError.message);
+  const providerError = assertProviderAllowed(
+    settings,
+    apiKeyAuth.scopes,
+    provider,
+  );
+  if (providerError)
+    return errorBody(providerError.code, providerError.message);
   const config = await getProviderConfig(env, organizationId, provider);
-  if (!config) return errorBody("not_configured", `Provider '${provider}' is not configured`);
-  if (!config.enabled) return errorBody("provider_disabled", `Provider '${provider}' is disabled`);
+  if (!config)
+    return errorBody(
+      "not_configured",
+      `Provider '${provider}' is not configured`,
+    );
+  if (!config.enabled)
+    return errorBody("provider_disabled", `Provider '${provider}' is disabled`);
   if (!isOpenAICompatibleProvider(provider)) {
-    return errorBody("unsupported_provider", `Provider '${provider}' does not support OpenAI embeddings`);
+    return errorBody(
+      "unsupported_provider",
+      `Provider '${provider}' does not support OpenAI embeddings`,
+    );
   }
   const resolvedModel = model || resolveDefaultModel(config.settings, provider);
-  if (!resolvedModel) return errorBody("not_configured", `Provider '${provider}' has no default model configured`);
-  const modelError = assertModelAllowed(settings, apiKeyAuth.scopes, provider, resolvedModel);
+  if (!resolvedModel)
+    return errorBody(
+      "not_configured",
+      `Provider '${provider}' has no default model configured`,
+    );
+  const modelError = assertModelAllowed(
+    settings,
+    apiKeyAuth.scopes,
+    provider,
+    resolvedModel,
+  );
   if (modelError) return errorBody(modelError.code, modelError.message);
 
   const client = new V1OpenAICompatibleClient({
@@ -67,7 +89,8 @@ export async function embeddingsV2(input: EmbeddingsInput): Promise<Response> {
         ? {
             baseUrl: config.settings.baseUrl as string | undefined,
             accountId: config.settings.accountId as string | undefined,
-            embeddingsPath: config.settings.embeddingsPath as string | undefined,
+            embeddingsPath: config.settings.embeddingsPath as
+              string | undefined,
           }
         : undefined,
   });
@@ -78,21 +101,33 @@ export async function embeddingsV2(input: EmbeddingsInput): Promise<Response> {
       { signal: request.signal },
     );
   } catch (error) {
-    return errorBody("upstream_error", error instanceof Error ? error.message : String(error));
+    return errorBody(
+      "upstream_error",
+      error instanceof Error ? error.message : String(error),
+    );
   }
   if (!upstream.ok) {
     const text = await upstream.text();
-    return errorBody("upstream_error", `Upstream error (${upstream.status}): ${text.slice(0, 512)}`);
+    return errorBody(
+      "upstream_error",
+      `Upstream error (${upstream.status}): ${text.slice(0, 512)}`,
+    );
   }
   return new Response(upstream.body, {
     status: upstream.status,
-    headers: { "Content-Type": upstream.headers.get("content-type") ?? "application/json" },
+    headers: {
+      "Content-Type":
+        upstream.headers.get("content-type") ?? "application/json",
+    },
   });
 }
 
 function errorBody(code: string, message: string): Response {
-  return new Response(JSON.stringify({ error: { message, type: code, code } }), {
-    status: code === "upstream_error" ? 502 : 400,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ error: { message, type: code, code } }),
+    {
+      status: code === "upstream_error" ? 502 : 400,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
 }

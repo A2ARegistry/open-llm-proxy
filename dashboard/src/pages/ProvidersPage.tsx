@@ -44,7 +44,11 @@ const PROVIDER_CATALOG: { id: string; name: string; needsKey: boolean }[] = [
     needsKey: true,
   },
   { id: "google-vertex", name: "Google Vertex AI", needsKey: true },
-  { id: "cloudflare-workers-ai", name: "Cloudflare Workers AI", needsKey: true },
+  {
+    id: "cloudflare-workers-ai",
+    name: "Cloudflare Workers AI",
+    needsKey: true,
+  },
   { id: "deepseek", name: "DeepSeek", needsKey: true },
   { id: "mistral", name: "Mistral", needsKey: true },
   { id: "groq", name: "Groq", needsKey: true },
@@ -1066,7 +1070,8 @@ function ProviderFormModal({
               placeholder="32-character Cloudflare account ID"
             />
             <p className="mt-1 text-[11px] text-gray-400">
-              Used to build the Workers AI API endpoint. API tokens must have Workers AI access.
+              Used to build the Workers AI API endpoint. API tokens must have
+              Workers AI access.
             </p>
           </div>
         )}
@@ -1100,7 +1105,8 @@ function ProviderFormModal({
             ]}
           />
           <p className="mt-1 text-[11px] text-gray-400">
-            Retries another key only for authentication, rate-limit, or server errors before a response stream starts.
+            Retries another key only for authentication, rate-limit, or server
+            errors before a response stream starts.
           </p>
         </div>
 

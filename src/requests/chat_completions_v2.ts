@@ -850,19 +850,14 @@ export async function chatCompletionsV2(
               baseUrl: config.settings.baseUrl as string | undefined,
               accountId: config.settings.accountId as string | undefined,
               chatCompletionPath: config.settings.chatCompletionPath as
-                | string
-                | undefined,
+                string | undefined,
               modelsPath: config.settings.modelsPath as string | undefined,
               embeddingsPath: config.settings.embeddingsPath as
-                | string
-                | undefined,
+                string | undefined,
             }
           : undefined,
       rotationStrategy: config.settings.rotationStrategy as
-        | "first"
-        | "round-robin"
-        | "failover"
-        | undefined,
+        "first" | "round-robin" | "failover" | undefined,
     });
   }
   const upstreamBody = JSON.stringify({

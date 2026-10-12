@@ -28,8 +28,8 @@ A serverless, multi-tenant LLM gateway built on [Cloudflare Workers](https://www
 | **Google AI Studio**         | Native Gemini API Key                                  | ✅        | ✅                           | ✅                 |
 | **OpenAI**                   | Standard API Key                                       | ✅        | ✅                           | ✅                 |
 | **Anthropic**                | Standard API Key                                       | ✅        | ✅                           | ✅                 |
-| **Custom OpenAI-Compatible** | Any baseUrl (Ollama, vLLM, OpenRouter, DeepSeek, etc.) | ✅ | ✅                           | Provider-dependent |
-| **Cloudflare Workers AI**   | Account ID + API token                                | ✅ | Provider-dependent           | Provider-dependent |
+| **Custom OpenAI-Compatible** | Any baseUrl (Ollama, vLLM, OpenRouter, DeepSeek, etc.) | ✅        | ✅                           | Provider-dependent |
+| **Cloudflare Workers AI**    | Account ID + API token                                 | ✅        | Provider-dependent           | Provider-dependent |
 
 Cloudflare Workers AI also supports the proxy's OpenAI-compatible `POST /v1/embeddings` endpoint. Configure the provider with your Cloudflare account ID and use model IDs such as `@cf/baai/bge-large-en-v1.5`.
 

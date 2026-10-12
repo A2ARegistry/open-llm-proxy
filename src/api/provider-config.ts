@@ -126,7 +126,9 @@ function validateSettings(settings: unknown): Record<string, unknown> {
       continue;
     } else if (key === "accountId") {
       if (typeof value !== "string" || !/^[a-f0-9]{32}$/i.test(value.trim())) {
-        throw new Error("settings.accountId must be a 32-character Cloudflare account ID");
+        throw new Error(
+          "settings.accountId must be a 32-character Cloudflare account ID",
+        );
       }
       out[key] = value.trim();
       continue;
@@ -282,7 +284,9 @@ providerConfigRouter.put("/:provider", async (c) => {
     }
     if (provider === "cloudflare-workers-ai") {
       if (typeof settings.accountId !== "string" || !settings.accountId) {
-        throw new Error("settings.accountId is required for Cloudflare Workers AI");
+        throw new Error(
+          "settings.accountId is required for Cloudflare Workers AI",
+        );
       }
     }
     if ("trace" in settings && typeof settings.trace !== "boolean") {

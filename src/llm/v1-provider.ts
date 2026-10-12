@@ -40,24 +40,48 @@ export class V1OpenAICompatibleClient {
     const spec = getV1ProviderSpec(canonical);
     const piSpec = getPiAiProviderSpec(canonical);
     const isCustom = !spec && !piSpec;
-    this.keys = options.keys.filter((key) => typeof key === "string" && key.trim()).map((key) => key.trim());
+    this.keys = options.keys
+      .filter((key) => typeof key === "string" && key.trim())
+      .map((key) => key.trim());
     this.needsKey = spec?.needsKey ?? true;
-    let configuredBaseUrl = options.custom?.baseUrl ?? options.baseUrl ?? spec?.baseUrl ?? piSpec?.baseUrl ?? "";
+    let configuredBaseUrl =
+      options.custom?.baseUrl ??
+      options.baseUrl ??
+      spec?.baseUrl ??
+      piSpec?.baseUrl ??
+      "";
     if (canonical === "cloudflare-workers-ai") {
       const accountId = options.custom?.accountId;
-      if (accountId) configuredBaseUrl = configuredBaseUrl.replace("{account_id}", accountId);
+      if (accountId)
+        configuredBaseUrl = configuredBaseUrl.replace(
+          "{account_id}",
+          accountId,
+        );
     }
     this.baseUrl = configuredBaseUrl;
-    this.chatCompletionPath = options.custom?.chatCompletionPath ?? options.chatCompletionPath ?? spec?.chatCompletionPath ?? (isCustom ? "/v1/chat/completions" : "/chat/completions");
-    this.modelsPath = options.custom?.modelsPath ?? options.modelsPath ?? spec?.modelsPath ?? (isCustom ? "/v1/models" : "/models");
-    this.embeddingsPath = options.custom?.embeddingsPath ?? options.embeddingsPath ?? spec?.embeddingsPath ?? (isCustom ? "/v1/embeddings" : "/embeddings");
+    this.chatCompletionPath =
+      options.custom?.chatCompletionPath ??
+      options.chatCompletionPath ??
+      spec?.chatCompletionPath ??
+      (isCustom ? "/v1/chat/completions" : "/chat/completions");
+    this.modelsPath =
+      options.custom?.modelsPath ??
+      options.modelsPath ??
+      spec?.modelsPath ??
+      (isCustom ? "/v1/models" : "/models");
+    this.embeddingsPath =
+      options.custom?.embeddingsPath ??
+      options.embeddingsPath ??
+      spec?.embeddingsPath ??
+      (isCustom ? "/v1/embeddings" : "/embeddings");
     this.extraHeaders = {};
     this.authHeaders = options.authHeaders;
     this.rotationStrategy = options.rotationStrategy ?? "first";
   }
 
   private keyOrder(): string[] {
-    if (this.keys.length < 2 || this.rotationStrategy === "first") return this.keys;
+    if (this.keys.length < 2 || this.rotationStrategy === "first")
+      return this.keys;
     if (this.rotationStrategy === "failover") return this.keys;
     const start = V1OpenAICompatibleClient.rotationCursor++ % this.keys.length;
     return [...this.keys.slice(start), ...this.keys.slice(0, start)];
@@ -83,9 +107,13 @@ export class V1OpenAICompatibleClient {
     return [401, 403, 429, 500, 502, 503, 504].includes(response.status);
   }
 
-  private async request(path: string, init: { method: string; body?: string; signal?: AbortSignal }): Promise<Response> {
+  private async request(
+    path: string,
+    init: { method: string; body?: string; signal?: AbortSignal },
+  ): Promise<Response> {
     const keys = this.keyOrder();
-    const attempts = this.rotationStrategy === "first" ? keys.slice(0, 1) : keys;
+    const attempts =
+      this.rotationStrategy === "first" ? keys.slice(0, 1) : keys;
     let lastResponse: Response | undefined;
     for (let index = 0; index < Math.max(attempts.length, 1); index++) {
       const response = await fetch(this.fullUrl(path), {
@@ -93,25 +121,51 @@ export class V1OpenAICompatibleClient {
         headers: this.headers(attempts[index]),
       });
       lastResponse = response;
-      if (response.ok || !this.shouldTryNext(response) || index === attempts.length - 1) return response;
+      if (
+        response.ok ||
+        !this.shouldTryNext(response) ||
+        index === attempts.length - 1
+      )
+        return response;
       // Consume the failed response before trying another credential.
       await response.arrayBuffer();
     }
     return lastResponse!;
   }
 
-  chatCompletionsUrl(): string { return this.fullUrl(this.chatCompletionPath); }
-  embeddingsUrl(): string { return this.fullUrl(this.embeddingsPath); }
-
-  async chatCompletions(body: string, init?: { signal?: AbortSignal }): Promise<Response> {
-    return this.request(this.chatCompletionPath, { method: "POST", body, signal: init?.signal });
+  chatCompletionsUrl(): string {
+    return this.fullUrl(this.chatCompletionPath);
+  }
+  embeddingsUrl(): string {
+    return this.fullUrl(this.embeddingsPath);
   }
 
-  async embeddings(body: string, init?: { signal?: AbortSignal }): Promise<Response> {
-    return this.request(this.embeddingsPath, { method: "POST", body, signal: init?.signal });
+  async chatCompletions(
+    body: string,
+    init?: { signal?: AbortSignal },
+  ): Promise<Response> {
+    return this.request(this.chatCompletionPath, {
+      method: "POST",
+      body,
+      signal: init?.signal,
+    });
+  }
+
+  async embeddings(
+    body: string,
+    init?: { signal?: AbortSignal },
+  ): Promise<Response> {
+    return this.request(this.embeddingsPath, {
+      method: "POST",
+      body,
+      signal: init?.signal,
+    });
   }
 
   async models(init?: { signal?: AbortSignal }): Promise<Response> {
-    return this.request(this.modelsPath, { method: "GET", signal: init?.signal });
+    return this.request(this.modelsPath, {
+      method: "GET",
+      signal: init?.signal,
+    });
   }
 }

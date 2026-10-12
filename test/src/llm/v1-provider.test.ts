@@ -5,9 +5,11 @@ describe("V1OpenAICompatibleClient", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("uses the Cloudflare account ID and embeddings endpoint", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ data: [] }), { status: 200 }),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data: [] }), { status: 200 }),
+      );
     vi.stubGlobal("fetch", fetchMock);
     const client = new V1OpenAICompatibleClient({
       provider: "cloudflare-workers-ai",
@@ -15,7 +17,9 @@ describe("V1OpenAICompatibleClient", () => {
       custom: { accountId: "a".repeat(32) },
     });
 
-    await client.embeddings(JSON.stringify({ model: "@cf/baai/bge-large-en-v1.5", input: "hello" }));
+    await client.embeddings(
+      JSON.stringify({ model: "@cf/baai/bge-large-en-v1.5", input: "hello" }),
+    );
 
     expect(fetchMock).toHaveBeenCalledWith(
       `https://api.cloudflare.com/client/v4/accounts/${"a".repeat(32)}/ai/v1/embeddings`,
@@ -30,7 +34,9 @@ describe("V1OpenAICompatibleClient", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("rate limited", { status: 429 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [] }), { status: 200 }));
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ choices: [] }), { status: 200 }),
+      );
     vi.stubGlobal("fetch", fetchMock);
     const client = new V1OpenAICompatibleClient({
       provider: "custom-openai",
@@ -43,12 +49,18 @@ describe("V1OpenAICompatibleClient", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[0][1].headers.authorization).toBe("Bearer first-key");
-    expect(fetchMock.mock.calls[1][1].headers.authorization).toBe("Bearer second-key");
+    expect(fetchMock.mock.calls[0][1].headers.authorization).toBe(
+      "Bearer first-key",
+    );
+    expect(fetchMock.mock.calls[1][1].headers.authorization).toBe(
+      "Bearer second-key",
+    );
   });
 
   it("does not retry when first-key mode is selected", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response("denied", { status: 401 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("denied", { status: 401 }));
     vi.stubGlobal("fetch", fetchMock);
     const client = new V1OpenAICompatibleClient({
       provider: "custom-openai",

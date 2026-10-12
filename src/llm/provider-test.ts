@@ -165,9 +165,12 @@ export function resolveTestTarget(input: {
     : (v1Spec?.needsKey ?? true);
   const baseUrl =
     provider === "cloudflare-workers-ai"
-      ? (settings.baseUrl as string | undefined) ??
-        v1Spec?.baseUrl?.replace("{account_id}", String(settings.accountId ?? ""))
-      : (settings.baseUrl as string | undefined) ?? v1Spec?.baseUrl ?? "";
+      ? ((settings.baseUrl as string | undefined) ??
+        v1Spec?.baseUrl?.replace(
+          "{account_id}",
+          String(settings.accountId ?? ""),
+        ))
+      : ((settings.baseUrl as string | undefined) ?? v1Spec?.baseUrl ?? "");
   // For custom OpenAI-compatible providers, default to OpenAI's standard path
   const modelsPath =
     (settings.modelsPath as string | undefined) ??
@@ -588,20 +591,13 @@ export async function fetchProviderModels(input: {
           ? {
               baseUrl: input.settings.baseUrl as string | undefined,
               accountId: input.settings.accountId as string | undefined,
-              chatCompletionPath: input.settings.chatCompletionPath as
-                | string
-                | undefined,
-              modelsPath: input.settings.modelsPath as string | undefined,
-              embeddingsPath: input.settings.embeddingsPath as
-                | string
-                | undefined,
+              chatCompletionPath: input.settings.chatCompletionPath as string,
+              modelsPath: input.settings.modelsPath as string,
+              embeddingsPath: input.settings.embeddingsPath as string,
             }
           : undefined,
       rotationStrategy: input.settings?.rotationStrategy as
-        | "first"
-        | "round-robin"
-        | "failover"
-        | undefined,
+        "first" | "round-robin" | "failover" | undefined,
     });
     const res = await client.models({ signal: controller.signal });
     if (!res.ok) {
