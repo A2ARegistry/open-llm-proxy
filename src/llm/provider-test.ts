@@ -164,7 +164,10 @@ export function resolveTestTarget(input: {
     ? false
     : (v1Spec?.needsKey ?? true);
   const baseUrl =
-    (settings.baseUrl as string | undefined) ?? v1Spec?.baseUrl ?? "";
+    provider === "cloudflare-workers-ai"
+      ? (settings.baseUrl as string | undefined) ??
+        v1Spec?.baseUrl?.replace("{account_id}", String(settings.accountId ?? ""))
+      : (settings.baseUrl as string | undefined) ?? v1Spec?.baseUrl ?? "";
   // For custom OpenAI-compatible providers, default to OpenAI's standard path
   const modelsPath =
     (settings.modelsPath as string | undefined) ??
@@ -172,6 +175,9 @@ export function resolveTestTarget(input: {
     (isCustomProviderName(provider) ? "/v1/models" : "/models");
   if (!baseUrl) {
     return { error: "No base URL for this provider" };
+  }
+  if (provider === "cloudflare-workers-ai" && !settings.accountId) {
+    return { error: "Cloudflare account ID is required" };
   }
   const key = pickKey(provider, input.keys, needsKey);
   if (needsKey && !key) return { error: "No API key provided to test" };
@@ -577,14 +583,25 @@ export async function fetchProviderModels(input: {
     const client = new V1OpenAICompatibleClient({
       provider,
       keys: input.keys,
-      custom: input.settings?.baseUrl
-        ? {
-            baseUrl: input.settings.baseUrl as string,
-            chatCompletionPath: input.settings.chatCompletionPath as
-              string | undefined,
-            modelsPath: input.settings.modelsPath as string | undefined,
-          }
-        : undefined,
+      custom:
+        input.settings?.baseUrl || input.settings?.accountId
+          ? {
+              baseUrl: input.settings.baseUrl as string | undefined,
+              accountId: input.settings.accountId as string | undefined,
+              chatCompletionPath: input.settings.chatCompletionPath as
+                | string
+                | undefined,
+              modelsPath: input.settings.modelsPath as string | undefined,
+              embeddingsPath: input.settings.embeddingsPath as
+                | string
+                | undefined,
+            }
+          : undefined,
+      rotationStrategy: input.settings?.rotationStrategy as
+        | "first"
+        | "round-robin"
+        | "failover"
+        | undefined,
     });
     const res = await client.models({ signal: controller.signal });
     if (!res.ok) {

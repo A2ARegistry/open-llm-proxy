@@ -131,6 +131,7 @@ const V1_FALLBACK_PROVIDERS: Record<
     baseUrl: string;
     chatCompletionPath: string;
     modelsPath: string;
+    embeddingsPath?: string;
     needsKey: boolean;
   }
 > = {
@@ -153,6 +154,14 @@ const V1_FALLBACK_PROVIDERS: Record<
     baseUrl: "https://api.perplexity.ai",
     chatCompletionPath: "/chat/completions",
     modelsPath: "/models",
+    needsKey: true,
+  },
+  "cloudflare-workers-ai": {
+    name: "Cloudflare Workers AI",
+    baseUrl: "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1",
+    chatCompletionPath: "/chat/completions",
+    modelsPath: "/models",
+    embeddingsPath: "/embeddings",
     needsKey: true,
   },
 };
@@ -223,6 +232,27 @@ export function getPiAiProviderSpec(
 
 export function getV1ProviderSpec(name: string) {
   return V1_FALLBACK_PROVIDERS[name];
+}
+
+/**
+ * Returns true if the provider natively speaks the standard OpenAI chat completions wire format.
+ * Providers requiring different wire protocols (e.g. Anthropic /v1/messages, Google generateContent)
+ * return false.
+ */
+export function isOpenAICompatibleProvider(name: string): boolean {
+  const canonical = canonicalProviderName(name);
+  if (
+    canonical === "anthropic" ||
+    canonical === "google" ||
+    canonical === "google-ai-studio"
+  ) {
+    return false;
+  }
+  if (canonical === "google-vertex") {
+    // Vertex is handled separately: Express Mode (GoogleDirectAdapter) vs Service Account mode (OpenAI compatible)
+    return false;
+  }
+  return true;
 }
 
 export interface BuiltinProviderCatalogEntry {

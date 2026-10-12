@@ -29,6 +29,7 @@ import {
   getPiAiProviderSpec,
   isCustomProviderName,
   isKnownProviderName,
+  isOpenAICompatibleProvider,
   providerApiId,
 } from "../llm/provider-registry";
 import { checkRateLimits, settleTokenUsage } from "../llm/rate-limit";
@@ -91,17 +92,6 @@ function errorBody(code: string, message: string): Response {
       headers: { "Content-Type": "application/json" },
     },
   );
-}
-
-function parseBody(text: string): Record<string, unknown> | null {
-  try {
-    const data = JSON.parse(text);
-    return data && typeof data === "object"
-      ? (data as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 function numberParam(v: unknown): number | undefined {
@@ -209,12 +199,18 @@ export async function chatCompletionsV2(
     return errorBody("spend_limit_exceeded", "Tenant spend limit reached");
   }
 
-  const body = parseBody(await request.text());
-  if (!body) {
-    log.warn(`[chat-completions] Invalid request body`);
+  let chatBody: ChatCompletionsRequest;
+  try {
+    const json = await request.json();
+    if (!json || typeof json !== "object") {
+      log.warn(`[chat-completions] Invalid request body`);
+      return errorBody("invalid_model", "Invalid request body");
+    }
+    chatBody = json as ChatCompletionsRequest;
+  } catch {
+    log.warn(`[chat-completions] Invalid JSON request body`);
     return errorBody("invalid_model", "Invalid request body");
   }
-  const chatBody = body as unknown as ChatCompletionsRequest;
 
   // Never log message contents: prompts may contain user-sensitive data.
   // Log only structural metadata (message count) for correlation.
@@ -222,7 +218,8 @@ export async function chatCompletionsV2(
     ? chatBody.messages.length
     : 0;
 
-  const rawModel = typeof body.model === "string" ? body.model.trim() : "";
+  const rawModel =
+    typeof chatBody.model === "string" ? chatBody.model.trim() : "";
 
   // An API key may be bound to a provider (scopes.defaultProvider): the key
   // then only ever routes to that provider and users can send bare model ids.
@@ -354,10 +351,12 @@ export async function chatCompletionsV2(
   const vertexOpenAiCompat =
     isVertexProvider(providerName) &&
     config.settings?.authMode === "service-account";
+  const isOpenAiCompat =
+    isOpenAICompatibleProvider(providerName) || vertexOpenAiCompat;
   const piSpec = getPiAiProviderSpec(providerName);
 
   log.debug(
-    `[chat-completions] Resolved provider | provider=${providerName} | model=${modelId} | stream=${stream} | messages=${messageCount} | piSpec=${!!piSpec} | vertexOpenAiCompat=${vertexOpenAiCompat} | vertexExpressMode=${vertexExpressMode} | authMode=${config.settings?.authMode} | isVertex=${isVertexProvider(providerName)}`,
+    `[chat-completions] Resolved provider | provider=${providerName} | model=${modelId} | stream=${stream} | messages=${messageCount} | piSpec=${!!piSpec} | vertexOpenAiCompat=${vertexOpenAiCompat} | vertexExpressMode=${vertexExpressMode} | isOpenAiCompat=${isOpenAiCompat} | authMode=${config.settings?.authMode} | isVertex=${isVertexProvider(providerName)}`,
   );
 
   const maxTokens = numberParam(
@@ -637,8 +636,8 @@ export async function chatCompletionsV2(
     });
   }
 
-  // Route 2: Other providers using pi-ai (keep existing logic)
-  if (piSpec && !vertexOpenAiCompat) {
+  // Route 2: Non-OpenAI-compatible providers using pi-ai (Anthropic, Google AI Studio)
+  if (!isOpenAiCompat && piSpec) {
     const models = await createTenantModels({
       env,
       organizationId,
@@ -845,14 +844,25 @@ export async function chatCompletionsV2(
     client = new V1OpenAICompatibleClient({
       provider: providerName,
       keys: config.keys,
-      custom: config.settings?.baseUrl
-        ? {
-            baseUrl: config.settings.baseUrl as string,
-            chatCompletionPath: config.settings.chatCompletionPath as
-              string | undefined,
-            modelsPath: config.settings.modelsPath as string | undefined,
-          }
-        : undefined,
+      custom:
+        config.settings?.baseUrl || config.settings?.accountId
+          ? {
+              baseUrl: config.settings.baseUrl as string | undefined,
+              accountId: config.settings.accountId as string | undefined,
+              chatCompletionPath: config.settings.chatCompletionPath as
+                | string
+                | undefined,
+              modelsPath: config.settings.modelsPath as string | undefined,
+              embeddingsPath: config.settings.embeddingsPath as
+                | string
+                | undefined,
+            }
+          : undefined,
+      rotationStrategy: config.settings.rotationStrategy as
+        | "first"
+        | "round-robin"
+        | "failover"
+        | undefined,
     });
   }
   const upstreamBody = JSON.stringify({

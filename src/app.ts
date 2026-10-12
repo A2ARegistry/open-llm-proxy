@@ -19,6 +19,7 @@ import {
   tenantPrefixMiddleware,
 } from "./middlewares/tenant-prefix";
 import { chatCompletionsV2 } from "./requests/chat_completions_v2";
+import { embeddingsV2 } from "./requests/embeddings_v2";
 import { modelsV2 } from "./requests/models_v2";
 import { AppVariables } from "./types";
 import { Hono } from "hono";
@@ -148,6 +149,13 @@ export function createApp(): Hono<AppBindings> {
     });
   };
 
+  const embeddings = (c: import("hono").Context<AppBindings>) =>
+    embeddingsV2({
+      request: c.req.raw,
+      env: c.env,
+      apiKeyAuth: c.get("apiKeyAuth")!,
+    });
+
   app.post(
     "/v1/chat/completions",
     tenantPrefixMiddleware,
@@ -176,6 +184,35 @@ export function createApp(): Hono<AppBindings> {
     tenantPrefixGuardMiddleware,
     chatCompletions,
   );
+  app.post(
+    "/v1/embeddings",
+    tenantPrefixMiddleware,
+    apiKeyAuthMiddleware,
+    tenantPrefixGuardMiddleware,
+    embeddings,
+  );
+  app.post(
+    "/:tenantPrefix/v1/embeddings",
+    tenantPrefixMiddleware,
+    apiKeyAuthMiddleware,
+    tenantPrefixGuardMiddleware,
+    embeddings,
+  );
+  app.post(
+    "/embeddings",
+    tenantPrefixMiddleware,
+    apiKeyAuthMiddleware,
+    tenantPrefixGuardMiddleware,
+    embeddings,
+  );
+  app.post(
+    "/:tenantPrefix/embeddings",
+    tenantPrefixMiddleware,
+    apiKeyAuthMiddleware,
+    tenantPrefixGuardMiddleware,
+    embeddings,
+  );
+
   app.get(
     "/v1/models",
     tenantPrefixMiddleware,

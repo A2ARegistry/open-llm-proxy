@@ -10,6 +10,9 @@
   // Compatibility flags
   // Docs: https://developers.cloudflare.com/workers/configuration/compatibility-flags/
   "compatibility_flags": ["nodejs_compat"],
+  "limits": {
+    "cpu_ms": 30000
+  },
   // Workers Logs
   // Docs: https://developers.cloudflare.com/workers/observability/logs/workers-logs/
   "observability": {
@@ -129,6 +132,9 @@
       // Step 6) so production traffic only reaches your own domain.
       "workers_dev": true,
       "preview_urls": false,
+      "limits": {
+        "cpu_ms": 30000
+      },
       "vars": {
         "BASE_URL": "https://your-domain.com",
         "ENVIRONMENT": "production",

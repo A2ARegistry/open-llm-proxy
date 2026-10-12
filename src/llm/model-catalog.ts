@@ -117,6 +117,7 @@ const CURATED_DEFAULT_MODELS: Record<string, string> = {
   xai: "grok-4.6",
   cerebras: "gpt-oss-120b",
   openrouter: "bytedance-seed/seed-1.6-flash",
+  "cloudflare-workers-ai": "@cf/meta/llama-3.2-3b-instruct",
   ollama: "llama3.1",
   cohere: "command-r-plus",
   "perplexity-ai": "sonar",

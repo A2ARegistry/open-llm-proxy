@@ -10,6 +10,8 @@ A serverless, multi-tenant LLM gateway built on [Cloudflare Workers](https://www
 - **Multi-Tenant URL Prefixes & Custom Base URLs:** Each tenant receives an isolated base URL (e.g. `https://proxy.example.com/proxy_a1b2c3/v1`) or custom prefix so standard OpenAI SDKs require zero provider knowledge.
 - **API Key Binding & Scopes:** Bind individual API keys to specific providers to allow bare model IDs (e.g. `gemini-2.5-flash`), enforce lifetime spend caps, and configure granular permissions.
 - **Custom OpenAI-Compatible Providers:** Add self-hosted endpoints (e.g. Ollama, vLLM, LocalAI, OpenRouter, Groq) with custom base URLs, custom headers, and keyless options.
+- **Cloudflare Workers AI:** First-class account-ID configuration for Cloudflare's OpenAI-compatible chat, streaming, model, and embeddings APIs.
+- **Multi-Key Rotation:** Configure `first`, `round-robin`, or `failover` credential strategies with bounded retries on authentication, rate-limit, and server failures.
 - **Provider API Key Management & In-Dashboard Testing:** Encrypted at rest in Cloudflare D1 with automatic multi-key rotation and live connection diagnostic probes.
 - **Prompt & Response Cache Analytics:** Full visibility into upstream provider prompt-cache reads/writes (e.g. Claude Prompt Caching, Gemini Context Caching) and proxy-level duplicate request caching.
 - **Token-Bucket Rate Limiting:** High-throughput request (RPM) and token (TPM) rate limiting backed by hash-sharded Cloudflare Durable Objects.
@@ -26,7 +28,12 @@ A serverless, multi-tenant LLM gateway built on [Cloudflare Workers](https://www
 | **Google AI Studio**         | Native Gemini API Key                                  | ✅        | ✅                           | ✅                 |
 | **OpenAI**                   | Standard API Key                                       | ✅        | ✅                           | ✅                 |
 | **Anthropic**                | Standard API Key                                       | ✅        | ✅                           | ✅                 |
-| **Custom OpenAI-Compatible** | Any baseUrl (Ollama, vLLM, OpenRouter, DeepSeek, etc.) | ✅        | ✅                           | Provider-dependent |
+| **Custom OpenAI-Compatible** | Any baseUrl (Ollama, vLLM, OpenRouter, DeepSeek, etc.) | ✅ | ✅                           | Provider-dependent |
+| **Cloudflare Workers AI**   | Account ID + API token                                | ✅ | Provider-dependent           | Provider-dependent |
+
+Cloudflare Workers AI also supports the proxy's OpenAI-compatible `POST /v1/embeddings` endpoint. Configure the provider with your Cloudflare account ID and use model IDs such as `@cf/baai/bge-large-en-v1.5`.
+
+> Cloudflare's Workers AI free allocation is account-based; adding multiple API tokens does not multiply the free quota.
 
 > **Google Vertex AI Auth Modes:**
 >
@@ -155,9 +162,20 @@ curl -X POST https://proxy.yourdomain.com/v1/chat/completions \
   }'
 ```
 
-### 3. Dedicated Tenant Base URL
+### 3. Key rotation and embeddings
 
-Tenants with a prefix can route without provider prefixes:
+A provider can store multiple keys, one per line. `first` always uses the first key, `round-robin` rotates the starting key and fails over on retryable upstream errors, and `failover` starts with the first key and tries subsequent keys when the upstream returns 401, 403, 429, or a 5xx response. Retries happen before a streaming response is returned and do not create additional provider quota; Cloudflare Workers AI's free allocation remains account-based.
+
+Cloudflare Workers AI embeddings can be called through the same proxy base URL:
+
+```bash
+curl -X POST https://proxy.yourdomain.com/v1/embeddings \
+  -H "Authorization: Bearer proxy_sec_..." \
+  -H "Content-Type: application/json" \
+  -d '{"model":"cloudflare-workers-ai/@cf/baai/bge-large-en-v1.5","input":"hello"}'
+```
+
+### 4. Dedicated Tenant Base URL
 
 ```bash
 curl https://proxy.yourdomain.com/proxy_a1b2c3/v1/models \

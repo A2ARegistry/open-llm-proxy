@@ -104,10 +104,32 @@ function validateSettings(settings: unknown): Record<string, unknown> {
   }
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(settings)) {
-    if (key === "chatCompletionPath" || key === "modelsPath") {
+    if (
+      key === "chatCompletionPath" ||
+      key === "modelsPath" ||
+      key === "embeddingsPath"
+    ) {
       if (typeof value !== "string" || !value.startsWith("/")) {
         throw new Error(`settings.${key} must be an absolute path`);
       }
+    } else if (key === "rotationStrategy") {
+      if (
+        value !== "first" &&
+        value !== "round-robin" &&
+        value !== "failover"
+      ) {
+        throw new Error(
+          "settings.rotationStrategy must be first, round-robin, or failover",
+        );
+      }
+      out[key] = value;
+      continue;
+    } else if (key === "accountId") {
+      if (typeof value !== "string" || !/^[a-f0-9]{32}$/i.test(value.trim())) {
+        throw new Error("settings.accountId must be a 32-character Cloudflare account ID");
+      }
+      out[key] = value.trim();
+      continue;
     } else if (key === "baseUrl") {
       if (typeof value !== "string" || !BASE_URL_RE.test(value.trim())) {
         throw new Error("settings.baseUrl must be an http(s) URL");
@@ -240,6 +262,10 @@ providerConfigRouter.put("/:provider", async (c) => {
   let settings: Record<string, unknown>;
   try {
     settings = validateSettings(body.settings);
+    if (body.settings === undefined) {
+      const existing = await getProviderConfig(c.env, orgId, provider);
+      settings = { ...(existing?.settings ?? {}), ...settings };
+    }
     if (provider === "google-vertex") {
       // Vertex settings carry the auth mode + GCP project/location; validate
       // them together with the credential before persisting anything. When no
@@ -252,6 +278,11 @@ providerConfigRouter.put("/:provider", async (c) => {
       // A custom OpenAI-compatible endpoint is only meaningful with a base URL.
       if (typeof settings.baseUrl !== "string" || !settings.baseUrl) {
         throw new Error("settings.baseUrl is required for custom providers");
+      }
+    }
+    if (provider === "cloudflare-workers-ai") {
+      if (typeof settings.accountId !== "string" || !settings.accountId) {
+        throw new Error("settings.accountId is required for Cloudflare Workers AI");
       }
     }
     if ("trace" in settings && typeof settings.trace !== "boolean") {

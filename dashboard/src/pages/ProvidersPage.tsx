@@ -44,6 +44,7 @@ const PROVIDER_CATALOG: { id: string; name: string; needsKey: boolean }[] = [
     needsKey: true,
   },
   { id: "google-vertex", name: "Google Vertex AI", needsKey: true },
+  { id: "cloudflare-workers-ai", name: "Cloudflare Workers AI", needsKey: true },
   { id: "deepseek", name: "DeepSeek", needsKey: true },
   { id: "mistral", name: "Mistral", needsKey: true },
   { id: "groq", name: "Groq", needsKey: true },
@@ -490,6 +491,19 @@ function ProviderFormModal({
     isCustom ? String(initialSettings?.modelsPath ?? "") : "",
   );
   const [keysText, setKeysText] = useState(hasExistingKeys ? KEY_MASK : "");
+  const [accountId, setAccountId] = useState(
+    provider === "cloudflare-workers-ai"
+      ? String(initialSettings?.accountId ?? "")
+      : "",
+  );
+  const [rotationStrategy, setRotationStrategy] = useState<
+    "first" | "round-robin" | "failover"
+  >(
+    initialSettings?.rotationStrategy === "round-robin" ||
+      initialSettings?.rotationStrategy === "failover"
+      ? initialSettings.rotationStrategy
+      : "first",
+  );
   const [projectId, setProjectId] = useState(
     isVertex ? String(initialSettings?.projectId ?? "") : "",
   );
@@ -575,6 +589,7 @@ function ProviderFormModal({
       return true;
     }
     const hasRealKey = !isMaskedKey(keysText);
+    if (selected === "cloudflare-workers-ai" && !accountId.trim()) return false;
     if (selected === "google-vertex") {
       if (authMode === "service-account") {
         return (
@@ -636,6 +651,7 @@ function ProviderFormModal({
           ...(chatPath.trim() ? { chatCompletionPath: chatPath.trim() } : {}),
           ...(modelsPath.trim() ? { modelsPath: modelsPath.trim() } : {}),
           customModels: parseCustomModels(),
+          rotationStrategy,
           ...traceSetting,
           ...defaultModelSetting,
         },
@@ -644,7 +660,14 @@ function ProviderFormModal({
     return {
       ...keysSetting,
       ...nameSetting,
-      settings: { ...traceSetting, ...defaultModelSetting },
+      settings: {
+        ...(selected === "cloudflare-workers-ai"
+          ? { accountId: accountId.trim() }
+          : {}),
+        rotationStrategy,
+        ...traceSetting,
+        ...defaultModelSetting,
+      },
     };
   };
 
@@ -1034,6 +1057,20 @@ function ProviderFormModal({
           </div>
         )}
 
+        {!showCustomFields && selected === "cloudflare-workers-ai" && (
+          <div>
+            <Label>Cloudflare account ID</Label>
+            <Input
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              placeholder="32-character Cloudflare account ID"
+            />
+            <p className="mt-1 text-[11px] text-gray-400">
+              Used to build the Workers AI API endpoint. API tokens must have Workers AI access.
+            </p>
+          </div>
+        )}
+
         {!showCustomFields && (
           <div>
             <Label>Default model</Label>
@@ -1048,6 +1085,24 @@ function ProviderFormModal({
             </p>
           </div>
         )}
+
+        <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3">
+          <Label>API key rotation</Label>
+          <Select
+            value={rotationStrategy}
+            onChange={(value) =>
+              setRotationStrategy(value as "first" | "round-robin" | "failover")
+            }
+            options={[
+              { value: "first", label: "First key only" },
+              { value: "round-robin", label: "Round-robin with failover" },
+              { value: "failover", label: "First key, then fail over" },
+            ]}
+          />
+          <p className="mt-1 text-[11px] text-gray-400">
+            Retries another key only for authentication, rate-limit, or server errors before a response stream starts.
+          </p>
+        </div>
 
         <div
           className={`rounded-lg border p-3 ${

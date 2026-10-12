@@ -23,11 +23,13 @@ export interface ProviderConfigRow {
 }
 
 export interface ProviderSettings {
-  rotationStrategy?: "round-robin" | "first" | "random";
+  rotationStrategy?: "round-robin" | "first" | "failover";
   timeout?: number;
   baseUrl?: string;
+  accountId?: string;
   chatCompletionPath?: string;
   modelsPath?: string;
+  embeddingsPath?: string;
   /**
    * Diagnostic Tracing: When enabled, logs full raw/converted request and
    * response payloads for bug investigations. Should be enabled for testing only.

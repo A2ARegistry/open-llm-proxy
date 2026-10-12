@@ -71,20 +71,27 @@ async function fetchV1Models(
   keys: string[],
   settings: {
     baseUrl?: string;
+    accountId?: string;
     chatCompletionPath?: string;
     modelsPath?: string;
+    embeddingsPath?: string;
+    rotationStrategy?: "first" | "round-robin" | "failover";
   },
 ): Promise<CatalogEntry[]> {
   const client = new V1OpenAICompatibleClient({
     provider,
     keys,
-    custom: settings.baseUrl
-      ? {
-          baseUrl: settings.baseUrl,
-          chatCompletionPath: settings.chatCompletionPath,
-          modelsPath: settings.modelsPath,
-        }
-      : undefined,
+    custom:
+      settings.baseUrl || settings.accountId
+        ? {
+            baseUrl: settings.baseUrl,
+            accountId: settings.accountId,
+            chatCompletionPath: settings.chatCompletionPath,
+            modelsPath: settings.modelsPath,
+            embeddingsPath: settings.embeddingsPath,
+          }
+        : undefined,
+    rotationStrategy: settings.rotationStrategy,
   });
   const abortController = new AbortController();
   const timer = setTimeout(
