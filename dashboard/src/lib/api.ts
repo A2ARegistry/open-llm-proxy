@@ -150,6 +150,26 @@ export interface CacheUsageRow {
   responseCacheHits: number;
 }
 
+/** Usage totals for one API key (GET /api/metrics/keys). */
+export interface KeyUsage {
+  /** Null for traffic without a key (dashboard sessions). */
+  apiKeyId: string | null;
+  /** Null when the key was deleted or the row has no key. */
+  name: string | null;
+  keyPrefix: string | null;
+  status: string | null;
+  requests: number;
+  errors: number;
+  /** Uncached input tokens; cache reads are separate. */
+  tokensInput: number;
+  tokensOutput: number;
+  tokensCacheRead: number;
+  costUsd: number;
+  latencyAvgMs: number;
+  /** Unix seconds of the newest request in the window. */
+  lastRequestAt: number;
+}
+
 export interface RequestRow {
   id: string;
   api_key_id: string | null;

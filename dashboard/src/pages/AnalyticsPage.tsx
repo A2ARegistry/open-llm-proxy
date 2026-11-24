@@ -7,7 +7,13 @@ import {
   Tooltip,
 } from "../components/ui";
 import { apiGet } from "../lib/api";
-import { CacheUsageRow, LatencyStat, RequestRow, SpeedStat } from "../lib/api";
+import {
+  CacheUsageRow,
+  KeyUsage,
+  LatencyStat,
+  RequestRow,
+  SpeedStat,
+} from "../lib/api";
 import {
   fmtCount,
   fmtDateTime,
@@ -15,6 +21,7 @@ import {
   fmtTokens,
   fmtTps,
   fmtUsd,
+  keyLabel,
   pct,
   rowDecodeTps,
 } from "../lib/format";
@@ -63,6 +70,13 @@ export function AnalyticsPage() {
         `/api/metrics/cache?start=${dayStart}&end=${now}`,
       ),
   });
+  const keys = useQuery({
+    queryKey: ["analytics-keys"],
+    queryFn: () =>
+      apiGet<{ keys: KeyUsage[] }>(
+        `/api/metrics/keys?start=${dayStart}&end=${now}`,
+      ),
+  });
   const requests = useQuery({
     queryKey: ["analytics-requests"],
     queryFn: () =>
@@ -93,6 +107,10 @@ export function AnalyticsPage() {
   const tokens = (s.tokensInput ?? 0) + (s.tokensOutput ?? 0);
   const cacheRows = cache.data?.usage ?? [];
   const speedRows = speed.data?.speed ?? [];
+  const keyRows = keys.data?.keys ?? [];
+  const keyNames = new Map(
+    keyRows.map((k) => [k.apiKeyId, keyLabel(k.apiKeyId, k.name)]),
+  );
   const totalCacheRead = s.tokensCacheRead ?? 0;
   const totalCacheWrite = s.tokensCacheWrite ?? 0;
   const totalResponseHits = s.responseCacheHits ?? 0;
@@ -150,6 +168,86 @@ export function AnalyticsPage() {
           hint="served by the proxy, no upstream call"
         />
       </div>
+
+      <Card
+        title="Usage by API key"
+        subtitle="Requests, tokens and errors per key. Input excludes cached prompt tokens."
+      >
+        {keyRows.length === 0 ? (
+          <EmptyState title="No key usage yet" />
+        ) : (
+          <div className="-m-5 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
+                  <th className="px-5 py-3 font-medium">Key</th>
+                  <th className="px-5 py-3 font-medium">Requests</th>
+                  <th className="px-5 py-3 font-medium">Errors</th>
+                  <th className="px-5 py-3 text-right font-medium">Input</th>
+                  <th className="px-5 py-3 text-right font-medium">
+                    Cached Read
+                  </th>
+                  <th className="px-5 py-3 text-right font-medium">Output</th>
+                  <th className="px-5 py-3 text-right font-medium">Cost</th>
+                  <th className="px-5 py-3 font-medium">Avg latency</th>
+                  <th className="px-5 py-3 font-medium">Last request</th>
+                </tr>
+              </thead>
+              <tbody>
+                {keyRows.map((k) => {
+                  const last = fmtDateTime(k.lastRequestAt);
+                  return (
+                    <tr
+                      key={k.apiKeyId ?? "none"}
+                      className="border-b border-gray-50 last:border-0"
+                    >
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
+                          <span className="font-medium">
+                            {keyLabel(k.apiKeyId, k.name)}
+                          </span>
+                          {k.keyPrefix && (
+                            <span className="font-mono text-[11px] text-gray-400">
+                              {k.keyPrefix}…
+                            </span>
+                          )}
+                          {k.status === "revoked" && (
+                            <Badge tone="amber">revoked</Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">{fmtCount(k.requests)}</td>
+                      <td className="px-5 py-3">
+                        {k.errors > 0 ? (
+                          <Badge tone="red">{fmtCount(k.errors)}</Badge>
+                        ) : (
+                          <span className="text-gray-400">0</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-right text-gray-600">
+                        {fmtTokens(k.tokensInput)}
+                      </td>
+                      <td className="px-5 py-3 text-right text-gray-600">
+                        {fmtTokens(k.tokensCacheRead)}
+                      </td>
+                      <td className="px-5 py-3 text-right text-gray-600">
+                        {fmtTokens(k.tokensOutput)}
+                      </td>
+                      <td className="px-5 py-3 text-right text-gray-700">
+                        {fmtUsd(k.costUsd)}
+                      </td>
+                      <td className="px-5 py-3">{fmtMs(k.latencyAvgMs)}</td>
+                      <td className="px-5 py-3 whitespace-nowrap text-gray-600">
+                        {last.full}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       <Card
         title="Latency by provider"
@@ -337,6 +435,7 @@ export function AnalyticsPage() {
               <thead>
                 <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
                   <th className="px-5 py-3 font-medium">Time</th>
+                  <th className="px-5 py-3 font-medium">Key</th>
                   <th className="px-5 py-3 font-medium">Provider</th>
                   <th className="px-5 py-3 font-medium">Model</th>
                   <th className="px-5 py-3 font-medium">Status</th>
@@ -367,6 +466,10 @@ export function AnalyticsPage() {
                             {dt.date}
                           </span>
                         </div>
+                      </td>
+                      <td className="px-5 py-3 text-gray-600">
+                        {keyNames.get(r.api_key_id) ??
+                          keyLabel(r.api_key_id, null)}
                       </td>
                       <td className="px-5 py-3 font-medium">{r.provider}</td>
                       <td className="px-5 py-3 text-gray-600">

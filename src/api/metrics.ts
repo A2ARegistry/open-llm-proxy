@@ -1,5 +1,6 @@
 import type { AppBindings } from "../app";
 import { cacheUsageByModel, spendForRange } from "../metrics/cost-tracker";
+import { usageByKey } from "../metrics/key-usage";
 import { percentile } from "../metrics/percentile";
 import { speedByModel } from "../metrics/speed-stats";
 import { Hono } from "hono";
@@ -112,6 +113,19 @@ metricsRouter.get("/speed", async (c) => {
 
   const speed = await speedByModel(c.env, orgId, start, end);
   return c.json({ start, end, speed });
+});
+
+// GET /api/metrics/keys — requests, tokens, cost, errors and latency per API
+// key over the window. Keyless (dashboard session) traffic is one row with a
+// null key id.
+metricsRouter.get("/keys", async (c) => {
+  const orgId = c.get("session")!.organizationId!;
+  const { start, end } = rangeParams(c);
+  const invalid = validateRange(start, end);
+  if (invalid) return c.json({ error: invalid }, 400);
+
+  const keys = await usageByKey(c.env, orgId, start, end);
+  return c.json({ start, end, keys });
 });
 
 // GET /api/metrics/requests — recent request rows (tenant-scoped).

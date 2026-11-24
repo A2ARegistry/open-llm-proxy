@@ -99,3 +99,9 @@ export function rowDecodeTps(
 export function pct(ratio: number): string {
   return `${(ratio * 100).toFixed(0)}%`;
 }
+
+/** Display name for an API key in usage tables. */
+export function keyLabel(apiKeyId: string | null, name: string | null): string {
+  if (name) return name;
+  return apiKeyId ? "Deleted key" : "Dashboard (no key)";
+}
