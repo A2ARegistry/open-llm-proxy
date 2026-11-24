@@ -20,6 +20,7 @@ import {
   samplerBindings,
   type LiveBinding,
 } from "../live/sources";
+import { initLogger, log } from "../utils/logger";
 import { DurableObject } from "cloudflare:workers";
 
 export const BOX_SAMPLER_NAME = "box";
@@ -51,13 +52,16 @@ export class BoxSampler extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
+    initLogger(this.env);
     const due =
       (await this.ctx.storage.get<number>("due")) ??
       nextBoundary(Date.now()) - 10_000;
     try {
-      await this.tick(Math.floor(due / 1000));
+      // A late alarm must not stamp rows with a stale slot.
+      const slot = Math.max(due, Math.floor(Date.now() / 10_000) * 10_000);
+      await this.tick(Math.floor(slot / 1000));
     } catch (error) {
-      console.error("box sampler tick failed", error);
+      log.error("box sampler tick failed", error);
     } finally {
       await this.schedule(nextAlarmAt(due, Date.now()));
     }
@@ -76,8 +80,12 @@ export class BoxSampler extends DurableObject<Env> {
     const ticks = ((await this.ctx.storage.get<number>("ticks")) ?? 0) + 1;
     await this.ctx.storage.put("ticks", ticks);
     if (ticks >= FLUSH_EVERY_TICKS) {
-      await this.flush();
-      await this.ctx.storage.put("ticks", 0);
+      // Reset either way: a failing D1 is retried at the flush cadence, not every tick.
+      try {
+        await this.flush();
+      } finally {
+        await this.ctx.storage.put("ticks", 0);
+      }
     }
   }
 

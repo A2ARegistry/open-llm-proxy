@@ -189,12 +189,16 @@ describe("BoxSampler", () => {
         expect(buffered(state, "inference")).toBe(6);
         expect(await state.storage.getAlarm()).not.toBeNull();
         expect(error).toHaveBeenCalled();
+        // Retried at the flush cadence, not on every tick.
+        for (let i = 0; i < FLUSH_EVERY_TICKS - 1; i++) await sampler.alarm();
+        expect(db.batch).toHaveBeenCalledTimes(1);
         db.batch.mockImplementation((s: D1PreparedStatement[]) =>
           env.DB.batch(s),
         );
         await sampler.alarm();
+        expect(db.batch).toHaveBeenCalledTimes(2);
         expect(buffered(state, "inference")).toBe(0);
-        expect(await count("inference_samples")).toBe(7);
+        expect(await count("inference_samples")).toBe(12);
       },
       db,
     );
@@ -240,6 +244,20 @@ describe("BoxSampler", () => {
         await sampler.alarm();
         expect(buffered(state, "inference")).toBe(1);
         expect(await state.storage.getAlarm()).not.toBeNull();
+      },
+    );
+  });
+
+  it("stamps a late alarm with the current boundary", async () => {
+    await inSampler(
+      { HALOGEN: healthy(), NODE: node() },
+      async (sampler, state) => {
+        await state.storage.put("due", 10_000);
+        await sampler.alarm();
+        const row = state.storage.sql
+          .exec("SELECT ts FROM pending WHERE kind = 'inference'")
+          .one() as { ts: number };
+        expect(row.ts).toBe(Math.floor(Date.now() / 10_000) * 10);
       },
     );
   });
