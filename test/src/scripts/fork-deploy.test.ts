@@ -1,6 +1,7 @@
 // [fork] W9: deploy-time options for VPC services, routes and pricing.
 import {
   applyForkOptions,
+  forkOptionsFromEnv,
   zeroPriceSql,
 } from "../../../scripts/fork-deploy.mjs";
 import { describe, expect, it } from "vitest";
@@ -117,4 +118,61 @@ describe("zeroPriceSql", () => {
       expect(() => zeroPriceSql(provider)).toThrow("provider id");
     },
   );
+});
+
+describe("forkOptionsFromEnv", () => {
+  const EMPTY_FLAGS = {
+    "vpc-service-id": undefined,
+    "vpc-allow": undefined,
+    "custom-domain": undefined,
+    "zero-price-provider": undefined,
+  };
+
+  it("returns no options when neither flags nor env are set", () => {
+    expect(forkOptionsFromEnv(EMPTY_FLAGS, {})).toEqual({
+      vpcServiceIds: [],
+      vpcAllow: [],
+      customDomain: undefined,
+      zeroPriceProviders: [],
+    });
+  });
+
+  it("reads comma-separated lists and the domain from env", () => {
+    const out = forkOptionsFromEnv(EMPTY_FLAGS, {
+      VPC_SERVICE_IDS: `HALOGEN=${SERVICE_ID}, OTHER=${SERVICE_ID}`,
+      VPC_ALLOW: "HALOGEN=org_a|org_b,OTHER=*",
+      CUSTOM_DOMAIN: " api.example.com ",
+      ZERO_PRICE_PROVIDERS: "local-m5,,other",
+    });
+    expect(out).toEqual({
+      vpcServiceIds: [`HALOGEN=${SERVICE_ID}`, `OTHER=${SERVICE_ID}`],
+      vpcAllow: ["HALOGEN=org_a|org_b", "OTHER=*"],
+      customDomain: "api.example.com",
+      zeroPriceProviders: ["local-m5", "other"],
+    });
+  });
+
+  it("prefers flags over env, per option", () => {
+    const out = forkOptionsFromEnv(
+      {
+        ...EMPTY_FLAGS,
+        "custom-domain": "flag.example.com",
+        "zero-price-provider": ["flag-provider"],
+      },
+      {
+        CUSTOM_DOMAIN: "env.example.com",
+        ZERO_PRICE_PROVIDERS: "env-provider",
+        VPC_ALLOW: "HALOGEN=org_env",
+      },
+    );
+    expect(out.customDomain).toBe("flag.example.com");
+    expect(out.zeroPriceProviders).toEqual(["flag-provider"]);
+    expect(out.vpcAllow).toEqual(["HALOGEN=org_env"]);
+  });
+
+  it("treats a blank CUSTOM_DOMAIN as unset", () => {
+    expect(
+      forkOptionsFromEnv(EMPTY_FLAGS, { CUSTOM_DOMAIN: "  " }).customDomain,
+    ).toBeUndefined();
+  });
 });

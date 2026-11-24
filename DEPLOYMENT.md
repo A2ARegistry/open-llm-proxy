@@ -180,6 +180,15 @@ This fork can reach a self-hosted, OpenAI-compatible server that has no public a
 | `--custom-domain <host>`     | Serve on this custom domain; turns `workers.dev` and preview URLs off                                                  |
 | `--zero-price-provider <id>` | Price every model of this provider at 0, so spend reflects only hosted providers (repeatable)                          |
 
+Git builds (Step 3) cannot pass flags, so each flag also reads a build environment variable. A flag wins over its variable.
+
+| Variable               | Flag                    | Format                               |
+| ---------------------- | ----------------------- | ------------------------------------ |
+| `VPC_SERVICE_IDS`      | `--vpc-service-id`      | `NAME=ID`, comma-separated           |
+| `VPC_ALLOW`            | `--vpc-allow`           | `NAME=org_a\|org_b`, comma-separated |
+| `CUSTOM_DOMAIN`        | `--custom-domain`       | Hostname, e.g. `api.example.com`     |
+| `ZERO_PRICE_PROVIDERS` | `--zero-price-provider` | Provider ids, comma-separated        |
+
 Real ids are injected into the git-ignored generated config only; never commit them.
 
 ---

@@ -27,12 +27,15 @@
  *   [fork] W9 options (see FORK.md):
  *   --vpc-service-id NAME=ID  Bind a Workers VPC service (repeatable), e.g.
  *                    HALOGEN=<uuid from `wrangler vpc service list`>.
+ *                    (or env VPC_SERVICE_IDS, comma-separated)
  *   --vpc-allow NAME=ORGS     Organizations allowed to use NAME: "org_a|org_b"
  *                    or "*" (repeatable). Without it NAME allows nobody.
+ *                    (or env VPC_ALLOW, comma-separated)
  *   --custom-domain <host>    Serve on this custom domain (e.g. api.example.com);
- *                    turns workers.dev and preview URLs off.
+ *                    turns workers.dev and preview URLs off. (or env CUSTOM_DOMAIN)
  *   --zero-price-provider <id> Price every model of this provider at 0
  *                    (repeatable), e.g. local-m5. Runs after migrations.
+ *                    (or env ZERO_PRICE_PROVIDERS, comma-separated)
  *   --migrate-only   Apply D1 migrations and exit
  *   --skip-migrate   Deploy without applying migrations
  *   --skip-build     Skip `npm run build` (tsc + dashboard)
@@ -40,7 +43,11 @@
  *
  * Anything after the flags is passed through to `wrangler deploy`.
  */
-import { applyForkOptions, zeroPriceSql } from "./fork-deploy.mjs";
+import {
+  applyForkOptions,
+  forkOptionsFromEnv,
+  zeroPriceSql,
+} from "./fork-deploy.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
@@ -235,23 +242,20 @@ if (adminEmail || rawAdminPassword !== undefined) {
 }
 
 // [fork] W9: VPC services, custom domain, zero-priced providers.
+const forkOptions = forkOptionsFromEnv(opts, process.env);
 let zeroPriceStatements = [];
 try {
-  const { warnings } = applyForkOptions(prod, {
-    vpcServiceIds: opts["vpc-service-id"],
-    vpcAllow: opts["vpc-allow"],
-    customDomain: opts["custom-domain"],
-  });
+  const { warnings } = applyForkOptions(prod, forkOptions);
   for (const warning of warnings) console.warn(`!  ${warning}`);
-  zeroPriceStatements = (opts["zero-price-provider"] ?? []).map(zeroPriceSql);
+  zeroPriceStatements = forkOptions.zeroPriceProviders.map(zeroPriceSql);
 } catch (err) {
   die(err.message);
 }
 if (prod.vpc_services?.length) {
   console.log(`VPC: VPC_BINDINGS=${prod.vars.VPC_BINDINGS}`);
 }
-if (opts["custom-domain"]) {
-  console.log(`DOMAIN: ${opts["custom-domain"]} (workers.dev off)`);
+if (forkOptions.customDomain) {
+  console.log(`DOMAIN: ${forkOptions.customDomain} (workers.dev off)`);
 }
 
 if (opts["migrate-only"]) {

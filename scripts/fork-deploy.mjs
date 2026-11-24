@@ -101,6 +101,33 @@ export function applyForkOptions(prod, options) {
   return { warnings };
 }
 
+function envList(value) {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Resolve the fork's deploy options: CLI flag first, then env var.
+ * Env vars exist for Git builds (Workers Builds), which cannot pass flags.
+ *
+ * - VPC_SERVICE_IDS: "NAME=ID,NAME=ID"
+ * - VPC_ALLOW: "NAME=org_a|org_b,NAME=*"
+ * - CUSTOM_DOMAIN: "api.example.com"
+ * - ZERO_PRICE_PROVIDERS: "provider-a,provider-b"
+ */
+export function forkOptionsFromEnv(flags, env) {
+  const customDomain = (flags["custom-domain"] ?? env.CUSTOM_DOMAIN)?.trim();
+  return {
+    vpcServiceIds: flags["vpc-service-id"] ?? envList(env.VPC_SERVICE_IDS),
+    vpcAllow: flags["vpc-allow"] ?? envList(env.VPC_ALLOW),
+    customDomain: customDomain || undefined,
+    zeroPriceProviders:
+      flags["zero-price-provider"] ?? envList(env.ZERO_PRICE_PROVIDERS),
+  };
+}
+
 /** SQL that prices every model of `provider` at 0 (provider-wide '*' row). */
 export function zeroPriceSql(provider) {
   if (!PROVIDER_RE.test(provider)) {
