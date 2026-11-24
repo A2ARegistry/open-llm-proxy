@@ -185,9 +185,10 @@ function validateSettings(settings: unknown): Record<string, unknown> {
 function fetcherFor(
   env: object,
   settings: Record<string, unknown>,
+  organizationId: string,
 ): { fetcher?: UpstreamFetcher; error?: string } {
   try {
-    return { fetcher: resolveFetcher(env, settings) };
+    return { fetcher: resolveFetcher(env, settings, organizationId) };
   } catch (err) {
     return { error: (err as Error).message };
   }
@@ -326,6 +327,8 @@ providerConfigRouter.put("/:provider", async (c) => {
     if ("trace" in settings && typeof settings.trace !== "boolean") {
       throw new Error("settings.trace must be a boolean");
     }
+    // [fork] W1: only orgs allowlisted in VPC_BINDINGS may save a vpc provider.
+    resolveFetcher(c.env, settings, orgId);
   } catch (err) {
     return c.json({ error: (err as Error).message }, 400);
   }
@@ -476,7 +479,7 @@ providerConfigRouter.post("/:provider/test", async (c) => {
     testSettings = { ...cfg.settings, ...settings };
   }
 
-  const transport = fetcherFor(c.env, testSettings); // [fork] W1
+  const transport = fetcherFor(c.env, testSettings, orgId); // [fork] W1
   if (transport.error) return c.json({ error: transport.error }, 400);
   const result = await testProviderConnection({
     provider,
@@ -542,7 +545,7 @@ providerConfigRouter.post("/:provider/models", async (c) => {
     testSettings = { ...cfg.settings, ...settings };
   }
 
-  const transport = fetcherFor(c.env, testSettings); // [fork] W1
+  const transport = fetcherFor(c.env, testSettings, orgId); // [fork] W1
   if (transport.error) return c.json({ error: transport.error }, 400);
   const result = await fetchProviderModels({
     provider,

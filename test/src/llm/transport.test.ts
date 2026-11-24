@@ -3,86 +3,177 @@ import { resolveFetcher } from "~/src/llm/transport";
 import { TransportNotConfiguredError } from "~/src/llm/transport-error";
 
 const binding = { fetch: async () => new Response("ok") };
+const ORG = "org_owner";
+const vpc = {
+  transport: "vpc",
+  vpcBinding: "HALOGEN",
+  baseUrl: "http://127.0.0.1:11435",
+};
+const env = { VPC_BINDINGS: `HALOGEN:${ORG}`, HALOGEN: binding };
+
+function expectNotConfigured(fn: () => unknown, message: string) {
+  expect(fn).toThrow(TransportNotConfiguredError);
+  expect(fn).toThrow(message);
+}
 
 describe("resolveFetcher", () => {
   it("returns undefined when settings are missing", () => {
-    expect(resolveFetcher({ VPC_BINDINGS: "HALOGEN" }, undefined)).toBe(
-      undefined,
-    );
+    expect(resolveFetcher(env, undefined, ORG)).toBe(undefined);
   });
 
   it("returns undefined for the public transport", () => {
-    expect(
-      resolveFetcher(
-        { VPC_BINDINGS: "HALOGEN", HALOGEN: binding },
-        { transport: "public", vpcBinding: "HALOGEN" },
-      ),
-    ).toBe(undefined);
-  });
-
-  it("returns undefined when no transport is set", () => {
-    expect(resolveFetcher({ HALOGEN: binding }, { baseUrl: "x" })).toBe(
+    expect(resolveFetcher(env, { ...vpc, transport: "public" }, ORG)).toBe(
       undefined,
     );
   });
 
-  it("returns the allowlisted binding for the vpc transport", () => {
+  it("returns undefined when no transport is set", () => {
+    expect(resolveFetcher(env, { baseUrl: "x" }, ORG)).toBe(undefined);
+  });
+
+  it("returns the binding when the org is allowlisted for it", () => {
     expect(
       resolveFetcher(
-        { VPC_BINDINGS: " OTHER , HALOGEN ", HALOGEN: binding },
-        { transport: "vpc", vpcBinding: "HALOGEN" },
+        {
+          VPC_BINDINGS: ` OTHER:org_x , HALOGEN:org_y|${ORG} `,
+          HALOGEN: binding,
+        },
+        vpc,
+        ORG,
       ),
     ).toBe(binding);
   });
 
-  it("throws not_configured when the binding is not allowlisted", () => {
-    expect(() =>
-      resolveFetcher(
-        { VPC_BINDINGS: "HALOGEN", DB: binding },
-        { transport: "vpc", vpcBinding: "DB" },
-      ),
-    ).toThrow(TransportNotConfiguredError);
+  it("allows every org when the binding is listed with *", () => {
+    expect(
+      resolveFetcher({ VPC_BINDINGS: "HALOGEN:*", HALOGEN: binding }, vpc, ORG),
+    ).toBe(binding);
   });
 
-  it("throws not_configured when the allowlist is unset", () => {
-    expect(() =>
-      resolveFetcher(
-        { HALOGEN: binding },
-        { transport: "vpc", vpcBinding: "HALOGEN" },
-      ),
-    ).toThrow(TransportNotConfiguredError);
+  it("rejects an org that is not listed for the binding", () => {
+    expectNotConfigured(
+      () => resolveFetcher(env, vpc, "org_intruder"),
+      "not allowed",
+    );
   });
 
-  it("throws not_configured when vpcBinding is missing", () => {
-    expect(() =>
-      resolveFetcher(
-        { VPC_BINDINGS: "HALOGEN", HALOGEN: binding },
-        { transport: "vpc" },
-      ),
-    ).toThrow(TransportNotConfiguredError);
+  it("rejects a bare binding name with no org list", () => {
+    expectNotConfigured(
+      () =>
+        resolveFetcher({ VPC_BINDINGS: "HALOGEN", HALOGEN: binding }, vpc, ORG),
+      "not allowed",
+    );
   });
 
-  it("throws not_configured when the allowlisted binding is absent from env", () => {
-    expect(() =>
-      resolveFetcher(
-        { VPC_BINDINGS: "HALOGEN" },
-        { transport: "vpc", vpcBinding: "HALOGEN" },
-      ),
-    ).toThrow(TransportNotConfiguredError);
+  it("rejects a binding that is not listed at all", () => {
+    expectNotConfigured(
+      () =>
+        resolveFetcher(
+          { ...env, DB: binding },
+          { ...vpc, vpcBinding: "DB" },
+          ORG,
+        ),
+      "not allowed",
+    );
   });
 
-  it("throws not_configured when the env value cannot fetch", () => {
-    expect(() =>
+  it("rejects when the allowlist is unset", () => {
+    expectNotConfigured(
+      () => resolveFetcher({ HALOGEN: binding }, vpc, ORG),
+      "not allowed",
+    );
+  });
+
+  it("rejects a vpc transport without vpcBinding", () => {
+    expectNotConfigured(
+      () => resolveFetcher(env, { ...vpc, vpcBinding: undefined }, ORG),
+      "vpcBinding is required",
+    );
+  });
+
+  it("rejects an allowlisted binding that is absent from env", () => {
+    expectNotConfigured(
+      () => resolveFetcher({ VPC_BINDINGS: `HALOGEN:${ORG}` }, vpc, ORG),
+      "not bound",
+    );
+  });
+
+  it("rejects an env value that cannot fetch", () => {
+    expectNotConfigured(
+      () =>
+        resolveFetcher(
+          { VPC_BINDINGS: `HALOGEN:${ORG}`, HALOGEN: "nope" },
+          vpc,
+          ORG,
+        ),
+      "not bound",
+    );
+  });
+
+  it("rejects a base URL with a path", () => {
+    expectNotConfigured(
+      () =>
+        resolveFetcher(
+          env,
+          { ...vpc, baseUrl: "http://127.0.0.1:11435/admin" },
+          ORG,
+        ),
+      "baseUrl",
+    );
+  });
+
+  it("rejects a base URL that does not parse", () => {
+    expectNotConfigured(
+      () => resolveFetcher(env, { ...vpc, baseUrl: "not a url" }, ORG),
+      "baseUrl",
+    );
+  });
+
+  it("accepts a base URL with a trailing slash", () => {
+    expect(
+      resolveFetcher(env, { ...vpc, baseUrl: "http://127.0.0.1:11435/" }, ORG),
+    ).toBe(binding);
+  });
+
+  it.each(["chatCompletionPath", "modelsPath", "embeddingsPath"])(
+    "rejects a %s outside /v1/",
+    (key) => {
+      expectNotConfigured(
+        () => resolveFetcher(env, { ...vpc, [key]: "/admin/shutdown" }, ORG),
+        key,
+      );
+    },
+  );
+
+  it("rejects a path that climbs out of /v1/", () => {
+    expectNotConfigured(
+      () =>
+        resolveFetcher(
+          env,
+          { ...vpc, chatCompletionPath: "/v1/../admin" },
+          ORG,
+        ),
+      "chatCompletionPath",
+    );
+  });
+
+  it("accepts explicit /v1/ paths", () => {
+    expect(
       resolveFetcher(
-        { VPC_BINDINGS: "HALOGEN", HALOGEN: "not-a-binding" },
-        { transport: "vpc", vpcBinding: "HALOGEN" },
+        env,
+        {
+          ...vpc,
+          chatCompletionPath: "/v1/chat/completions",
+          modelsPath: "/v1/models",
+        },
+        ORG,
       ),
-    ).toThrow(TransportNotConfiguredError);
+    ).toBe(binding);
   });
 
   it("carries the not_configured code on the error", () => {
     try {
-      resolveFetcher({}, { transport: "vpc", vpcBinding: "HALOGEN" });
+      resolveFetcher({}, vpc, ORG);
       expect.unreachable();
     } catch (err) {
       expect((err as TransportNotConfiguredError).code).toBe("not_configured");

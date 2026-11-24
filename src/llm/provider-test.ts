@@ -472,7 +472,8 @@ async function probe(
       authHeader: authHeaderSummary(target.headers),
       requestSnippet: opts.body ? truncate(opts.body) : undefined,
       responseStatus: res.status,
-      responseSnippet: truncate(body),
+      // [fork] W1: never echo a private (vpc) upstream's body to the dashboard.
+      responseSnippet: opts.fetcher ? undefined : truncate(body),
       latencyMs,
     };
     if (res.ok) {

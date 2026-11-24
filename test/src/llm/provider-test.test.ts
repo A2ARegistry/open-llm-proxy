@@ -514,6 +514,9 @@ describe("provider-test with an injected fetcher", () => {
     expect(binding.fetch.mock.calls[0][0]).toBe(
       "http://127.0.0.1:11435/v1/chat/completions",
     );
+    // Private upstream: never echo its response body back to the dashboard.
+    expect(result.details?.responseSnippet).toBeUndefined();
+    expect(result.details?.responseStatus).toBe(200);
     vi.unstubAllGlobals();
   });
 

@@ -42,8 +42,9 @@
     // Log verbosity: debug | info | warn | error. Unset defaults to
     // `debug` in development and `info` in production.
     "LOG_LEVEL": "debug",
-    // [fork] W1: comma-separated Worker binding names that providers may use
-    // as a VPC transport (e.g. "HALOGEN"). Empty = VPC transport disabled.
+    // [fork] W1: Worker bindings that providers may use as a VPC transport,
+    // and which organizations may use each: "NAME:org_a|org_b,OTHER:*".
+    // A bare NAME allows nobody. Empty = VPC transport disabled.
     "VPC_BINDINGS": "",
     "SESSION_CACHE_TTL_SECONDS": "60",
     "RATE_LIMITER_SHARDS": "4",

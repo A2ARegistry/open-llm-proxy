@@ -241,7 +241,7 @@ export async function modelsV2(input: ModelsInput): Promise<Response> {
         // whose transport cannot be resolved is left out of the list.
         let fetcher: UpstreamFetcher | undefined;
         try {
-          fetcher = resolveFetcher(env, cfg.settings);
+          fetcher = resolveFetcher(env, cfg.settings, organizationId);
         } catch {
           return;
         }

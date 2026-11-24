@@ -789,7 +789,7 @@ describe("DELETE /api/providers/:provider", () => {
 // [fork] W1: VPC transport settings and binding resolution.
 describe("VPC transport settings", () => {
   const binding = { fetch: vi.fn() };
-  const vpcEnv = { VPC_BINDINGS: "HALOGEN", HALOGEN: binding };
+  const vpcEnv = { VPC_BINDINGS: "HALOGEN:org_1", HALOGEN: binding };
   const vpcSettings = {
     baseUrl: "http://127.0.0.1:11435",
     transport: "vpc",
@@ -825,6 +825,18 @@ describe("VPC transport settings", () => {
     expect(mockSaveProviderConfig.mock.calls[0][3].settings).toMatchObject(
       vpcSettings,
     );
+  });
+
+  it("rejects saving a vpc provider for an org that is not allowlisted", async () => {
+    const { status, body } = await send(
+      "PUT",
+      "/api/providers/local-m5",
+      { settings: vpcSettings },
+      { VPC_BINDINGS: "HALOGEN:org_owner", HALOGEN: binding },
+    );
+    expect(status).toBe(400);
+    expect(body.error).toContain("not allowed");
+    expect(mockSaveProviderConfig).not.toHaveBeenCalled();
   });
 
   it("rejects an unknown transport", async () => {

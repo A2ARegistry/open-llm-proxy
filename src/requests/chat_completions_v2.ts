@@ -846,7 +846,7 @@ export async function chatCompletionsV2(
     // [fork] W1: VPC providers reach their upstream through a Worker binding.
     let fetcher: UpstreamFetcher | undefined;
     try {
-      fetcher = resolveFetcher(env, config.settings);
+      fetcher = resolveFetcher(env, config.settings, organizationId);
     } catch (err) {
       log.warn(`[chat-completions] Transport not configured`, err);
       return errorBody("not_configured", (err as Error).message);

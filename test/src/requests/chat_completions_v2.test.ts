@@ -94,7 +94,7 @@ describe("chatCompletionsV2 with a vpc provider", () => {
   it("sends the upstream call through the allowlisted binding", async () => {
     const binding = { fetch: vi.fn().mockResolvedValue(completion()) };
 
-    const res = await chat({ VPC_BINDINGS: "HALOGEN", HALOGEN: binding });
+    const res = await chat({ VPC_BINDINGS: "HALOGEN:org_1", HALOGEN: binding });
 
     expect(res.status).toBe(200);
     expect(binding.fetch).toHaveBeenCalledTimes(1);
@@ -114,5 +114,17 @@ describe("chatCompletionsV2 with a vpc provider", () => {
     expect(body.error.code).toBe("not_configured");
     expect(binding.fetch).not.toHaveBeenCalled();
     expect(globalFetch).not.toHaveBeenCalled();
+  });
+
+  it("returns not_configured when the binding belongs to another org", async () => {
+    const binding = { fetch: vi.fn() };
+
+    const res = await chat({
+      VPC_BINDINGS: "HALOGEN:org_owner",
+      HALOGEN: binding,
+    });
+
+    expect(res.status).toBe(400);
+    expect(binding.fetch).not.toHaveBeenCalled();
   });
 });

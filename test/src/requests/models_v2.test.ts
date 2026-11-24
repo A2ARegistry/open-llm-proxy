@@ -68,7 +68,10 @@ describe("modelsV2 with a vpc provider", () => {
         ),
     };
 
-    const ids = await listedIds({ VPC_BINDINGS: "HALOGEN", HALOGEN: binding });
+    const ids = await listedIds({
+      VPC_BINDINGS: "HALOGEN:org_1",
+      HALOGEN: binding,
+    });
 
     expect(ids).toEqual(["local-m5/qwen-flash"]);
     expect(binding.fetch.mock.calls[0][0]).toBe(
@@ -82,7 +85,7 @@ describe("modelsV2 with a vpc provider", () => {
       localBox({ transport: "vpc", vpcBinding: "DB", customModels: ["x"] }),
     ]);
 
-    const ids = await listedIds({ VPC_BINDINGS: "HALOGEN", DB: {} });
+    const ids = await listedIds({ VPC_BINDINGS: "HALOGEN:org_1", DB: {} });
 
     expect(ids).toEqual([]);
     expect(globalFetch).not.toHaveBeenCalled();
