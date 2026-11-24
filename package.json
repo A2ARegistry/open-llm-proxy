@@ -53,8 +53,8 @@
     "wrangler": "^4.111.0"
   },
   "dependencies": {
-    "@contentgrowth/content-auth": "^0.5.6",
-    "@contentgrowth/content-emailing": "^0.8.5",
+    "@contentgrowth/content-auth": "0.5.6",
+    "@contentgrowth/content-emailing": "0.8.5",
     "@earendil-works/pi-ai": "^0.84.2",
     "hono": "^4.13.2"
   }
