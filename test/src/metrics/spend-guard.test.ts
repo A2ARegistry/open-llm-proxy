@@ -14,12 +14,16 @@ function uniq(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-async function insertRequest(costUsd: number, ts: number) {
+async function insertRequest(
+  costUsd: number,
+  ts: number,
+  apiKeyId = `key_${uniq()}`,
+) {
   await env.DB.prepare(
     `INSERT INTO request_metrics (id, organization_id, api_key_id, timestamp, provider, model, method, status_code, latency_ms, tokens_input, tokens_output, tokens_cached, cost_usd, error_message, cache_hit)
      VALUES (?, ?, ?, ?, 'openai', 'gpt-4', 'chat', 200, 100, 100, 50, 0, ?, NULL, 0)`,
   )
-    .bind(`metric_${uniq()}`, ORG, `key_${uniq()}`, ts, costUsd)
+    .bind(`metric_${uniq()}`, ORG, apiKeyId, ts, costUsd)
     .run();
 }
 
@@ -104,7 +108,7 @@ describe("maybeDisableAfterSpend", () => {
   it("disables the key when its lifetime cap is crossed", async () => {
     const keyId = `key_${uniq()}`;
     await insertKey(keyId, 1);
-    await insertRequest(2, Math.floor(Date.now() / 1000) - 10);
+    await insertRequest(2, Math.floor(Date.now() / 1000) - 10, keyId);
     await maybeDisableAfterSpend(env as never, ORG, keyId, { spendCapUsd: 1 });
 
     const row = await env.DB.prepare(
@@ -113,6 +117,21 @@ describe("maybeDisableAfterSpend", () => {
       .bind(keyId)
       .first<{ spend_disabled_until: number | null }>();
     expect(row!.spend_disabled_until).toBeGreaterThan(Date.now() / 1000);
+  });
+
+  it("ignores other keys' spend when checking a key's cap", async () => {
+    const keyId = `key_${uniq()}`;
+    await insertKey(keyId, 1);
+    await insertRequest(0.5, Math.floor(Date.now() / 1000) - 10, keyId);
+    await insertRequest(5, Math.floor(Date.now() / 1000) - 10);
+    await maybeDisableAfterSpend(env as never, ORG, keyId, { spendCapUsd: 1 });
+
+    const row = await env.DB.prepare(
+      "SELECT spend_disabled_until FROM api_keys WHERE id = ?",
+    )
+      .bind(keyId)
+      .first<{ spend_disabled_until: number | null }>();
+    expect(row!.spend_disabled_until).toBeNull();
   });
 });
 
@@ -132,6 +151,25 @@ describe("reconcileTenantDisable", () => {
 });
 
 describe("reconcileKeyDisable", () => {
+  it("clears the key flag when only other keys spent past the cap", async () => {
+    const keyId = `key_${uniq()}`;
+    await insertKey(keyId, 1);
+    await env.DB.prepare(
+      "UPDATE api_keys SET spend_disabled_until = ? WHERE id = ?",
+    )
+      .bind(Math.floor(Date.now() / 1000) + 99999, keyId)
+      .run();
+    await insertRequest(50, Math.floor(Date.now() / 1000));
+    await reconcileKeyDisable(env as never, ORG, keyId, 1);
+
+    const row = await env.DB.prepare(
+      "SELECT spend_disabled_until FROM api_keys WHERE id = ?",
+    )
+      .bind(keyId)
+      .first<{ spend_disabled_until: number | null }>();
+    expect(row!.spend_disabled_until).toBeNull();
+  });
+
   it("clears the key flag when the cap is raised above spend", async () => {
     const keyId = `key_${uniq()}`;
     await insertKey(keyId, 1);
@@ -140,7 +178,7 @@ describe("reconcileKeyDisable", () => {
     )
       .bind(Math.floor(Date.now() / 1000) + 99999, keyId)
       .run();
-    await insertRequest(0.5, Math.floor(Date.now() / 1000));
+    await insertRequest(0.5, Math.floor(Date.now() / 1000), keyId);
     await reconcileKeyDisable(env as never, ORG, keyId, 100);
 
     const row = await env.DB.prepare(

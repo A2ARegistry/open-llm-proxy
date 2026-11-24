@@ -1,5 +1,6 @@
 import type { AppBindings } from "../app";
 import { cacheUsageByModel, spendForRange } from "../metrics/cost-tracker";
+import { keyDetailUsage } from "../metrics/key-detail";
 import { usageByKey } from "../metrics/key-usage";
 import { percentile } from "../metrics/percentile";
 import {
@@ -132,6 +133,24 @@ metricsRouter.get("/keys", async (c) => {
 
   const keys = await usageByKey(c.env, orgId, start, end);
   return c.json({ start, end, keys });
+});
+
+// GET /api/metrics/keys/:id — one key's totals, time series, per-model
+// split and lifetime spend over the window.
+metricsRouter.get("/keys/:id", async (c) => {
+  const orgId = c.get("session")!.organizationId!;
+  const { start, end } = rangeParams(c);
+  const invalid = validateRange(start, end);
+  if (invalid) return c.json({ error: invalid }, 400);
+
+  const usage = await keyDetailUsage(
+    c.env,
+    orgId,
+    c.req.param("id"),
+    start,
+    end,
+  );
+  return c.json(usage);
 });
 
 // GET /api/metrics/requests — newest-first request rows plus total count.

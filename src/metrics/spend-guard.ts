@@ -102,6 +102,7 @@ export async function maybeDisableAfterSpend(
     const spent = await spendForRange(env, organizationId, {
       start: 0,
       end: now,
+      apiKeyId,
     });
     if (spent.costUsd >= scopes.spendCapUsd) {
       await env.DB.prepare(
@@ -177,6 +178,7 @@ export async function reconcileKeyDisable(
   const spent = await spendForRange(env, organizationId, {
     start: 0,
     end: nowSeconds(),
+    apiKeyId,
   });
   if (spent.costUsd < spendCapUsd) {
     await env.DB.prepare(

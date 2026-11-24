@@ -2,6 +2,7 @@ import { AppShell } from "./components/AppShell";
 import { BootstrapGate } from "./components/BootstrapGate";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
+import { ApiKeyDetailPage } from "./pages/ApiKeyDetailPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EmailPage } from "./pages/EmailPage";
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/providers" element={<ProvidersPage />} />
           <Route path="/api-keys" element={<ApiKeysPage />} />
+          <Route path="/api-keys/:id" element={<ApiKeyDetailPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/requests" element={<RequestsPage />} />
           <Route path="/email" element={<EmailPage />} />

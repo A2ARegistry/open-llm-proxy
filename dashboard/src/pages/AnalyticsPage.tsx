@@ -1,5 +1,6 @@
 import { RequestCacheBadge } from "../components/RequestCacheBadge";
 import { RequestStatusBadge } from "../components/RequestStatusBadge";
+import { TimeRangeControl } from "../components/TimeRangeControl";
 import {
   Badge,
   Card,
@@ -29,20 +30,27 @@ import {
   rowDecodeTps,
 } from "../lib/format";
 import { NO_API_KEY } from "../lib/requestExplorer";
-import { useQuery } from "@tanstack/react-query";
+import { ALL_RANGES } from "../lib/timeRange";
+import { useTimeRange } from "../lib/useTimeRange";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-
-const now = Math.floor(Date.now() / 1000);
-const dayStart = now - 24 * 3600;
 
 export function AnalyticsPage() {
   const navigate = useNavigate();
-  const openKeyRequests = (apiKeyId: string | null) =>
+  const time = useTimeRange(ALL_RANGES, "24h");
+  const windowQuery = `start=${time.start}&end=${time.end}`;
+  const rangeParam = `range=${time.range}`;
+  const openKey = (apiKeyId: string | null) =>
     navigate(
-      `/requests?apiKeyId=${encodeURIComponent(apiKeyId ?? NO_API_KEY)}`,
+      apiKeyId
+        ? `/api-keys/${encodeURIComponent(apiKeyId)}?${rangeParam}`
+        : `/requests?apiKeyId=${NO_API_KEY}&${rangeParam}`,
     );
+  const openRequest = (id: string) =>
+    navigate(`/requests?${rangeParam}&request=${encodeURIComponent(id)}`);
   const summary = useQuery({
-    queryKey: ["analytics-summary"],
+    queryKey: ["analytics-summary", windowQuery],
+    placeholderData: keepPreviousData,
     queryFn: () =>
       apiGet<{
         summary: {
@@ -57,41 +65,38 @@ export function AnalyticsPage() {
           responseCacheHits?: number | null;
           promptCacheHitRate?: number | null;
         };
-      }>(`/api/metrics/summary?start=${dayStart}&end=${now}`),
+      }>(`/api/metrics/summary?${windowQuery}`),
   });
   const latency = useQuery({
-    queryKey: ["analytics-latency"],
+    queryKey: ["analytics-latency", windowQuery],
+    placeholderData: keepPreviousData,
     queryFn: () =>
-      apiGet<{ latency: LatencyStat[] }>(
-        `/api/metrics/latency?start=${dayStart}&end=${now}`,
-      ),
+      apiGet<{ latency: LatencyStat[] }>(`/api/metrics/latency?${windowQuery}`),
   });
   const speed = useQuery({
-    queryKey: ["analytics-speed"],
+    queryKey: ["analytics-speed", windowQuery],
+    placeholderData: keepPreviousData,
     queryFn: () =>
-      apiGet<{ speed: SpeedStat[] }>(
-        `/api/metrics/speed?start=${dayStart}&end=${now}`,
-      ),
+      apiGet<{ speed: SpeedStat[] }>(`/api/metrics/speed?${windowQuery}`),
   });
   const cache = useQuery({
-    queryKey: ["analytics-cache"],
+    queryKey: ["analytics-cache", windowQuery],
+    placeholderData: keepPreviousData,
     queryFn: () =>
-      apiGet<{ usage: CacheUsageRow[] }>(
-        `/api/metrics/cache?start=${dayStart}&end=${now}`,
-      ),
+      apiGet<{ usage: CacheUsageRow[] }>(`/api/metrics/cache?${windowQuery}`),
   });
   const keys = useQuery({
-    queryKey: ["analytics-keys"],
+    queryKey: ["analytics-keys", windowQuery],
+    placeholderData: keepPreviousData,
     queryFn: () =>
-      apiGet<{ keys: KeyUsage[] }>(
-        `/api/metrics/keys?start=${dayStart}&end=${now}`,
-      ),
+      apiGet<{ keys: KeyUsage[] }>(`/api/metrics/keys?${windowQuery}`),
   });
   const requests = useQuery({
-    queryKey: ["analytics-requests"],
+    queryKey: ["analytics-requests", windowQuery],
+    placeholderData: keepPreviousData,
     queryFn: () =>
       apiGet<{ requests: RequestRow[] }>(
-        `/api/metrics/requests?start=${dayStart}&end=${now}&limit=25`,
+        `/api/metrics/requests?${windowQuery}&limit=25`,
       ),
   });
 
@@ -127,11 +132,18 @@ export function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">Analytics</h1>
-        <p className="text-sm text-gray-500">
-          Last 24 hours across all providers and models.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Analytics</h1>
+          <p className="text-sm text-gray-500">
+            {time.option.label} across all providers and models.
+          </p>
+        </div>
+        <TimeRangeControl
+          time={time}
+          allowed={ALL_RANGES}
+          refreshing={summary.isFetching}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -210,10 +222,14 @@ export function AnalyticsPage() {
                     <tr
                       key={k.apiKeyId ?? "none"}
                       tabIndex={0}
-                      title="Show this key's requests"
-                      onClick={() => openKeyRequests(k.apiKeyId)}
+                      title={
+                        k.apiKeyId
+                          ? "Open key details"
+                          : "Show keyless requests"
+                      }
+                      onClick={() => openKey(k.apiKeyId)}
                       onKeyDown={(e) =>
-                        e.key === "Enter" && openKeyRequests(k.apiKeyId)
+                        e.key === "Enter" && openKey(k.apiKeyId)
                       }
                       className="cursor-pointer border-b border-gray-50 last:border-0 hover:bg-gray-50"
                     >
@@ -447,7 +463,7 @@ export function AnalyticsPage() {
         subtitle="Latest 25. Click a row for details."
         actions={
           <Link
-            to="/requests"
+            to={`/requests?${rangeParam}`}
             className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
           >
             View all →
@@ -455,7 +471,7 @@ export function AnalyticsPage() {
         }
       >
         {(requests.data?.requests ?? []).length === 0 ? (
-          <EmptyState title="No requests in the last 24 hours" />
+          <EmptyState title="No requests in this time range" />
         ) : (
           <div className="-m-5 overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -483,11 +499,8 @@ export function AnalyticsPage() {
                     <tr
                       key={r.id}
                       tabIndex={0}
-                      onClick={() => navigate(`/requests?request=${r.id}`)}
-                      onKeyDown={(e) =>
-                        e.key === "Enter" &&
-                        navigate(`/requests?request=${r.id}`)
-                      }
+                      onClick={() => openRequest(r.id)}
+                      onKeyDown={(e) => e.key === "Enter" && openRequest(r.id)}
                       className="cursor-pointer border-b border-gray-50 last:border-0 hover:bg-gray-50"
                     >
                       <td className="px-5 py-3 whitespace-nowrap">

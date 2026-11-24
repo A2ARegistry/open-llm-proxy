@@ -80,6 +80,8 @@ export interface SpendRangeOptions {
   end?: number;
   provider?: string;
   model?: string;
+  /** Only this API key's traffic. */
+  apiKeyId?: string;
 }
 
 export interface SpendSummary {
@@ -136,6 +138,10 @@ export async function spendForRange(
   if (options.model) {
     where.push("model = ?");
     params.push(options.model);
+  }
+  if (options.apiKeyId) {
+    where.push("api_key_id = ?");
+    params.push(options.apiKeyId);
   }
 
   const row = await env.DB.prepare(
