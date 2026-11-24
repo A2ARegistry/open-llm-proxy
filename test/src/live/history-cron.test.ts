@@ -43,12 +43,18 @@ beforeAll(async () => {
     await env.DB.exec(create);
   }
   await env.DB.exec(
+    "CREATE TABLE IF NOT EXISTS request_metrics (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, user_id TEXT, api_key_id TEXT, timestamp INTEGER NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, method TEXT NOT NULL, status_code INTEGER NOT NULL, latency_ms INTEGER NOT NULL, tokens_input INTEGER, tokens_output INTEGER, tokens_cached INTEGER, tokens_cache_read INTEGER, tokens_cache_write INTEGER, cost_usd REAL, error_message TEXT, cache_hit INTEGER NOT NULL DEFAULT 0, ttft_ms INTEGER, decode_ms INTEGER);",
+  );
+  await env.DB.exec(
     "CREATE TABLE IF NOT EXISTS provider_configs (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, provider TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, config TEXT NOT NULL, UNIQUE(organization_id, provider));",
   );
 });
 
 beforeEach(async () => {
   await env.DB.exec("DELETE FROM inference_samples");
+  await env.DB.exec("DELETE FROM throughput_rollups");
+  await env.DB.exec("DELETE FROM request_metrics");
+  await env.DB.exec("DELETE FROM provider_configs");
   await env.SESSION_CACHE.delete(MARKER);
   vi.restoreAllMocks();
 });
@@ -79,6 +85,38 @@ describe("runHistoryMaintenance", () => {
     expect(await count(600)).toBe(1);
   });
 
+  it("rolls up throughput every run", async () => {
+    await env.DB.prepare(
+      "INSERT INTO provider_configs (id, organization_id, provider, config) VALUES ('c', 'org_a', 'box', ?)",
+    )
+      .bind(
+        JSON.stringify({
+          keys: [],
+          settings: { transport: "vpc", vpcBinding: "HALOGEN" },
+        }),
+      )
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO request_metrics
+         (id, organization_id, timestamp, provider, model, method, status_code,
+          latency_ms, tokens_input, tokens_output, cache_hit)
+       VALUES ('r1', 'org_a', ?, 'box', 'm', 'chat', 200, 60000, 6000, 12000, 0)`,
+    )
+      .bind(at("11:25") / 1000)
+      .run();
+    const withBinding = {
+      ...env,
+      VPC_BINDINGS: "HALOGEN:org_a",
+    } as unknown as Env;
+    await runHistoryMaintenance(withBinding, at("12:00"));
+    const row = await env.DB.prepare(
+      "SELECT requests FROM throughput_rollups WHERE organization_id = 'org_a' AND ts = ?",
+    )
+      .bind(at("11:20") / 1000)
+      .first<{ requests: number }>();
+    expect(row?.requests).toBe(1);
+  });
+
   it("prunes once per day after 03:00 UTC", async () => {
     const old = at("12:00") / 1000 - 40 * 86_400;
     await seed(old);
@@ -106,6 +144,21 @@ describe("runHistoryMaintenance", () => {
     expect(error).toHaveBeenCalled();
   });
 
+  it("isolates a synchronous throw", async () => {
+    await seed(at("11:10") / 1000);
+    const broken = {
+      ...env,
+      BOX_SAMPLER: {
+        idFromName: () => {
+          throw new Error("sync");
+        },
+      },
+    } as unknown as Env;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await runHistoryMaintenance(broken, at("12:00"));
+    expect(await count(600)).toBe(1);
+  });
+
   it("one failing step does not stop the others", async () => {
     await seed(at("11:10") / 1000);
     const broken = {
@@ -117,7 +170,11 @@ describe("runHistoryMaintenance", () => {
         }),
       },
     } as unknown as Env;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     await runHistoryMaintenance(broken, at("12:00"));
     expect(await count(600)).toBe(1);
+    expect(
+      error.mock.calls.some((c) => String(c[0]).includes("ensureRunning")),
+    ).toBe(true);
   });
 });

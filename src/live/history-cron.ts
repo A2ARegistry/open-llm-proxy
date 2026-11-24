@@ -27,18 +27,19 @@ export async function runHistoryMaintenance(
   nowMs: number,
 ): Promise<void> {
   const nowS = Math.floor(nowMs / 1000);
-  const steps: Array<[string, Promise<void>]> = [
+  const steps: Array<[string, () => Promise<void>]> = [
     [
       "ensureRunning",
-      env.BOX_SAMPLER.get(
-        env.BOX_SAMPLER.idFromName(BOX_SAMPLER_NAME),
-      ).ensureRunning(),
+      async () =>
+        env.BOX_SAMPLER.get(
+          env.BOX_SAMPLER.idFromName(BOX_SAMPLER_NAME),
+        ).ensureRunning(),
     ],
-    ["rollup", rollupRecent(env, nowS)],
-    ["throughputRollup", rollupThroughputRecent(env, nowS)],
-    ["prune", pruneOnceADay(env, nowMs)],
+    ["rollup", () => rollupRecent(env, nowS)],
+    ["throughputRollup", () => rollupThroughputRecent(env, nowS)],
+    ["prune", () => pruneOnceADay(env, nowMs)],
   ];
-  const results = await Promise.allSettled(steps.map(([, p]) => p));
+  const results = await Promise.allSettled(steps.map(([, run]) => run()));
   results.forEach((r, i) => {
     if (r.status === "rejected") {
       log.error(`live-history ${steps[i][0]} failed`, r.reason);
