@@ -7,6 +7,7 @@ import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EmailPage } from "./pages/EmailPage";
 import { LandingPage } from "./pages/LandingPage";
+import { LivePage } from "./pages/LivePage";
 import { ProvidersPage } from "./pages/ProvidersPage";
 import { RequestsPage } from "./pages/RequestsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="/api-keys/:id" element={<ApiKeyDetailPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/live" element={<LivePage />} />
           <Route path="/requests" element={<RequestsPage />} />
           <Route path="/email" element={<EmailPage />} />
           <Route path="/team" element={<TeamPage />} />
