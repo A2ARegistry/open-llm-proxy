@@ -1,4 +1,4 @@
-import { env } from "cloudflare:test";
+import { env, runInDurableObject } from "cloudflare:test";
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import type { BufferedMetric } from "~/src/durable/metrics-buffer";
 
@@ -26,6 +26,8 @@ function metric(overrides: Partial<BufferedMetric> = {}): BufferedMetric {
     cost_usd: 0.02,
     error_message: null,
     cache_hit: 0,
+    ttft_ms: 150,
+    decode_ms: 1_850,
     ...overrides,
   };
 }
@@ -37,7 +39,7 @@ async function stub() {
 
 beforeAll(async () => {
   await env.DB.exec(
-    "CREATE TABLE IF NOT EXISTS request_metrics (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, user_id TEXT, api_key_id TEXT, timestamp INTEGER NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, method TEXT NOT NULL, status_code INTEGER NOT NULL, latency_ms INTEGER NOT NULL, tokens_input INTEGER, tokens_output INTEGER, tokens_cached INTEGER, tokens_cache_read INTEGER, tokens_cache_write INTEGER, cost_usd REAL, error_message TEXT, cache_hit INTEGER NOT NULL DEFAULT 0);",
+    "CREATE TABLE IF NOT EXISTS request_metrics (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, user_id TEXT, api_key_id TEXT, timestamp INTEGER NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, method TEXT NOT NULL, status_code INTEGER NOT NULL, latency_ms INTEGER NOT NULL, tokens_input INTEGER, tokens_output INTEGER, tokens_cached INTEGER, tokens_cache_read INTEGER, tokens_cache_write INTEGER, cost_usd REAL, error_message TEXT, cache_hit INTEGER NOT NULL DEFAULT 0, ttft_ms INTEGER, decode_ms INTEGER);",
   );
 });
 
@@ -71,6 +73,8 @@ describe("MetricsBuffer DO", () => {
       tokens_cache_write: 500,
       cache_hit: 0,
       user_id: null,
+      ttft_ms: 150,
+      decode_ms: 1_850,
     });
   });
 
@@ -103,6 +107,48 @@ describe("MetricsBuffer DO", () => {
       tokens_cache_read: null,
       tokens_cache_write: null,
     });
+  });
+
+  it("adds timing columns to shards created before they existed", async () => {
+    const s = await stub();
+    await runInDurableObject(s, (_instance, state) => {
+      state.storage.sql.exec(
+        "CREATE TABLE metrics_buffer (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, api_key_id TEXT, timestamp INTEGER NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, method TEXT NOT NULL, status_code INTEGER NOT NULL, latency_ms INTEGER NOT NULL, tokens_input INTEGER, tokens_output INTEGER, tokens_cached INTEGER, cost_usd REAL, error_message TEXT, cache_hit INTEGER NOT NULL DEFAULT 0)",
+      );
+    });
+    await s.fetch("http://internal/push", {
+      method: "POST",
+      body: JSON.stringify({ entries: [metric({ ttft_ms: 42 })] }),
+    });
+    await s.fetch("http://internal/flush");
+    const row = await env.DB.prepare(
+      `SELECT ttft_ms, decode_ms, tokens_cache_read FROM request_metrics WHERE organization_id = ?`,
+    )
+      .bind(ORG)
+      .first();
+    expect(row).toMatchObject({
+      ttft_ms: 42,
+      decode_ms: 1_850,
+      tokens_cache_read: 2500,
+    });
+  });
+
+  it("stores NULL timings for rows pushed without them", async () => {
+    const s = await stub();
+    const legacy = metric() as Partial<BufferedMetric>;
+    delete legacy.ttft_ms;
+    delete legacy.decode_ms;
+    await s.fetch("http://internal/push", {
+      method: "POST",
+      body: JSON.stringify({ entries: [legacy] }),
+    });
+    await s.fetch("http://internal/flush");
+    const row = await env.DB.prepare(
+      `SELECT ttft_ms, decode_ms FROM request_metrics WHERE organization_id = ?`,
+    )
+      .bind(ORG)
+      .first();
+    expect(row).toMatchObject({ ttft_ms: null, decode_ms: null });
   });
 
   it("reports buffer size via /size", async () => {

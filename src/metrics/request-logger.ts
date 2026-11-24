@@ -1,5 +1,6 @@
 import { pushMetric, MetricDraft } from "./collector";
 import { computeCostUsd, getModelPricing, TokenUsage } from "./cost-tracker";
+import type { StreamTimings } from "./stream-timer";
 
 export interface ChatAttempt {
   organizationId: string;
@@ -31,6 +32,8 @@ export async function recordChatRequest(
     costUsd?: number | null;
     errorMessage?: string | null;
     cacheHit?: number;
+    /** Streamed replies only: time to first output and decode duration. */
+    timings?: StreamTimings | null;
   },
 ): Promise<void> {
   const usage = outcome.usage ?? EMPTY_USAGE;
@@ -61,6 +64,8 @@ export async function recordChatRequest(
     tokens_cache_write: usage.cacheWrite > 0 ? usage.cacheWrite : null,
     cost_usd: costUsd,
     error_message: outcome.errorMessage ?? null,
+    ttft_ms: outcome.timings?.ttftMs ?? null,
+    decode_ms: outcome.timings?.decodeMs ?? null,
   };
   await pushMetric(env, draft);
 }

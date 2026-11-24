@@ -36,7 +36,7 @@ async function lastRow() {
 
 beforeAll(async () => {
   await env.DB.exec(
-    "CREATE TABLE IF NOT EXISTS request_metrics (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, user_id TEXT, api_key_id TEXT, timestamp INTEGER NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, method TEXT NOT NULL, status_code INTEGER NOT NULL, latency_ms INTEGER NOT NULL, tokens_input INTEGER, tokens_output INTEGER, tokens_cached INTEGER, tokens_cache_read INTEGER, tokens_cache_write INTEGER, cost_usd REAL, error_message TEXT, cache_hit INTEGER NOT NULL DEFAULT 0);",
+    "CREATE TABLE IF NOT EXISTS request_metrics (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, user_id TEXT, api_key_id TEXT, timestamp INTEGER NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, method TEXT NOT NULL, status_code INTEGER NOT NULL, latency_ms INTEGER NOT NULL, tokens_input INTEGER, tokens_output INTEGER, tokens_cached INTEGER, tokens_cache_read INTEGER, tokens_cache_write INTEGER, cost_usd REAL, error_message TEXT, cache_hit INTEGER NOT NULL DEFAULT 0, ttft_ms INTEGER, decode_ms INTEGER);",
   );
   await env.DB.exec(
     "CREATE TABLE IF NOT EXISTS model_pricing (provider TEXT NOT NULL, model TEXT NOT NULL, input_per_1m REAL NOT NULL DEFAULT 0, output_per_1m REAL NOT NULL DEFAULT 0, cache_read_per_1m REAL NOT NULL DEFAULT 0, cache_write_per_1m REAL NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (provider, model));",
@@ -102,6 +102,22 @@ describe("recordChatRequest", () => {
     });
     const row = await lastRow();
     expect(row.cost_usd).toBeCloseTo(2.1125, 6);
+  });
+
+  it("stores stream timings when given and NULL otherwise", async () => {
+    await recordChatRequest(envNoBuffer, attempt(), {
+      statusCode: 200,
+      usage: { input: 50, output: 10, cacheRead: 0, cacheWrite: 0 },
+      timings: { ttftMs: 120, decodeMs: 900 },
+    });
+    expect(await lastRow()).toMatchObject({ ttft_ms: 120, decode_ms: 900 });
+
+    await env.DB.exec("DELETE FROM request_metrics;");
+    await recordChatRequest(envNoBuffer, attempt(), {
+      statusCode: 200,
+      usage: { input: 50, output: 10, cacheRead: 0, cacheWrite: 0 },
+    });
+    expect(await lastRow()).toMatchObject({ ttft_ms: null, decode_ms: null });
   });
 
   it("records errors without usage", async () => {
