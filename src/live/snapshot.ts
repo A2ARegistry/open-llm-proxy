@@ -7,10 +7,17 @@ import {
   promValue,
   type PromSample,
 } from "./prometheus";
-import { fetchLiveText, hostBinding, inferenceBinding } from "./sources";
+import {
+  fetchLiveText,
+  hostBinding,
+  inferenceBinding,
+  type LiveBinding,
+} from "./sources";
 
 export interface InferenceSnapshot {
   binding: string;
+  /** When the counters were read (ms): rates must use this, not `LiveSnapshot.at`. */
+  sampledAt: number;
   version: string | null;
   slots: number | null;
   inFlight: number | null;
@@ -30,6 +37,8 @@ export interface InferenceSnapshot {
 
 export interface HostSnapshot {
   binding: string;
+  /** When the counters were read (ms): rates must use this, not `LiveSnapshot.at`. */
+  sampledAt: number;
   cpuIdleSecondsTotal: number | null;
   cpuSecondsTotal: number | null;
   memTotalBytes: number | null;
@@ -81,17 +90,24 @@ export function toInference(
   binding: string,
   healthJson: string | null,
   metricsText: string | null,
+  sampledAt: number = Date.now(),
 ): InferenceSnapshot | null {
   if (healthJson === null && metricsText === null) return null;
   const h = parseHealth(healthJson);
   const m = parsePrometheus(metricsText ?? "");
   return {
     binding,
-    version: healthVersion(h),
+    sampledAt,
+    version:
+      healthVersion(h) ??
+      m.find((x) => x.name === "halogen:build_info")?.labels.version ??
+      null,
     slots: num(h.slots),
     inFlight: num(h.in_flight) ?? promValue(m, "llamacpp:requests_processing"),
     queued: num(h.queued) ?? promValue(m, "llamacpp:requests_deferred"),
-    longestWaitS: num(h.longest_wait_s),
+    longestWaitS:
+      num(h.longest_wait_s) ??
+      promValue(m, "halogen:queue_wait_longest_seconds"),
     kvUsageRatio: promValue(m, "llamacpp:kv_cache_usage_ratio"),
     kvPoolPositions:
       num(h.kv_pool_positions) ?? promValue(m, "halogen:kv_pool_positions"),
@@ -140,6 +156,7 @@ function hwmonValue(
 export function toHost(
   binding: string,
   metricsText: string | null,
+  sampledAt: number = Date.now(),
 ): HostSnapshot | null {
   if (metricsText === null) return null;
   const m = parsePrometheus(metricsText);
@@ -148,6 +165,7 @@ export function toHost(
     hwmonValue(m, names, "node_hwmon_temp_celsius", driver, "temp1");
   return {
     binding,
+    sampledAt,
     cpuIdleSecondsTotal: promSum(m, "node_cpu_seconds_total", { mode: "idle" }),
     cpuSecondsTotal: promSum(m, "node_cpu_seconds_total"),
     memTotalBytes: promValue(m, "node_memory_MemTotal_bytes"),
@@ -168,6 +186,20 @@ export function toHost(
   };
 }
 
+interface Timed {
+  text: string | null;
+  at: number;
+}
+
+/** Fetch `path` and note when its body arrived, so each source has its own sample time. */
+async function timedFetch(
+  binding: LiveBinding | null,
+  path: "/health" | "/metrics",
+): Promise<Timed> {
+  const text = binding ? await fetchLiveText(binding.fetcher, path) : null;
+  return { text, at: Date.now() };
+}
+
 /** Read every live source for `organizationId` in parallel (one D1 read, no writes). */
 export async function buildLiveSnapshot(
   env: Env,
@@ -177,17 +209,22 @@ export async function buildLiveSnapshot(
   const host = hostBinding(env, organizationId);
   const [health, inferenceMetrics, hostMetrics, lastRequest] =
     await Promise.all([
-      inference ? fetchLiveText(inference.fetcher, "/health") : null,
-      inference ? fetchLiveText(inference.fetcher, "/metrics") : null,
-      host ? fetchLiveText(host.fetcher, "/metrics") : null,
+      timedFetch(inference, "/health"),
+      timedFetch(inference, "/metrics"),
+      timedFetch(host, "/metrics"),
       latestRequest(env, organizationId),
     ]);
   return {
     at: Date.now(),
     inference: inference
-      ? toInference(inference.name, health, inferenceMetrics)
+      ? toInference(
+          inference.name,
+          health.text,
+          inferenceMetrics.text,
+          inferenceMetrics.at,
+        )
       : null,
-    host: host ? toHost(host.name, hostMetrics) : null,
+    host: host ? toHost(host.name, hostMetrics.text, hostMetrics.at) : null,
     lastRequest,
   };
 }

@@ -88,6 +88,8 @@ describe("GET /api/live", () => {
     expect(body.snapshot.lastRequest?.id).toBe("req_live_new");
     expect(body.snapshot.lastRequest?.ttft_ms).toBe(450);
     expect(body.snapshot.at).toBeGreaterThan(0);
+    expect(body.snapshot.inference!.sampledAt).toBeGreaterThan(0);
+    expect(body.snapshot.host!.sampledAt).toBeGreaterThan(0);
   });
 
   it("box down still answers 200", async () => {

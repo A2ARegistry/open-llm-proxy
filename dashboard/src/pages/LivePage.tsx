@@ -15,13 +15,13 @@ import {
 } from "../lib/format";
 import {
   LIVE_POLL_MS,
-  appendPoint,
+  advanceLive,
   ratio,
-  toPoint,
   type LivePoint,
+  type LiveSeriesState,
 } from "../lib/liveSeries";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -68,8 +68,11 @@ function latest(points: LivePoint[]): LivePoint | null {
 }
 
 export function LivePage() {
-  const [points, setPoints] = useState<LivePoint[]>([]);
-  const prev = useRef<LiveSnapshot | null>(null);
+  const [series, setSeries] = useState<LiveSeriesState>({
+    prev: null,
+    points: [],
+  });
+  const points = series.points;
 
   const live = useQuery({
     queryKey: ["live"],
@@ -82,11 +85,7 @@ export function LivePage() {
   const snapshot = live.data?.snapshot ?? null;
 
   useEffect(() => {
-    if (!snapshot || prev.current?.at === snapshot.at) return;
-    setPoints((current) =>
-      appendPoint(current, toPoint(prev.current, snapshot)),
-    );
-    prev.current = snapshot;
+    if (snapshot) setSeries((current) => advanceLive(current, snapshot));
   }, [snapshot]);
 
   if (live.isLoading) return <Spinner />;

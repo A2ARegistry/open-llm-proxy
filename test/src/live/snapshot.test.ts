@@ -15,7 +15,8 @@ const health = JSON.parse(halogenHealth) as {
 
 describe("toInference", () => {
   it("maps health and metrics", () => {
-    const s = toInference("HALOGEN", halogenHealth, halogenMetrics)!;
+    const s = toInference("HALOGEN", halogenHealth, halogenMetrics, 1234)!;
+    expect(s.sampledAt).toBe(1234);
     expect(s.binding).toBe("HALOGEN");
     expect(s.slots).toBe(health.slots);
     expect(s.inFlight).toBe(health.in_flight);
@@ -37,7 +38,6 @@ describe("toInference", () => {
     const metricsOnly = toInference("HALOGEN", null, halogenMetrics)!;
     expect(metricsOnly.predictedTokensTotal).not.toBeNull();
     expect(metricsOnly.slots).toBeNull();
-    expect(metricsOnly.version).toBeNull();
     const healthOnly = toInference("HALOGEN", halogenHealth, null)!;
     expect(healthOnly.slots).toBe(health.slots);
     expect(healthOnly.predictedTokensTotal).toBeNull();
@@ -52,6 +52,12 @@ describe("toInference", () => {
     expect(toInference("HALOGEN", "null", "")!.slots).toBeNull();
   });
 
+  it("falls back to /metrics for version and longest wait", () => {
+    const s = toInference("HALOGEN", null, halogenMetrics)!;
+    expect(s.version).toBe("0.20.7");
+    expect(s.longestWaitS).not.toBeNull();
+  });
+
   it("accepts a plain string version", () => {
     expect(toInference("HALOGEN", '{"version":"1.2.3"}', "")!.version).toBe(
       "1.2.3",
@@ -62,7 +68,8 @@ describe("toInference", () => {
 
 describe("toHost", () => {
   it("maps CPU, RAM, GTT, temps and power", () => {
-    const h = toHost("BOXSTATS", nodeMetrics)!;
+    const h = toHost("BOXSTATS", nodeMetrics, 4321)!;
+    expect(h.sampledAt).toBe(4321);
     expect(h.binding).toBe("BOXSTATS");
     expect(h.cpuIdleSecondsTotal).toBeGreaterThan(0);
     expect(h.cpuSecondsTotal!).toBeGreaterThan(h.cpuIdleSecondsTotal!);

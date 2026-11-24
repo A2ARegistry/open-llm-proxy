@@ -5,6 +5,8 @@ import type { LiveSnapshot } from "./api";
 
 export const LIVE_POLL_MS = 2000;
 export const LIVE_HISTORY_POINTS = 300;
+/** Longest interval still turned into a rate (2.5 polls). */
+export const LIVE_GAP_MS = 5000;
 
 export interface LivePoint {
   t: number;
@@ -41,32 +43,47 @@ export function ratio(num: number | null, den: number | null): number | null {
   return num / den;
 }
 
+/**
+ * Seconds between two samples of the same source, or 0 (no rate) when either
+ * is missing or the gap is longer than LIVE_GAP_MS (hidden tab, failed polls):
+ * averaging over a long gap would draw a fake point next to old data.
+ */
+function interval(
+  prev: { sampledAt: number } | null | undefined,
+  next: { sampledAt: number } | null | undefined,
+): number {
+  if (!prev || !next) return 0;
+  const ms = next.sampledAt - prev.sampledAt;
+  return ms > 0 && ms <= LIVE_GAP_MS ? ms / 1000 : 0;
+}
+
 /** One chart point from the latest snapshot, using `prev` for rates. */
 export function toPoint(
   prev: LiveSnapshot | null,
   next: LiveSnapshot,
 ): LivePoint {
-  const seconds = prev ? (next.at - prev.at) / 1000 : 0;
   const inf = next.inference;
   const prevInf = prev?.inference;
   const host = next.host;
   const prevHost = prev?.host;
+  const infSeconds = interval(prevInf, inf);
 
+  const hostSeconds = interval(prevHost, host);
   const idle = delta(prevHost?.cpuIdleSecondsTotal, host?.cpuIdleSecondsTotal);
   const total = delta(prevHost?.cpuSecondsTotal, host?.cpuSecondsTotal);
-  const idleShare = ratio(idle, total);
+  const idleShare = hostSeconds > 0 ? ratio(idle, total) : null;
 
   return {
     t: next.at,
     decodeTps: perSecond(
       prevInf?.predictedTokensTotal,
       inf?.predictedTokensTotal,
-      seconds,
+      infSeconds,
     ),
     prefillTps: perSecond(
       prevInf?.promptTokensTotal,
       inf?.promptTokensTotal,
-      seconds,
+      infSeconds,
     ),
     cpuPercent: idleShare === null ? null : 100 * (1 - idleShare),
     gpuBusyPercent: host?.gpuBusyPercent ?? null,
@@ -86,4 +103,25 @@ export function appendPoint(
   return next.length > LIVE_HISTORY_POINTS
     ? next.slice(next.length - LIVE_HISTORY_POINTS)
     : next;
+}
+
+export interface LiveSeriesState {
+  prev: LiveSnapshot | null;
+  points: LivePoint[];
+}
+
+/**
+ * Pure state step for the Live page: add a point for `snapshot` (rates from
+ * the previous one) and make it the new previous. A snapshot already seen
+ * returns the same state object.
+ */
+export function advanceLive(
+  state: LiveSeriesState,
+  snapshot: LiveSnapshot,
+): LiveSeriesState {
+  if (state.prev?.at === snapshot.at) return state;
+  return {
+    prev: snapshot,
+    points: appendPoint(state.points, toPoint(state.prev, snapshot)),
+  };
 }

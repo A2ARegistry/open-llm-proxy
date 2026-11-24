@@ -7,6 +7,8 @@ import type {
 import {
   LIVE_HISTORY_POINTS,
   LIVE_POLL_MS,
+  LIVE_GAP_MS,
+  advanceLive,
   appendPoint,
   ratio,
   toPoint,
@@ -61,8 +63,8 @@ function snap(
 ): LiveSnapshot {
   return {
     at,
-    inference: inf === null ? null : inference(inf),
-    host: h === null ? null : host(h),
+    inference: inf === null ? null : inference({ sampledAt: at, ...inf }),
+    host: h === null ? null : host({ sampledAt: at, ...h }),
     lastRequest: null,
   };
 }
@@ -115,6 +117,63 @@ describe("toPoint", () => {
     expect(p.cpuTempC).toBeNull();
     expect(p.ssdTempC).toBeNull();
     expect(p.gpuBusyPercent).toBeNull();
+  });
+});
+
+describe("toPoint sample times", () => {
+  it("rates use each source's own sample time, not the snapshot time", () => {
+    const p = toPoint(
+      snap(
+        1900,
+        { predictedTokensTotal: 1000, sampledAt: 0 },
+        { cpuIdleSecondsTotal: 100, cpuSecondsTotal: 200, sampledAt: 0 },
+      ),
+      snap(
+        2100,
+        { predictedTokensTotal: 1040, sampledAt: 2000 },
+        { cpuIdleSecondsTotal: 106, cpuSecondsTotal: 208, sampledAt: 2000 },
+      ),
+    );
+    expect(p.decodeTps).toBe(20);
+    expect(p.cpuPercent).toBe(25);
+  });
+
+  it("a gap longer than LIVE_GAP_MS gives no rates", () => {
+    expect(LIVE_GAP_MS).toBe(5000);
+    const p = toPoint(
+      snap(
+        0,
+        { predictedTokensTotal: 1000 },
+        { cpuIdleSecondsTotal: 100, cpuSecondsTotal: 200 },
+      ),
+      snap(
+        60_000,
+        { predictedTokensTotal: 9000 },
+        { cpuIdleSecondsTotal: 160, cpuSecondsTotal: 400 },
+      ),
+    );
+    expect(p.decodeTps).toBeNull();
+    expect(p.cpuPercent).toBeNull();
+    expect(p.gpuTempC).toBe(75);
+  });
+});
+
+describe("advanceLive", () => {
+  it("rates come from the previous snapshot, then it becomes the new previous", () => {
+    const a = advanceLive(
+      { prev: null, points: [] },
+      snap(0, { predictedTokensTotal: 1000 }),
+    );
+    expect(a.points).toHaveLength(1);
+    expect(a.points[0].decodeTps).toBeNull();
+    const b = advanceLive(a, snap(2000, { predictedTokensTotal: 1040 }));
+    expect(b.points.map((p) => p.decodeTps)).toEqual([null, 20]);
+    expect(b.prev?.at).toBe(2000);
+  });
+
+  it("ignores a snapshot it has already seen", () => {
+    const a = advanceLive({ prev: null, points: [] }, snap(0));
+    expect(advanceLive(a, snap(0))).toBe(a);
   });
 });
 

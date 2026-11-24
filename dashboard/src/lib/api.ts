@@ -195,6 +195,7 @@ export interface RequestRow {
 // [fork] W11: GET /api/live snapshot (mirrors src/live/snapshot.ts).
 export interface InferenceSnapshot {
   binding: string;
+  sampledAt: number;
   version: string | null;
   slots: number | null;
   inFlight: number | null;
@@ -214,6 +215,7 @@ export interface InferenceSnapshot {
 
 export interface HostSnapshot {
   binding: string;
+  sampledAt: number;
   cpuIdleSecondsTotal: number | null;
   cpuSecondsTotal: number | null;
   memTotalBytes: number | null;
