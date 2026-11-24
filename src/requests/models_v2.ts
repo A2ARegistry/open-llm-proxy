@@ -21,7 +21,6 @@ import {
 } from "../llm/provider-registry";
 import { resolveFetcher, type UpstreamFetcher } from "../llm/transport";
 import { V1OpenAICompatibleClient } from "../llm/v1-provider";
-// [fork] W1
 import { ApiKeyAuth } from "../types";
 
 interface ModelsInput {

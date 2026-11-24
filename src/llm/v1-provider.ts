@@ -5,8 +5,6 @@ import {
 } from "./provider-registry";
 import type { UpstreamFetcher } from "./transport";
 
-// [fork] W1
-
 export type KeyRotationStrategy = "first" | "round-robin" | "failover";
 
 /** Native-fetch client for OpenAI-compatible providers. */

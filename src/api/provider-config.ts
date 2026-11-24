@@ -22,7 +22,6 @@ import {
   testProviderConnection,
 } from "../llm/provider-test";
 import { resolveFetcher, type UpstreamFetcher } from "../llm/transport";
-// [fork] W1
 import { Hono } from "hono";
 
 const MAX_KEYS_PER_PROVIDER = 20;

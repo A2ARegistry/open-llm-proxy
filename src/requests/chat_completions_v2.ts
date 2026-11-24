@@ -38,9 +38,12 @@ import {
   putCachedResponse,
   responseCacheKey,
 } from "../llm/response-cache";
-import { resolveFetcher, type UpstreamFetcher } from "../llm/transport";
+import {
+  isPrivateTransport,
+  resolveFetcher,
+  type UpstreamFetcher,
+} from "../llm/transport";
 import { V1OpenAICompatibleClient } from "../llm/v1-provider";
-// [fork] W1
 import type { TokenUsage } from "../metrics/cost-tracker";
 import { recordChatRequest } from "../metrics/request-logger";
 import { maybeDisableAfterSpend } from "../metrics/spend-guard";
@@ -329,8 +332,9 @@ export async function chatCompletionsV2(
 
   // Diagnostic tracing (provider `settings.trace`) — opt-in, testing only.
   // Captures raw + converted request/response payloads for bug investigation.
+  // [fork] W6: never for private (vpc) providers, whatever the setting says.
   const trace =
-    config.settings?.trace === true
+    config.settings?.trace === true && !isPrivateTransport(config.settings)
       ? new TraceSession({
           organizationId,
           apiKeyId: apiKeyAuth.keyId,
@@ -399,7 +403,11 @@ export async function chatCompletionsV2(
 
   // Phase 4.2 — opt-in response cache for non-streaming requests.
   const cacheSettings = settings.cache;
-  const cacheEnabled = !stream && cacheSettings?.enabled === true;
+  // [fork] W6: never cache responses from private (vpc) providers.
+  const cacheEnabled =
+    !stream &&
+    cacheSettings?.enabled === true &&
+    !isPrivateTransport(config.settings);
   const cacheTtl = cacheSettings?.ttl ?? 3600;
   const cacheKey =
     cacheEnabled && chatBody.messages

@@ -20,8 +20,6 @@ import {
 import type { UpstreamFetcher } from "./transport";
 import { V1OpenAICompatibleClient } from "./v1-provider";
 
-// [fork] W1
-
 export interface ProviderTestResult {
   ok: boolean;
   status?: number;
