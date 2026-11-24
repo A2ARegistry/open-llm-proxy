@@ -1,18 +1,28 @@
 // [fork] W11: one live snapshot of the self-hosted box for the dashboard.
 // Raw counters and gauges only; the dashboard derives rates between polls.
-import { latestRequest, type RequestLogRow } from "../metrics/request-log";
+import {
+  latestRequestStatement,
+  type RequestLogRow,
+} from "../metrics/request-log";
 import {
   parsePrometheus,
   promSum,
   promValue,
   type PromSample,
 } from "./prometheus";
+import { vpcProviders } from "./provider-binding";
 import {
   fetchLiveText,
   hostBinding,
   inferenceBinding,
   type LiveBinding,
 } from "./sources";
+import {
+  spreadThroughput,
+  throughputRowsStatement,
+  type ThroughputPoint,
+  type ThroughputRequest,
+} from "./throughput";
 
 export interface InferenceSnapshot {
   binding: string;
@@ -57,7 +67,12 @@ export interface LiveSnapshot {
   inference: InferenceSnapshot | null;
   host: HostSnapshot | null;
   lastRequest: RequestLogRow | null;
+  /** Request throughput of the last 10 minutes, one point per 10 s (idle = 0). */
+  throughput: ThroughputPoint[];
 }
+
+const THROUGHPUT_WINDOW_S = 600;
+const THROUGHPUT_BUCKET_S = 10;
 
 function num(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -200,20 +215,58 @@ async function timedFetch(
   return { text, at: Date.now() };
 }
 
-/** Read every live source for `organizationId` in parallel (one D1 read, no writes). */
+/**
+ * The last request and the throughput series, in one D1 batch. Throughput is
+ * only for the org's vpc providers (none: no series).
+ */
+async function readRequestLog(
+  env: Env,
+  organizationId: string,
+  nowMs: number,
+): Promise<{
+  lastRequest: RequestLogRow | null;
+  throughput: ThroughputPoint[];
+}> {
+  const to =
+    (Math.floor(nowMs / 1000 / THROUGHPUT_BUCKET_S) + 1) * THROUGHPUT_BUCKET_S;
+  const from = to - THROUGHPUT_WINDOW_S;
+  const providers = (await vpcProviders(env, organizationId)).map(
+    (p) => p.provider,
+  );
+  const [last, rows] = await env.DB.batch([
+    latestRequestStatement(env, organizationId),
+    ...(providers.length > 0
+      ? [throughputRowsStatement(env, organizationId, providers, from, to)]
+      : []),
+  ]);
+  return {
+    lastRequest: (last.results[0] as unknown as RequestLogRow) ?? null,
+    throughput: rows
+      ? spreadThroughput(
+          rows.results as unknown as ThroughputRequest[],
+          from,
+          to,
+          THROUGHPUT_BUCKET_S,
+        )
+      : [],
+  };
+}
+
+/** Read every live source for `organizationId` in parallel (one D1 batch, no writes). */
 export async function buildLiveSnapshot(
   env: Env,
   organizationId: string,
 ): Promise<LiveSnapshot> {
   const inference = inferenceBinding(env, organizationId);
   const host = hostBinding(env, organizationId);
-  const [health, inferenceMetrics, hostMetrics, lastRequest] =
-    await Promise.all([
+  const [health, inferenceMetrics, hostMetrics, requestLog] = await Promise.all(
+    [
       timedFetch(inference, "/health"),
       timedFetch(inference, "/metrics"),
       timedFetch(host, "/metrics"),
-      latestRequest(env, organizationId),
-    ]);
+      readRequestLog(env, organizationId, Date.now()),
+    ],
+  );
   return {
     at: Date.now(),
     inference: inference
@@ -225,6 +278,6 @@ export async function buildLiveSnapshot(
         )
       : null,
     host: host ? toHost(host.name, hostMetrics.text, hostMetrics.at) : null,
-    lastRequest,
+    ...requestLog,
   };
 }

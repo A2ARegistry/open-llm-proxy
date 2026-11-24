@@ -23,7 +23,7 @@ const INFERENCE_AVG = [
   "cache_saved_tps",
   "draft_accept_ratio",
 ];
-const INFERENCE_MAX = [
+export const INFERENCE_MAX = [
   "in_flight",
   "queued",
   "longest_wait_s",
@@ -41,7 +41,7 @@ const HOST_AVG = [
   "ssd_temp_c",
   "gpu_power_w",
 ];
-const HOST_MAX = [
+export const HOST_MAX = [
   "cpu_busy_pct",
   "gpu_busy_pct",
   "mem_used_bytes",
