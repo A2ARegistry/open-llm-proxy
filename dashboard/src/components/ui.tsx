@@ -386,11 +386,13 @@ export function Modal({
         isMouseDownOnBackdrop.current = false;
       }}
     >
+      {/* [fork] W10: cap the panel at the viewport and scroll only the body, so
+          the footer (Save) stays reachable when the form is taller than the window. */}
       <div
-        className={`w-full ${wide ? "max-w-2xl" : "max-w-md"} rounded-lg bg-white shadow-xl`}
+        className={`flex max-h-full w-full flex-col ${wide ? "max-w-2xl" : "max-w-md"} rounded-lg bg-white shadow-xl`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-5 py-3">
           <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
           <button
             type="button"
@@ -400,9 +402,11 @@ export function Modal({
             <X size={18} />
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {children}
+        </div>
         {footer && (
-          <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-3">
+          <div className="flex shrink-0 justify-end gap-2 border-t border-gray-100 px-5 py-3">
             {footer}
           </div>
         )}
