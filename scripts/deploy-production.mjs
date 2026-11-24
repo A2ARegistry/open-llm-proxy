@@ -24,6 +24,15 @@
  *   --admin-password <pw>    Initial admin password     (or env ADMIN_PASSWORD).
  *                    Min 12 chars. Seeded only on first boot; forced rotation
  *                    on first sign-in regardless.
+ *   [fork] W9 options (see FORK.md):
+ *   --vpc-service-id NAME=ID  Bind a Workers VPC service (repeatable), e.g.
+ *                    HALOGEN=<uuid from `wrangler vpc service list`>.
+ *   --vpc-allow NAME=ORGS     Organizations allowed to use NAME: "org_a|org_b"
+ *                    or "*" (repeatable). Without it NAME allows nobody.
+ *   --custom-domain <host>    Serve on this custom domain (e.g. api.example.com);
+ *                    turns workers.dev and preview URLs off.
+ *   --zero-price-provider <id> Price every model of this provider at 0
+ *                    (repeatable), e.g. local-m5. Runs after migrations.
  *   --migrate-only   Apply D1 migrations and exit
  *   --skip-migrate   Deploy without applying migrations
  *   --skip-build     Skip `npm run build` (tsc + dashboard)
@@ -31,9 +40,12 @@
  *
  * Anything after the flags is passed through to `wrangler deploy`.
  */
+import { applyForkOptions, zeroPriceSql } from "./fork-deploy.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+
+// [fork] W9
 
 const SOURCE_CONFIG = "wrangler.jsonc";
 const GENERATED_CONFIG = "wrangler.production.local.json";
@@ -109,6 +121,11 @@ const { values: opts, positionals } = (() => {
         "dashboard-url": { type: "string" },
         "admin-email": { type: "string" },
         "admin-password": { type: "string" },
+        // [fork] W9
+        "vpc-service-id": { type: "string", multiple: true },
+        "vpc-allow": { type: "string", multiple: true },
+        "custom-domain": { type: "string" },
+        "zero-price-provider": { type: "string", multiple: true },
         "migrate-only": { type: "boolean", default: false },
         "skip-build": { type: "boolean", default: false },
         "skip-migrate": { type: "boolean", default: false },
@@ -217,6 +234,26 @@ if (adminEmail || rawAdminPassword !== undefined) {
     prod.vars.INITIAL_ADMIN_PASSWORD = rawAdminPassword;
 }
 
+// [fork] W9: VPC services, custom domain, zero-priced providers.
+let zeroPriceStatements = [];
+try {
+  const { warnings } = applyForkOptions(prod, {
+    vpcServiceIds: opts["vpc-service-id"],
+    vpcAllow: opts["vpc-allow"],
+    customDomain: opts["custom-domain"],
+  });
+  for (const warning of warnings) console.warn(`!  ${warning}`);
+  zeroPriceStatements = (opts["zero-price-provider"] ?? []).map(zeroPriceSql);
+} catch (err) {
+  die(err.message);
+}
+if (prod.vpc_services?.length) {
+  console.log(`VPC: VPC_BINDINGS=${prod.vars.VPC_BINDINGS}`);
+}
+if (opts["custom-domain"]) {
+  console.log(`DOMAIN: ${opts["custom-domain"]} (workers.dev off)`);
+}
+
 if (opts["migrate-only"]) {
   console.log("D1 : %s (%s)", d1Binding.database_name, nextD1);
   console.log("KV : skipped (--migrate-only)");
@@ -258,6 +295,12 @@ if (opts["dry-run"]) {
       `[dry-run] would run: npx wrangler d1 migrations apply DB --remote ${wranglerArgs.join(" ")}`,
     );
   }
+  // [fork] W9
+  for (const sql of zeroPriceStatements) {
+    console.log(
+      `[dry-run] would run: npx wrangler d1 execute DB --remote ${wranglerArgs.join(" ")} --command "${sql}"`,
+    );
+  }
   if (!opts["migrate-only"]) {
     console.log(
       `[dry-run] would run: npx wrangler deploy ${wranglerArgs.join(" ")}${positionals.length ? " " + positionals.join(" ") : ""}`,
@@ -283,6 +326,20 @@ try {
       "DB",
       "--remote",
       ...wranglerArgs,
+    ]);
+  }
+
+  // [fork] W9: provider-wide zero prices (after migrations created the table).
+  for (const sql of zeroPriceStatements) {
+    run("npx", [
+      "wrangler",
+      "d1",
+      "execute",
+      "DB",
+      "--remote",
+      ...wranglerArgs,
+      "--command",
+      sql,
     ]);
   }
 

@@ -145,6 +145,43 @@ D1_DATABASE_ID=4f2a… KV_NAMESPACE_ID=1a2b… npm run deploy
 
 This is exactly how **Option B** (GitHub integration) works — see Step 3.
 
+### 2.5 [fork] Private upstream through Workers VPC
+
+This fork can reach a self-hosted, OpenAI-compatible server that has no public address, through a Cloudflare Tunnel and a [Workers VPC service](https://developers.cloudflare.com/workers-vpc/configuration/vpc-services/). See `FORK.md` for the code changes.
+
+1. Create a **remotely managed** tunnel and install `cloudflared` on the host with its token. Add **no** public hostname.
+2. Create the VPC service for the server's loopback address and port (the deploying account needs the **Connectivity Directory Bind** role):
+
+   ```bash
+   npx wrangler vpc service create <name> --type http --tunnel-id <TUNNEL_ID> --ipv4 127.0.0.1 --http-port <PORT>
+   ```
+
+3. Deploy once, then look up your organization id (the bootstrap admin's organization):
+
+   ```bash
+   npx wrangler d1 execute open-llm-proxy-prod --remote --command "SELECT id FROM organizations WHERE is_root_tenant = 1"
+   ```
+
+4. Deploy with the VPC options:
+
+   ```bash
+   npm run deploy -- --d1 … --kv … --base-url https://<api-domain> \
+     --custom-domain <api-domain> \
+     --vpc-service-id HALOGEN=<SERVICE_ID> --vpc-allow HALOGEN=<ORG_ID> \
+     --zero-price-provider <provider-id>
+   ```
+
+5. In the dashboard, add a **Custom OpenAI-compatible** provider: base URL `http://127.0.0.1:<PORT>`, transport **Workers VPC binding**, binding `HALOGEN`, no API key.
+
+| Flag                         | Purpose                                                                                                                |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `--vpc-service-id NAME=ID`   | Bind a VPC service as `NAME` (repeatable)                                                                              |
+| `--vpc-allow NAME=ORGS`      | Organizations that may use `NAME`: `org_a\|org_b`, or `*` for all (repeatable). Without it, no organization can use it |
+| `--custom-domain <host>`     | Serve on this custom domain; turns `workers.dev` and preview URLs off                                                  |
+| `--zero-price-provider <id>` | Price every model of this provider at 0, so spend reflects only hosted providers (repeatable)                          |
+
+Real ids are injected into the git-ignored generated config only; never commit them.
+
 ---
 
 ## Step 3: Connect GitHub and Deploy
