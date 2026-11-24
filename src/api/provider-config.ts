@@ -8,6 +8,7 @@ import {
   SaveProviderConfigInput,
 } from "../llm/credential-store";
 import { parseVertexConfig } from "../llm/google-vertex";
+import { validateInjectBody } from "../llm/inject-body";
 import { defaultModelFor, resolveDefaultModel } from "../llm/model-catalog";
 import {
   getPiAiProviderSpec,
@@ -170,6 +171,9 @@ function validateSettings(settings: unknown): Record<string, unknown> {
           "settings.vpcBinding must be a Worker binding name (e.g. HALOGEN)",
         );
       }
+    } else if (key === "injectBody") {
+      // [fork] W3
+      validateInjectBody(value);
     }
     out[key] = value;
   }

@@ -907,3 +907,51 @@ describe("VPC transport settings", () => {
     expect(mockFetchProviderModels).not.toHaveBeenCalled();
   });
 });
+
+// [fork] W3: injectBody provider setting.
+describe("injectBody settings", () => {
+  const put = (injectBody: unknown) =>
+    fetchJson(buildApp(), "/api/providers/my-gw", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        settings: { baseUrl: "https://gw.example.com", injectBody },
+      }),
+    });
+
+  it("saves a JSON object", async () => {
+    mockSaveProviderConfig.mockResolvedValue(config({ provider: "my-gw" }));
+    const { status } = await put({
+      return_progress: true,
+      stream_options: { include_usage: true },
+    });
+    expect(status).toBe(200);
+    expect(
+      mockSaveProviderConfig.mock.calls[0][3].settings?.injectBody,
+    ).toEqual({
+      return_progress: true,
+      stream_options: { include_usage: true },
+    });
+  });
+
+  it.each([[["a"]], ["text"], [null], [42]])("rejects %j", async (value) => {
+    const { status, body } = await put(value);
+    expect(status).toBe(400);
+    expect(body.error).toContain("injectBody");
+  });
+
+  it.each(["model", "messages", "stream"])(
+    "rejects the reserved key %s",
+    async (key) => {
+      const { status, body } = await put({ [key]: "x" });
+      expect(status).toBe(400);
+      expect(body.error).toContain(key);
+    },
+  );
+
+  it("rejects an oversized object", async () => {
+    const { status, body } = await put({ big: "x".repeat(5000) });
+    expect(status).toBe(400);
+    expect(body.error).toContain("injectBody");
+  });
+});

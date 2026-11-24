@@ -501,6 +501,12 @@ function ProviderFormModal({
   const [vpcBinding, setVpcBinding] = useState(
     isCustom ? String(initialSettings?.vpcBinding ?? "") : "",
   );
+  // [fork] W3: JSON merged into every upstream request body.
+  const [injectBodyText, setInjectBodyText] = useState(
+    isCustom && initialSettings?.injectBody
+      ? JSON.stringify(initialSettings.injectBody, null, 2)
+      : "",
+  );
   const [keysText, setKeysText] = useState(hasExistingKeys ? KEY_MASK : "");
   const [accountId, setAccountId] = useState(
     provider === "cloudflare-workers-ai"
@@ -674,6 +680,10 @@ function ProviderFormModal({
             : {}),
           transport,
           ...(transport === "vpc" ? { vpcBinding: vpcBinding.trim() } : {}),
+          // [fork] W3: a JSON parse error surfaces through the caller's catch.
+          ...(injectBodyText.trim()
+            ? { injectBody: JSON.parse(injectBodyText) }
+            : {}),
           customModels: parseCustomModels(),
           rotationStrategy,
           ...traceSetting,
@@ -1083,6 +1093,21 @@ function ProviderFormModal({
                   <p className="mt-1 text-[11px] text-gray-400">
                     Explicitly list model IDs to expose in /v1/models if the
                     endpoint has no /models route.
+                  </p>
+                </div>
+                {/* [fork] W3 */}
+                <div>
+                  <Label>Inject into request body (JSON, optional)</Label>
+                  <textarea
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    rows={3}
+                    placeholder={'{"return_progress": true}'}
+                    value={injectBodyText}
+                    onChange={(e) => setInjectBodyText(e.target.value)}
+                  />
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    Merged into every chat request; the client's own values win.
+                    stream_options is added to streaming requests only.
                   </p>
                 </div>
               </div>

@@ -10,6 +10,7 @@ import {
   vertexModelsPath,
   vertexModelId,
 } from "../llm/google-vertex";
+import { applyInjectBody } from "../llm/inject-body";
 import { resolveDefaultModel } from "../llm/model-catalog";
 import { createTenantModels, modelFor } from "../llm/models-factory";
 import {
@@ -880,7 +881,8 @@ export async function chatCompletionsV2(
     });
   }
   const upstreamBody = JSON.stringify({
-    ...chatBody,
+    // [fork] W3: provider settings.injectBody, client values win.
+    ...applyInjectBody(chatBody, config.settings?.injectBody, stream),
     model: upstreamModelId,
     stream,
     ...(numberParam(chatBody.temperature) !== undefined

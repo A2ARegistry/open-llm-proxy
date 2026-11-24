@@ -78,7 +78,10 @@ function completion(): Response {
 
 const pending: Promise<unknown>[] = [];
 
-function chat(env: object): Promise<Response> {
+function chat(
+  env: object,
+  extra: Record<string, unknown> = {},
+): Promise<Response> {
   return chatCompletionsV2({
     request: new Request("https://gw.test/v1/chat/completions", {
       method: "POST",
@@ -86,6 +89,7 @@ function chat(env: object): Promise<Response> {
       body: JSON.stringify({
         model: "local-m5/qwen-flash",
         messages: [{ role: "user", content: "hello" }],
+        ...extra,
       }),
     }),
     env: env as Env,
@@ -197,5 +201,56 @@ describe("chatCompletionsV2 privacy for vpc providers", () => {
 
     expect(res.status).toBe(200);
     expect(vi.mocked(getCachedResponse)).toHaveBeenCalled();
+  });
+});
+
+// [fork] W3: settings.injectBody shapes the outgoing request.
+describe("chatCompletionsV2 injectBody", () => {
+  const binding = { fetch: vi.fn() };
+  const env = { VPC_BINDINGS: "HALOGEN:org_1", HALOGEN: binding };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tenant.settings = {};
+    mockGetProviderConfig.mockResolvedValue({
+      ...localBox,
+      settings: {
+        ...localBox.settings,
+        injectBody: {
+          return_progress: true,
+          stream_options: { include_usage: true },
+        },
+      },
+    });
+  });
+
+  async function sentBody(extra: Record<string, unknown>) {
+    binding.fetch.mockImplementation(async () =>
+      extra.stream
+        ? new Response("data: [DONE]\n\n", {
+            headers: { "content-type": "text/event-stream" },
+          })
+        : completion(),
+    );
+    const res = await chat(env, extra);
+    await res.text();
+    return JSON.parse(binding.fetch.mock.calls[0][1].body as string);
+  }
+
+  it("injects fields into a non-streaming request without stream_options", async () => {
+    const body = await sentBody({});
+    expect(body.return_progress).toBe(true);
+    expect(body.stream_options).toBeUndefined();
+    expect(body.model).toBe("qwen-flash");
+  });
+
+  it("injects stream_options.include_usage into a streaming request", async () => {
+    const body = await sentBody({ stream: true });
+    expect(body.stream_options).toEqual({ include_usage: true });
+  });
+
+  it("keeps the client's explicit values", async () => {
+    const body = await sentBody({ return_progress: false });
+    expect(body.return_progress).toBe(false);
   });
 });
