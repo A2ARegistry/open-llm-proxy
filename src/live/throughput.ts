@@ -164,6 +164,7 @@ export function throughputRowsStatement(
         AND status_code < 400
         AND cache_hit = 0
         AND timestamp >= ?
-        AND timestamp - latency_ms / 1000.0 < ?`,
+        AND timestamp - latency_ms / 1000.0 < ?
+      ORDER BY timestamp`,
   ).bind(orgId, ...providers, from, to);
 }

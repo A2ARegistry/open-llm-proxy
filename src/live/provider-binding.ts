@@ -14,7 +14,10 @@ interface Row {
   binding: string | null;
 }
 
-/** Providers with vpc transport whose binding `VPC_BINDINGS` allows for the org. */
+/**
+ * Providers with vpc transport whose binding `VPC_BINDINGS` allows for the org.
+ * Disabled providers are intentionally included: their past requests were real box load.
+ */
 export async function vpcProviders(
   env: Env,
   organizationId?: string,
