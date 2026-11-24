@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* [fork] dark mode via palette token overrides */
+@import "./dark.css";
 
 /* content-auth's `button[type="submit"]` rule reads these vars globally; define
    them outside `.ca-container` so our own submit buttons (e.g. the change-password

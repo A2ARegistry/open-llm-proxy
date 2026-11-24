@@ -1,0 +1,171 @@
+/* [fork] Dark mode. Follows the OS setting (prefers-color-scheme); no toggle.
+   Works by redefining Tailwind's palette tokens, so no component gets `dark:`
+   classes. The few rules that target classes cover tokens used both as a
+   background under white text and as a text colour (indigo/red 600-700),
+   bg-white, and the dark "islands" (code block, tooltips). */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    /* Neutrals: 50-300 become dark surfaces and borders, 400-950 light text. */
+    --color-gray-50: oklch(15% 0.02 262);
+    --color-gray-100: oklch(24% 0.022 262);
+    --color-gray-200: oklch(30% 0.024 262);
+    --color-gray-300: oklch(38% 0.026 262);
+    --color-gray-400: oklch(62% 0.022 262);
+    --color-gray-500: oklch(70% 0.02 262);
+    --color-gray-600: oklch(78% 0.016 262);
+    --color-gray-700: oklch(85% 0.012 262);
+    --color-gray-800: oklch(91% 0.008 262);
+    --color-gray-900: oklch(96% 0.004 262);
+    --color-gray-950: oklch(98.5% 0.002 262);
+
+    --color-slate-50: oklch(15% 0.03 260);
+    --color-slate-100: oklch(24% 0.032 260);
+    --color-slate-200: oklch(30% 0.034 260);
+    --color-slate-300: oklch(38% 0.036 260);
+    --color-slate-400: oklch(62% 0.03 260);
+    --color-slate-500: oklch(70% 0.026 260);
+    --color-slate-600: oklch(78% 0.02 260);
+    --color-slate-700: oklch(85% 0.014 260);
+    --color-slate-800: oklch(91% 0.01 260);
+    --color-slate-900: oklch(96% 0.005 260);
+    --color-slate-950: oklch(98.5% 0.003 260);
+
+    /* Tints (badge/alert backgrounds and borders) become dark tints. */
+    --color-red-50: oklch(25% 0.06 20);
+    --color-red-100: oklch(29% 0.08 20);
+    --color-red-200: oklch(38% 0.1 20);
+    --color-amber-50: oklch(25% 0.05 70);
+    --color-amber-100: oklch(29% 0.06 70);
+    --color-amber-200: oklch(40% 0.08 70);
+    --color-green-50: oklch(25% 0.05 155);
+    --color-green-100: oklch(29% 0.06 155);
+    --color-green-200: oklch(38% 0.08 155);
+    --color-emerald-50: oklch(25% 0.05 165);
+    --color-emerald-100: oklch(29% 0.06 165);
+    --color-emerald-200: oklch(38% 0.08 165);
+    --color-sky-50: oklch(25% 0.05 237);
+    --color-sky-100: oklch(29% 0.06 237);
+    --color-sky-200: oklch(38% 0.08 237);
+    --color-blue-50: oklch(25% 0.06 260);
+    --color-blue-100: oklch(29% 0.08 260);
+    --color-blue-200: oklch(38% 0.1 260);
+    --color-indigo-50: oklch(25% 0.07 277);
+    --color-indigo-100: oklch(29% 0.09 277);
+    --color-indigo-200: oklch(38% 0.12 277);
+
+    /* Text-only shades: lighten so they read on dark surfaces. */
+    --color-amber-600: oklch(80% 0.15 80);
+    --color-amber-700: oklch(84% 0.13 85);
+    --color-amber-800: oklch(88% 0.11 90);
+    --color-green-600: oklch(76% 0.17 152);
+    --color-green-700: oklch(82% 0.14 152);
+    --color-green-800: oklch(87% 0.11 152);
+    --color-emerald-600: oklch(76% 0.15 163);
+    --color-emerald-700: oklch(82% 0.13 163);
+    --color-emerald-800: oklch(87% 0.1 163);
+    --color-sky-600: oklch(76% 0.13 235);
+    --color-sky-700: oklch(82% 0.11 235);
+    --color-sky-800: oklch(87% 0.08 235);
+    --color-blue-600: oklch(74% 0.14 256);
+    --color-blue-700: oklch(80% 0.11 256);
+    --color-blue-800: oklch(86% 0.08 256);
+
+    /* Cards and inputs (bg-white). Page background is gray-50. */
+    --fork-surface: oklch(19% 0.022 262);
+  }
+
+  /* content-auth only ships a `.dark` class theme, not a media query. */
+
+  :root .ca-container {
+    --ca-bg: var(--fork-surface);
+    --ca-border: #2a3140;
+    --ca-text-primary: #f3f4f6;
+    --ca-text-secondary: #d1d5db;
+    --ca-text-muted: #9ca3af;
+    --ca-input-bg: #111827;
+    --ca-input-border: #374151;
+    --ca-input-focus-bg: #111827;
+    --ca-input-focus-border: #818cf8;
+    --ca-input-focus-shadow: rgba(129, 140, 248, 0.15);
+    --ca-btn-primary-bg: #4f46e5;
+    --ca-btn-primary-text: #ffffff;
+    --ca-btn-primary-hover: #6366f1;
+    --ca-btn-social-bg: #1f2937;
+    --ca-btn-social-text: #f3f4f6;
+    --ca-btn-social-border: #374151;
+    --ca-btn-social-hover: #2d3748;
+    --ca-divider-color: #374151;
+    --ca-error-bg: rgba(239, 68, 68, 0.1);
+    --ca-error-text: #f87171;
+    --ca-error-border: rgba(239, 68, 68, 0.25);
+    --ca-link-color: #a5b4fc;
+    --ca-link-hover: #c7d2fe;
+    --ca-success-text: #f3f4f6;
+  }
+
+  /* Dark islands (code sample, tooltips, dark button) keep light-mode grays,
+     so their own gray-200/400/800 text and borders still read correctly. */
+  .bg-gray-900,
+  .bg-gray-950 {
+    --color-gray-50: oklch(98.5% 0.002 247.839);
+    --color-gray-100: oklch(96.7% 0.003 264.542);
+    --color-gray-200: oklch(92.8% 0.006 264.531);
+    --color-gray-300: oklch(87.2% 0.01 258.338);
+    --color-gray-400: oklch(70.7% 0.022 261.325);
+    --color-gray-500: oklch(55.1% 0.027 264.364);
+    --color-gray-600: oklch(44.6% 0.03 256.802);
+    --color-gray-700: oklch(37.3% 0.034 259.733);
+    --color-gray-800: oklch(27.8% 0.033 256.848);
+    --color-gray-900: oklch(30% 0.03 262);
+    --color-gray-950: oklch(11% 0.02 262);
+  }
+
+  /* Recharts: grid stroke and tooltip background are hardcoded in JSX. */
+  .recharts-cartesian-grid line {
+    stroke: var(--color-gray-200);
+  }
+  .recharts-default-tooltip {
+    background-color: var(--fork-surface) !important;
+    border-color: var(--color-gray-300) !important;
+  }
+  .recharts-text {
+    fill: var(--color-gray-500);
+  }
+
+  /* Same layer as Tailwind's utilities so hover:/focus: variants still win. */
+  @layer utilities {
+    .bg-white {
+      background-color: var(--fork-surface);
+    }
+    .bg-white\/90 {
+      background-color: color-mix(
+        in oklch,
+        var(--fork-surface) 90%,
+        transparent
+      );
+    }
+    .to-white {
+      --tw-gradient-to: var(--color-gray-50);
+    }
+    .text-indigo-600,
+    .hover\:text-indigo-600:hover {
+      color: oklch(73% 0.15 277);
+    }
+    .text-indigo-700,
+    .hover\:text-indigo-700:hover {
+      color: oklch(80% 0.11 277);
+    }
+    .text-red-600 {
+      color: oklch(72% 0.17 22);
+    }
+    .text-red-700 {
+      color: oklch(80% 0.12 20);
+    }
+    .focus\:ring-offset-1:focus {
+      --tw-ring-offset-color: var(--fork-surface);
+    }
+  }
+}
