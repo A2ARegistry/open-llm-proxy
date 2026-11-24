@@ -47,7 +47,7 @@ export function assertVpcUrl(url: string): void {
  * Format: comma-separated `NAME:org_a|org_b` entries; `NAME:*` allows every
  * organization. A bare `NAME` allows nobody (fail closed).
  */
-function parseAllowlist(raw: unknown): Map<string, string[]> {
+export function parseAllowlist(raw: unknown): Map<string, string[]> {
   const allowlist = new Map<string, string[]>();
   for (const entry of String(raw ?? "").split(",")) {
     const [name, orgs = ""] = entry.trim().split(":");
@@ -62,7 +62,7 @@ function parseAllowlist(raw: unknown): Map<string, string[]> {
   return allowlist;
 }
 
-function isAllowed(
+export function isAllowed(
   allowlist: Map<string, string[]>,
   name: string,
   organizationId: string,

@@ -46,6 +46,7 @@
     // and which organizations may use each: "NAME:org_a|org_b,OTHER:*".
     // A bare NAME allows nobody. Empty = VPC transport disabled.
     "VPC_BINDINGS": "",
+    "HOST_METRICS_BINDINGS": "", // [fork] W11: set by the deploy script
     // [fork] Scope the third-party EmailingCacheDO to email settings; without
     // it the DO loads every system_settings row, secrets included.
     "EMAIL_SETTINGS_KEY_PREFIX": "system_email.",
@@ -147,6 +148,7 @@
         "ENVIRONMENT": "production",
         "LOG_LEVEL": "info",
         "VPC_BINDINGS": "", // [fork] W1: set by the deploy script
+        "HOST_METRICS_BINDINGS": "", // [fork] W11: set by the deploy script
         "EMAIL_SETTINGS_KEY_PREFIX": "system_email.", // [fork] see dev vars
         "DASHBOARD_URL": "https://your-domain.com",
         "SESSION_CACHE_TTL_SECONDS": "3600",

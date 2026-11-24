@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   Boxes,
+  Gauge,
   KeyRound,
   LayoutDashboard,
   ListTree,
@@ -37,6 +38,7 @@ const NAV = [
   { to: "/providers", label: "Providers", icon: Boxes },
   { to: "/api-keys", label: "API Keys", icon: KeyRound },
   { to: "/analytics", label: "Analytics", icon: Activity },
+  { to: "/live", label: "Live", icon: Gauge }, // [fork] W11
   { to: "/requests", label: "Requests", icon: ListTree },
   { to: "/email", label: "Email", icon: Mail },
   { to: "/team", label: "Team", icon: Users },

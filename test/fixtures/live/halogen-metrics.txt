@@ -1,0 +1,129 @@
+# HELP llamacpp:prompt_tokens_total Number of prompt tokens processed.
+# TYPE llamacpp:prompt_tokens_total counter
+llamacpp:prompt_tokens_total 369708
+# HELP llamacpp:prompt_seconds_total Prompt process time.
+# TYPE llamacpp:prompt_seconds_total counter
+llamacpp:prompt_seconds_total 224.9611
+# HELP llamacpp:tokens_predicted_total Number of generation tokens processed.
+# TYPE llamacpp:tokens_predicted_total counter
+llamacpp:tokens_predicted_total 218417
+# HELP llamacpp:tokens_predicted_seconds_total Predict process time.
+# TYPE llamacpp:tokens_predicted_seconds_total counter
+llamacpp:tokens_predicted_seconds_total 3394.2116
+# HELP llamacpp:prompt_tokens_seconds Average prompt throughput in tokens/s. (since the last scrape)
+# TYPE llamacpp:prompt_tokens_seconds gauge
+llamacpp:prompt_tokens_seconds 1548.281876
+# HELP llamacpp:predicted_tokens_seconds Average generation throughput in tokens/s. (since the last scrape)
+# TYPE llamacpp:predicted_tokens_seconds gauge
+llamacpp:predicted_tokens_seconds 48.51905103
+# HELP llamacpp:requests_processing Number of requests processing.
+# TYPE llamacpp:requests_processing gauge
+llamacpp:requests_processing 0
+# HELP llamacpp:requests_deferred Number of requests deferred.
+# TYPE llamacpp:requests_deferred gauge
+llamacpp:requests_deferred 0
+# HELP llamacpp:kv_cache_tokens KV-cache tokens (positions the engine's pool holds, busy and held regions).
+# TYPE llamacpp:kv_cache_tokens gauge
+llamacpp:kv_cache_tokens 770048
+# HELP llamacpp:kv_cache_usage_ratio KV-cache usage. 1 means 100 percent usage. (positions held over the pool)
+# TYPE llamacpp:kv_cache_usage_ratio gauge
+llamacpp:kv_cache_usage_ratio 0.734375
+# HELP halogen:requests_total Requests completed.
+# TYPE halogen:requests_total counter
+halogen:requests_total 243
+# HELP halogen:prompt_tokens_cached_total Prompt tokens the prompt cache covered (not processed).
+# TYPE halogen:prompt_tokens_cached_total counter
+halogen:prompt_tokens_cached_total 18415625
+# HELP halogen:draft_tokens_total Tokens proposed by the draft head and prompt lookup.
+# TYPE halogen:draft_tokens_total counter
+halogen:draft_tokens_total 184476
+# HELP halogen:draft_tokens_accepted_total Of those, accepted.
+# TYPE halogen:draft_tokens_accepted_total counter
+halogen:draft_tokens_accepted_total 150163
+# HELP halogen:structured_requests_total Requests decoded under a JSON schema.
+# TYPE halogen:structured_requests_total counter
+halogen:structured_requests_total 1
+# HELP halogen:strict_tool_requests_total Requests whose tools declared strict had their calls held to their schemas.
+# TYPE halogen:strict_tool_requests_total counter
+halogen:strict_tool_requests_total 0
+# HELP halogen:strict_tools_unenforced_total Tools declared strict whose calls were not held to their schemas (named in the request's log line).
+# TYPE halogen:strict_tools_unenforced_total counter
+halogen:strict_tools_unenforced_total 0
+# HELP halogen:draft_list_tokens_total Tokens the draft head drafted on a short list.
+# TYPE halogen:draft_list_tokens_total counter
+halogen:draft_list_tokens_total 186308
+# HELP halogen:draft_list_misses_total Of those, tokens outside the list.
+# TYPE halogen:draft_list_misses_total counter
+halogen:draft_list_misses_total 6021
+# HELP halogen:gpu_queues_evicted_seconds_total Seconds the kernel driver held the engine's GPU queues evicted (host memory compaction or reclaim moved pages the GPU maps); every request in flight stalls for them.
+# TYPE halogen:gpu_queues_evicted_seconds_total counter
+halogen:gpu_queues_evicted_seconds_total 0
+# HELP halogen:kv_pool_positions The KV pool, in positions.
+# TYPE halogen:kv_pool_positions gauge
+halogen:kv_pool_positions 1048576
+# HELP halogen:kv_pool_reserved_tokens Positions the requests holding a front-end slot asked for (prompt + max_tokens each), admitted or not.
+# TYPE halogen:kv_pool_reserved_tokens gauge
+halogen:kv_pool_reserved_tokens 0
+# HELP halogen:cache_stats_age_seconds Seconds since the engine reported the cache series.
+# TYPE halogen:cache_stats_age_seconds gauge
+halogen:cache_stats_age_seconds 0.2
+# HELP halogen:cache_hits_total Requests that resumed from the prompt cache.
+# TYPE halogen:cache_hits_total counter
+halogen:cache_hits_total 234
+# HELP halogen:cache_misses_total Requests that did not.
+# TYPE halogen:cache_misses_total counter
+halogen:cache_misses_total 11
+# HELP halogen:cache_prompt_tokens_saved_total Prompt tokens the cache covered, so not processed.
+# TYPE halogen:cache_prompt_tokens_saved_total counter
+halogen:cache_prompt_tokens_saved_total 18511441
+# HELP halogen:cache_entries Prompt-cache entries held.
+# TYPE halogen:cache_entries gauge
+halogen:cache_entries 21
+# HELP halogen:cache_bytes Bytes the prompt cache holds.
+# TYPE halogen:cache_bytes gauge
+halogen:cache_bytes 1273676964
+# HELP halogen:cache_evicted_total Entries the cache forgot.
+# TYPE halogen:cache_evicted_total counter
+halogen:cache_evicted_total 227
+# HELP halogen:cache_disk_enabled 1 when the cache's disk tier is on (HALOGEN_CACHE_DIR).
+# TYPE halogen:cache_disk_enabled gauge
+halogen:cache_disk_enabled 0
+# HELP halogen:cache_disk_bytes Bytes the disk tier holds.
+# TYPE halogen:cache_disk_bytes gauge
+halogen:cache_disk_bytes 0
+# HELP halogen:cache_disk_budget_bytes The disk tier's budget.
+# TYPE halogen:cache_disk_budget_bytes gauge
+halogen:cache_disk_budget_bytes 0
+# HELP halogen:cache_disk_hits_total Requests resumed from the disk tier.
+# TYPE halogen:cache_disk_hits_total counter
+halogen:cache_disk_hits_total 0
+# HELP halogen:cache_last_message_rewrites_total Requests that resumed inside the previous request's last message (a client that changes or drops part of it each turn) and continued in that conversation's cache, not a copy.
+# TYPE halogen:cache_last_message_rewrites_total counter
+halogen:cache_last_message_rewrites_total 0
+# HELP halogen:cache_disk_cut_back_total Times the disk tier trimmed a conversation's files back to where its next request resumed, instead of writing a second copy.
+# TYPE halogen:cache_disk_cut_back_total counter
+halogen:cache_disk_cut_back_total 0
+# HELP halogen:kv_pool_waiting_for_room 1 while a request waits for room in the KV pool.
+# TYPE halogen:kv_pool_waiting_for_room gauge
+halogen:kv_pool_waiting_for_room 0
+# HELP halogen:engine_up 1 when the engine answered its last liveness probe (the one /health reports).
+# TYPE halogen:engine_up gauge
+halogen:engine_up 1
+# HELP halogen:busy_for_seconds Seconds the oldest request in flight has run (0 when idle).
+# TYPE halogen:busy_for_seconds gauge
+halogen:busy_for_seconds 0
+# HELP halogen:queue_waited_total Requests that waited a second or more for a slot before starting or giving up.
+# TYPE halogen:queue_waited_total counter
+halogen:queue_waited_total 0
+# HELP halogen:queue_wait_seconds_total Seconds those requests waited, in all.
+# TYPE halogen:queue_wait_seconds_total counter
+halogen:queue_wait_seconds_total 0
+# HELP halogen:queue_wait_longest_seconds Seconds the request that has waited longest for a slot has waited (0 when none waits).
+# TYPE halogen:queue_wait_longest_seconds gauge
+halogen:queue_wait_longest_seconds 0
+# HELP halogen:queue_gave_up_total Requests that left the queue without starting (the client hung up or the queue timeout passed).
+# TYPE halogen:queue_gave_up_total counter
+halogen:queue_gave_up_total 0
+# HELP halogen:build_info The front end's release, the engine's, and the model id.
+# TYPE halogen:build_info gauge
+halogen:build_info{version="0.20.7",engine_version="0.20.7",model="halogen-qwen3.8-flash-next"} 1

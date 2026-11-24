@@ -36,6 +36,11 @@
  *   --zero-price-provider <id> Price every model of this provider at 0
  *                    (repeatable), e.g. local-m5. Runs after migrations.
  *                    (or env ZERO_PRICE_PROVIDERS, comma-separated)
+ *   [fork] W11:
+ *   --host-metrics NAME=ORGS  Use the VPC service NAME (bound with
+ *                    --vpc-service-id) as a host metrics source for the Live
+ *                    page, for these orgs ("org_a|org_b" or "*"). NAME is kept
+ *                    out of VPC_BINDINGS. (or env HOST_METRICS, comma-separated)
  *   --migrate-only   Apply D1 migrations and exit
  *   --skip-migrate   Deploy without applying migrations
  *   --skip-build     Skip `npm run build` (tsc + dashboard)
@@ -133,6 +138,7 @@ const { values: opts, positionals } = (() => {
         "vpc-allow": { type: "string", multiple: true },
         "custom-domain": { type: "string" },
         "zero-price-provider": { type: "string", multiple: true },
+        "host-metrics": { type: "string", multiple: true }, // [fork] W11
         "migrate-only": { type: "boolean", default: false },
         "skip-build": { type: "boolean", default: false },
         "skip-migrate": { type: "boolean", default: false },
@@ -253,6 +259,9 @@ try {
 }
 if (prod.vpc_services?.length) {
   console.log(`VPC: VPC_BINDINGS=${prod.vars.VPC_BINDINGS}`);
+}
+if (prod.vars.HOST_METRICS_BINDINGS) {
+  console.log(`HOST METRICS: ${prod.vars.HOST_METRICS_BINDINGS}`);
 }
 if (forkOptions.customDomain) {
   console.log(`DOMAIN: ${forkOptions.customDomain} (workers.dev off)`);

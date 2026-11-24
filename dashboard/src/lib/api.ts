@@ -192,6 +192,50 @@ export interface RequestRow {
   decode_ms?: number | null;
 }
 
+// [fork] W11: GET /api/live snapshot (mirrors src/live/snapshot.ts).
+export interface InferenceSnapshot {
+  binding: string;
+  sampledAt: number;
+  version: string | null;
+  slots: number | null;
+  inFlight: number | null;
+  queued: number | null;
+  longestWaitS: number | null;
+  kvUsageRatio: number | null;
+  kvPoolPositions: number | null;
+  kvReservedTokens: number | null;
+  predictedTokensTotal: number | null;
+  promptTokensTotal: number | null;
+  cacheHitsTotal: number | null;
+  cacheMissesTotal: number | null;
+  cacheTokensSavedTotal: number | null;
+  draftTokensTotal: number | null;
+  draftAcceptedTotal: number | null;
+}
+
+export interface HostSnapshot {
+  binding: string;
+  sampledAt: number;
+  cpuIdleSecondsTotal: number | null;
+  cpuSecondsTotal: number | null;
+  memTotalBytes: number | null;
+  memAvailableBytes: number | null;
+  gpuBusyPercent: number | null;
+  gpuMemUsedBytes: number | null;
+  gpuMemTotalBytes: number | null;
+  cpuTempC: number | null;
+  gpuTempC: number | null;
+  ssdTempC: number | null;
+  gpuPowerW: number | null;
+}
+
+export interface LiveSnapshot {
+  at: number;
+  inference: InferenceSnapshot | null;
+  host: HostSnapshot | null;
+  lastRequest: RequestRow | null;
+}
+
 /** A request row plus its key and user (GET /api/metrics/requests/:id). */
 export interface RequestDetail extends RequestRow {
   user_id: string | null;
