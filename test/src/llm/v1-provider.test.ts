@@ -57,6 +57,36 @@ describe("V1OpenAICompatibleClient", () => {
     );
   });
 
+  it("sends requests through an injected fetcher instead of global fetch", async () => {
+    const globalFetch = vi.fn();
+    vi.stubGlobal("fetch", globalFetch);
+    const binding = {
+      fetch: vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ data: [] }), { status: 200 }),
+        ),
+    };
+    const client = new V1OpenAICompatibleClient({
+      provider: "local-box",
+      keys: [],
+      custom: { baseUrl: "http://127.0.0.1:11435" },
+      fetcher: binding,
+    });
+
+    await client.chatCompletions("{}");
+    await client.models();
+
+    expect(globalFetch).not.toHaveBeenCalled();
+    expect(binding.fetch).toHaveBeenCalledTimes(2);
+    expect(binding.fetch.mock.calls[0][0]).toBe(
+      "http://127.0.0.1:11435/v1/chat/completions",
+    );
+    expect(binding.fetch.mock.calls[1][0]).toBe(
+      "http://127.0.0.1:11435/v1/models",
+    );
+  });
+
   it("does not retry when first-key mode is selected", async () => {
     const fetchMock = vi
       .fn()

@@ -494,6 +494,13 @@ function ProviderFormModal({
   const [modelsPath, setModelsPath] = useState(
     isCustom ? String(initialSettings?.modelsPath ?? "") : "",
   );
+  // [fork] W1: VPC transport (reach the upstream through a Worker binding).
+  const [transport, setTransport] = useState<"public" | "vpc">(
+    isCustom && initialSettings?.transport === "vpc" ? "vpc" : "public",
+  );
+  const [vpcBinding, setVpcBinding] = useState(
+    isCustom ? String(initialSettings?.vpcBinding ?? "") : "",
+  );
   const [keysText, setKeysText] = useState(hasExistingKeys ? KEY_MASK : "");
   const [accountId, setAccountId] = useState(
     provider === "cloudflare-workers-ai"
@@ -590,6 +597,7 @@ function ProviderFormModal({
     if (showCustomFields) {
       if (provider == null && !customId.trim()) return false;
       if (!baseUrl.trim()) return false;
+      if (transport === "vpc" && !vpcBinding.trim()) return false; // [fork] W1
       return true;
     }
     const hasRealKey = !isMaskedKey(keysText);
@@ -654,6 +662,9 @@ function ProviderFormModal({
           baseUrl: baseUrl.trim(),
           ...(chatPath.trim() ? { chatCompletionPath: chatPath.trim() } : {}),
           ...(modelsPath.trim() ? { modelsPath: modelsPath.trim() } : {}),
+          // [fork] W1
+          transport,
+          ...(transport === "vpc" ? { vpcBinding: vpcBinding.trim() } : {}),
           customModels: parseCustomModels(),
           rotationStrategy,
           ...traceSetting,
@@ -910,6 +921,38 @@ function ProviderFormModal({
                 The root OpenAI-compatible API endpoint.
               </p>
             </div>
+
+            {/* [fork] W1: VPC transport */}
+            <div>
+              <Label>Transport</Label>
+              <Select
+                value={transport}
+                onChange={(value) => setTransport(value as "public" | "vpc")}
+                options={[
+                  { value: "public", label: "Public internet" },
+                  { value: "vpc", label: "Workers VPC binding" },
+                ]}
+              />
+              <p className="mt-1 text-[11px] text-gray-400">
+                VPC reaches a private host through a Cloudflare Tunnel. The base
+                URL is then the address on that private network.
+              </p>
+            </div>
+
+            {transport === "vpc" && (
+              <div>
+                <Label>VPC binding</Label>
+                <Input
+                  value={vpcBinding}
+                  onChange={(e) => setVpcBinding(e.target.value)}
+                  placeholder="e.g. HALOGEN"
+                />
+                <p className="mt-1 text-[11px] text-gray-400">
+                  Worker binding name. Must be listed in the VPC_BINDINGS
+                  variable.
+                </p>
+              </div>
+            )}
 
             <div>
               <Label>API Key (optional for local servers)</Label>

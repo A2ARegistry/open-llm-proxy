@@ -785,3 +785,113 @@ describe("DELETE /api/providers/:provider", () => {
     );
   });
 });
+
+// [fork] W1: VPC transport settings and binding resolution.
+describe("VPC transport settings", () => {
+  const binding = { fetch: vi.fn() };
+  const vpcEnv = { VPC_BINDINGS: "HALOGEN", HALOGEN: binding };
+  const vpcSettings = {
+    baseUrl: "http://127.0.0.1:11435",
+    transport: "vpc",
+    vpcBinding: "HALOGEN",
+  };
+
+  async function send(
+    method: string,
+    path: string,
+    payload: unknown,
+    env: object = vpcEnv,
+  ) {
+    const res = await buildApp().request(
+      path,
+      {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      env as never,
+    );
+    return { status: res.status, body: await res.json().catch(() => null) };
+  }
+
+  it("saves a keyless vpc provider with an http base URL", async () => {
+    mockSaveProviderConfig.mockResolvedValue(
+      config({ provider: "local-m5", keys: [], settings: vpcSettings }),
+    );
+    const { status } = await send("PUT", "/api/providers/local-m5", {
+      settings: vpcSettings,
+    });
+    expect(status).toBe(200);
+    expect(mockSaveProviderConfig.mock.calls[0][3].settings).toMatchObject(
+      vpcSettings,
+    );
+  });
+
+  it("rejects an unknown transport", async () => {
+    const { status, body } = await send("PUT", "/api/providers/local-m5", {
+      settings: { ...vpcSettings, transport: "carrier-pigeon" },
+    });
+    expect(status).toBe(400);
+    expect(body.error).toContain("transport");
+  });
+
+  it("rejects a vpc transport without a binding name", async () => {
+    const { status, body } = await send("PUT", "/api/providers/local-m5", {
+      settings: { baseUrl: "http://127.0.0.1:11435", transport: "vpc" },
+    });
+    expect(status).toBe(400);
+    expect(body.error).toContain("vpcBinding");
+  });
+
+  it("rejects a binding name that is not a Worker binding identifier", async () => {
+    const { status, body } = await send("PUT", "/api/providers/local-m5", {
+      settings: { ...vpcSettings, vpcBinding: "halogen; DB" },
+    });
+    expect(status).toBe(400);
+    expect(body.error).toContain("vpcBinding");
+  });
+
+  it("passes the allowlisted binding to the connection test", async () => {
+    mockTestProviderConnection.mockResolvedValue({ ok: true });
+    const { status } = await send("POST", "/api/providers/local-m5/test", {
+      keys: [],
+      settings: vpcSettings,
+    });
+    expect(status).toBe(200);
+    expect(mockTestProviderConnection.mock.calls[0][0].fetcher).toBe(binding);
+  });
+
+  it("rejects a connection test whose binding is not allowlisted", async () => {
+    const { status, body } = await send(
+      "POST",
+      "/api/providers/local-m5/test",
+      { keys: [], settings: vpcSettings },
+      { VPC_BINDINGS: "", HALOGEN: binding },
+    );
+    expect(status).toBe(400);
+    expect(body.error).toContain("VPC_BINDINGS");
+    expect(mockTestProviderConnection).not.toHaveBeenCalled();
+  });
+
+  it("passes the allowlisted binding to the model list fetch", async () => {
+    mockFetchProviderModels.mockResolvedValue({ ok: true, models: [] });
+    const { status } = await send("POST", "/api/providers/local-m5/models", {
+      keys: [],
+      settings: vpcSettings,
+    });
+    expect(status).toBe(200);
+    expect(mockFetchProviderModels.mock.calls[0][0].fetcher).toBe(binding);
+  });
+
+  it("rejects a model list fetch whose binding is not allowlisted", async () => {
+    const { status, body } = await send(
+      "POST",
+      "/api/providers/local-m5/models",
+      { keys: [], settings: vpcSettings },
+      {},
+    );
+    expect(status).toBe(400);
+    expect(body.error).toContain("VPC_BINDINGS");
+    expect(mockFetchProviderModels).not.toHaveBeenCalled();
+  });
+});

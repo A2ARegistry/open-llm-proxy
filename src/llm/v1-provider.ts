@@ -3,6 +3,9 @@ import {
   getPiAiProviderSpec,
   canonicalProviderName,
 } from "./provider-registry";
+import type { UpstreamFetcher } from "./transport";
+
+// [fork] W1
 
 export type KeyRotationStrategy = "first" | "round-robin" | "failover";
 
@@ -17,6 +20,7 @@ export class V1OpenAICompatibleClient {
   private readonly extraHeaders: Record<string, string>;
   private readonly authHeaders?: Record<string, string>;
   private readonly rotationStrategy: KeyRotationStrategy;
+  private readonly fetcher?: UpstreamFetcher; // [fork] W1
   private static rotationCursor = 0;
 
   constructor(options: {
@@ -35,6 +39,8 @@ export class V1OpenAICompatibleClient {
       embeddingsPath?: string;
     };
     authHeaders?: Record<string, string>;
+    /** [fork] W1: send requests through this binding instead of global fetch. */
+    fetcher?: UpstreamFetcher;
   }) {
     const canonical = canonicalProviderName(options.provider);
     const spec = getV1ProviderSpec(canonical);
@@ -77,6 +83,7 @@ export class V1OpenAICompatibleClient {
     this.extraHeaders = {};
     this.authHeaders = options.authHeaders;
     this.rotationStrategy = options.rotationStrategy ?? "first";
+    this.fetcher = options.fetcher; // [fork] W1
   }
 
   private keyOrder(): string[] {
@@ -116,10 +123,14 @@ export class V1OpenAICompatibleClient {
       this.rotationStrategy === "first" ? keys.slice(0, 1) : keys;
     let lastResponse: Response | undefined;
     for (let index = 0; index < Math.max(attempts.length, 1); index++) {
-      const response = await fetch(this.fullUrl(path), {
-        ...init,
-        headers: this.headers(attempts[index]),
-      });
+      // [fork] W1: injected binding when present, global fetch otherwise.
+      const response = await (this.fetcher ?? globalThis).fetch(
+        this.fullUrl(path),
+        {
+          ...init,
+          headers: this.headers(attempts[index]),
+        },
+      );
       lastResponse = response;
       if (
         response.ok ||

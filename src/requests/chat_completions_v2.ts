@@ -38,7 +38,9 @@ import {
   putCachedResponse,
   responseCacheKey,
 } from "../llm/response-cache";
+import { resolveFetcher, type UpstreamFetcher } from "../llm/transport";
 import { V1OpenAICompatibleClient } from "../llm/v1-provider";
+// [fork] W1
 import type { TokenUsage } from "../metrics/cost-tracker";
 import { recordChatRequest } from "../metrics/request-logger";
 import { maybeDisableAfterSpend } from "../metrics/spend-guard";
@@ -841,9 +843,18 @@ export async function chatCompletionsV2(
       );
     }
   } else {
+    // [fork] W1: VPC providers reach their upstream through a Worker binding.
+    let fetcher: UpstreamFetcher | undefined;
+    try {
+      fetcher = resolveFetcher(env, config.settings);
+    } catch (err) {
+      log.warn(`[chat-completions] Transport not configured`, err);
+      return errorBody("not_configured", (err as Error).message);
+    }
     client = new V1OpenAICompatibleClient({
       provider: providerName,
       keys: config.keys,
+      fetcher, // [fork] W1
       custom:
         config.settings?.baseUrl || config.settings?.accountId
           ? {

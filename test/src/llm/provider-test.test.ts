@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import {
+  fetchProviderModels,
   maskSecret,
   resolveTestTarget,
   testProviderConnection,
@@ -476,6 +477,69 @@ describe("testProviderConnection diagnostics", () => {
     });
     expect(result.details?.requestSnippet).toContain(
       '"text":"echo pong for this ping request"',
+    );
+    vi.unstubAllGlobals();
+  });
+});
+
+// [fork] W1: VPC transport — probes go through the injected binding.
+describe("provider-test with an injected fetcher", () => {
+  const localSettings = {
+    baseUrl: "http://127.0.0.1:11435",
+    chatCompletionPath: "/v1/chat/completions",
+    modelsPath: "/v1/models",
+  };
+
+  it("sends the chat probe through the fetcher, not global fetch", async () => {
+    const globalFetch = vi.fn();
+    vi.stubGlobal("fetch", globalFetch);
+    const binding = {
+      fetch: vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ choices: [{ message: { content: "pong" } }] }),
+            { status: 200 },
+          ),
+        ),
+    };
+    const result = await testProviderConnection({
+      provider: "local-box",
+      keys: [],
+      settings: { ...localSettings, defaultModel: "qwen" },
+      fetcher: binding,
+    });
+    expect(result.ok).toBe(true);
+    expect(globalFetch).not.toHaveBeenCalled();
+    expect(binding.fetch.mock.calls[0][0]).toBe(
+      "http://127.0.0.1:11435/v1/chat/completions",
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("lists models through the fetcher, not global fetch", async () => {
+    const globalFetch = vi.fn();
+    vi.stubGlobal("fetch", globalFetch);
+    const binding = {
+      fetch: vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ data: [{ id: "qwen" }] }), {
+          status: 200,
+        }),
+      ),
+    };
+    const result = await fetchProviderModels({
+      provider: "local-box",
+      keys: [],
+      settings: localSettings,
+      fetcher: binding,
+    });
+    expect(result).toEqual({
+      ok: true,
+      models: [{ id: "qwen", api: "openai-completions" }],
+    });
+    expect(globalFetch).not.toHaveBeenCalled();
+    expect(binding.fetch.mock.calls[0][0]).toBe(
+      "http://127.0.0.1:11435/v1/models",
     );
     vi.unstubAllGlobals();
   });

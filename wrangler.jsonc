@@ -42,6 +42,9 @@
     // Log verbosity: debug | info | warn | error. Unset defaults to
     // `debug` in development and `info` in production.
     "LOG_LEVEL": "debug",
+    // [fork] W1: comma-separated Worker binding names that providers may use
+    // as a VPC transport (e.g. "HALOGEN"). Empty = VPC transport disabled.
+    "VPC_BINDINGS": "",
     "SESSION_CACHE_TTL_SECONDS": "60",
     "RATE_LIMITER_SHARDS": "4",
     "METRICS_BUFFER_SHARDS": "4",
@@ -139,6 +142,7 @@
         "BASE_URL": "https://your-domain.com",
         "ENVIRONMENT": "production",
         "LOG_LEVEL": "info",
+        "VPC_BINDINGS": "", // [fork] W1: set by the deploy script
         "DASHBOARD_URL": "https://your-domain.com",
         "SESSION_CACHE_TTL_SECONDS": "3600",
         "RATE_LIMITER_SHARDS": "8",

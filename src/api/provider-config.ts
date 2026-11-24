@@ -21,11 +21,17 @@ import {
   fetchProviderModels,
   testProviderConnection,
 } from "../llm/provider-test";
+import { resolveFetcher, type UpstreamFetcher } from "../llm/transport";
+// [fork] W1
 import { Hono } from "hono";
 
 const MAX_KEYS_PER_PROVIDER = 20;
 
 const BASE_URL_RE = /^https?:\/\/.+/;
+
+// [fork] W1: Worker binding names (e.g. HALOGEN). Allowlisting happens at
+// request time against VPC_BINDINGS; this only checks the shape.
+const VPC_BINDING_RE = /^[A-Z][A-Z0-9_]*$/;
 
 /**
  * Generate a default display name for a provider based on its catalog name
@@ -153,10 +159,38 @@ function validateSettings(settings: unknown): Record<string, unknown> {
       }
       out[key] = (value as string[]).map((m) => m.trim());
       continue;
+    } else if (key === "transport") {
+      // [fork] W1
+      if (value !== "public" && value !== "vpc") {
+        throw new Error("settings.transport must be public or vpc");
+      }
+    } else if (key === "vpcBinding") {
+      // [fork] W1
+      if (typeof value !== "string" || !VPC_BINDING_RE.test(value)) {
+        throw new Error(
+          "settings.vpcBinding must be a Worker binding name (e.g. HALOGEN)",
+        );
+      }
     }
     out[key] = value;
   }
+  // [fork] W1
+  if (out.transport === "vpc" && out.vpcBinding === undefined) {
+    throw new Error("settings.vpcBinding is required when transport is vpc");
+  }
   return out;
+}
+
+/** [fork] W1: resolve a provider's transport, or the 400 message when it cannot be. */
+function fetcherFor(
+  env: object,
+  settings: Record<string, unknown>,
+): { fetcher?: UpstreamFetcher; error?: string } {
+  try {
+    return { fetcher: resolveFetcher(env, settings) };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
 }
 
 export const providerConfigRouter = new Hono<AppBindings>();
@@ -442,10 +476,13 @@ providerConfigRouter.post("/:provider/test", async (c) => {
     testSettings = { ...cfg.settings, ...settings };
   }
 
+  const transport = fetcherFor(c.env, testSettings); // [fork] W1
+  if (transport.error) return c.json({ error: transport.error }, 400);
   const result = await testProviderConnection({
     provider,
     keys: testKeys,
     settings: testSettings,
+    fetcher: transport.fetcher, // [fork] W1
   });
   return c.json(result);
 });
@@ -505,10 +542,13 @@ providerConfigRouter.post("/:provider/models", async (c) => {
     testSettings = { ...cfg.settings, ...settings };
   }
 
+  const transport = fetcherFor(c.env, testSettings); // [fork] W1
+  if (transport.error) return c.json({ error: transport.error }, 400);
   const result = await fetchProviderModels({
     provider,
     keys: testKeys,
     settings: testSettings,
+    fetcher: transport.fetcher, // [fork] W1
   });
   return c.json(result);
 });

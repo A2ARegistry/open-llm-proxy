@@ -17,7 +17,10 @@ import {
   isCustomProviderName,
   providerApiId,
 } from "./provider-registry";
+import type { UpstreamFetcher } from "./transport";
 import { V1OpenAICompatibleClient } from "./v1-provider";
+
+// [fork] W1
 
 export interface ProviderTestResult {
   ok: boolean;
@@ -339,6 +342,7 @@ export async function testProviderConnection(input: {
   provider: string;
   keys: string[];
   settings?: ProviderSettings;
+  fetcher?: UpstreamFetcher; // [fork] W1
 }): Promise<ProviderTestResult> {
   const provider = canonicalProviderName(input.provider);
 
@@ -414,6 +418,7 @@ export async function testProviderConnection(input: {
     return probe(provider, resolved.target, {
       method: "GET",
       keyHint: resolved.keyHint,
+      fetcher: input.fetcher, // [fork] W1
     });
   }
 
@@ -429,6 +434,7 @@ export async function testProviderConnection(input: {
     method: "POST",
     keyHint: chat.request.keyHint,
     body: chat.request.body,
+    fetcher: input.fetcher, // [fork] W1
   });
 }
 
@@ -436,6 +442,7 @@ interface ProbeOptions {
   method: "GET" | "POST";
   keyHint: string;
   body?: string;
+  fetcher?: UpstreamFetcher; // [fork] W1
 }
 
 async function probe(
@@ -453,7 +460,8 @@ async function probe(
     signal: controller.signal,
   };
   try {
-    const res = await fetch(target.url, init);
+    // [fork] W1: injected binding when present, global fetch otherwise.
+    const res = await (opts.fetcher ?? globalThis).fetch(target.url, init);
     const body = await res.text().catch(() => "");
     const latencyMs = Date.now() - startedAt;
     const details: ProviderTestDetails = {
@@ -538,6 +546,7 @@ export async function fetchProviderModels(input: {
   provider: string;
   keys: string[];
   settings?: ProviderSettings;
+  fetcher?: UpstreamFetcher; // [fork] W1
 }): Promise<ProviderModelsResult> {
   const provider = canonicalProviderName(input.provider);
   if (isVertexProvider(provider)) {
@@ -598,6 +607,7 @@ export async function fetchProviderModels(input: {
           : undefined,
       rotationStrategy: input.settings?.rotationStrategy as
         "first" | "round-robin" | "failover" | undefined,
+      fetcher: input.fetcher, // [fork] W1
     });
     const res = await client.models({ signal: controller.signal });
     if (!res.ok) {

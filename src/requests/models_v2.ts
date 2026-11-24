@@ -19,7 +19,9 @@ import {
   isCustomProviderName,
   PI_AI_PROVIDER_NAMES,
 } from "../llm/provider-registry";
+import { resolveFetcher, type UpstreamFetcher } from "../llm/transport";
 import { V1OpenAICompatibleClient } from "../llm/v1-provider";
+// [fork] W1
 import { ApiKeyAuth } from "../types";
 
 interface ModelsInput {
@@ -77,6 +79,7 @@ async function fetchV1Models(
     embeddingsPath?: string;
     rotationStrategy?: "first" | "round-robin" | "failover";
   },
+  fetcher?: UpstreamFetcher, // [fork] W1
 ): Promise<CatalogEntry[]> {
   const client = new V1OpenAICompatibleClient({
     provider,
@@ -92,6 +95,7 @@ async function fetchV1Models(
           }
         : undefined,
     rotationStrategy: settings.rotationStrategy,
+    fetcher, // [fork] W1
   });
   const abortController = new AbortController();
   const timer = setTimeout(
@@ -233,7 +237,15 @@ export async function modelsV2(input: ModelsInput): Promise<Response> {
       } else if (isCustomProviderName(provider)) {
         // Custom OpenAI-compatible endpoints: live model list + tenant-pinned
         // custom model ids (the live list may be absent for local endpoints).
-        models = await fetchV1Models(provider, cfg.keys, cfg.settings);
+        // [fork] W1: VPC providers list through their binding; a provider
+        // whose transport cannot be resolved is left out of the list.
+        let fetcher: UpstreamFetcher | undefined;
+        try {
+          fetcher = resolveFetcher(env, cfg.settings);
+        } catch {
+          return;
+        }
+        models = await fetchV1Models(provider, cfg.keys, cfg.settings, fetcher);
         const customIds = Array.isArray(cfg.settings.customModels)
           ? (cfg.settings.customModels as unknown[]).filter(
               (c): c is string => typeof c === "string",
