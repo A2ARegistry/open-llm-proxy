@@ -145,3 +145,22 @@ export function resolveFetcher(
   }
   return binding as UpstreamFetcher;
 }
+
+/**
+ * [fork] W7: binding names configured in `VPC_BINDINGS`, optionally only
+ * those `organizationId` may use.
+ */
+export function vpcBindingNames(
+  env: object,
+  organizationId?: string,
+): string[] {
+  const allowlist = parseAllowlist(
+    (env as Record<string, unknown>).VPC_BINDINGS,
+  );
+  return [...allowlist.keys()].filter(
+    (name) =>
+      name !== "" &&
+      (organizationId === undefined ||
+        isAllowed(allowlist, name, organizationId)),
+  );
+}

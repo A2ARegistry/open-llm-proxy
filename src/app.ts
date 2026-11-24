@@ -1,6 +1,7 @@
 import { alertsRouter } from "./api/alerts";
 import { bootstrapRouter } from "./api/bootstrap";
 import { emailAdminRouter } from "./api/email-admin";
+import { healthRouter } from "./api/health";
 import { keysRouter } from "./api/keys";
 import { metricsRouter } from "./api/metrics";
 import { providerConfigRouter } from "./api/provider-config";
@@ -120,6 +121,10 @@ export function createApp(): Hono<AppBindings> {
   );
   app.route("/api/metrics", metricsRouter);
   app.route("/api/usage", usageRouter);
+
+  // [fork] W7: upstream (box) health, readable by any org member.
+  app.use("/api/health/*", sessionAuthMiddleware, requireOrgMember);
+  app.route("/api/health", healthRouter);
 
   // Tenant URL prefix (base URL) management: reads are member+, writes admin.
   app.use(

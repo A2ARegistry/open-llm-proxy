@@ -1,3 +1,4 @@
+import { UpstreamHealthBadges } from "../components/UpstreamHealthBadges";
 import { Badge, Card, EmptyState, Spinner, StatCard } from "../components/ui";
 import { apiGet } from "../lib/api";
 import { fmtCount, fmtDay, fmtUsd, fmtTokens } from "../lib/format";
@@ -118,6 +119,10 @@ export function DashboardPage() {
         <p className="text-sm text-gray-500">
           Usage and spend for the last 30 days.
         </p>
+        {/* [fork] W7 */}
+        <div className="mt-2">
+          <UpstreamHealthBadges />
+        </div>
       </div>
 
       {alertMsg && (

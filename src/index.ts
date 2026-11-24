@@ -4,6 +4,7 @@ import { MetricsBuffer } from "./durable/metrics-buffer";
 import { RateLimiter } from "./durable/rate-limiter";
 import { ResponseCache } from "./durable/response-cache";
 import { SessionManager } from "./durable/session-manager";
+import { checkUpstreams } from "./health/upstream-health";
 import { sha256Hex } from "./utils/crypto";
 import { initLogger } from "./utils/logger";
 // Cloudflare Durable Objects
@@ -82,5 +83,6 @@ export default {
   async scheduled(_event, env, ctx) {
     initLogger(env);
     ctx.waitUntil(runAlertChecks(env));
+    ctx.waitUntil(checkUpstreams(env)); // [fork] W7
   },
 } satisfies ExportedHandler<Env>;

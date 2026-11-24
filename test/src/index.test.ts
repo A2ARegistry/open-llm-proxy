@@ -41,6 +41,14 @@ describe("worker dispatch (V2)", () => {
     expect(res.status).toBe(401);
   });
 
+  // [fork] W7
+  it("requires a session for /api/health/upstreams", async () => {
+    const res = await SELF.fetch("http://example.com/api/health/upstreams", {
+      headers: { accept: "application/json" },
+    });
+    expect(res.status).toBe(401);
+  });
+
   it("returns JSON 404 for unknown API paths", async () => {
     const res = await SELF.fetch("http://example.com/api/nope", {
       headers: { accept: "application/json" },
