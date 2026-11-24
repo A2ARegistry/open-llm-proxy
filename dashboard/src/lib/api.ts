@@ -192,6 +192,33 @@ export interface RequestRow {
   decode_ms?: number | null;
 }
 
+/** A request row plus its key and user (GET /api/metrics/requests/:id). */
+export interface RequestDetail extends RequestRow {
+  user_id: string | null;
+  /** Null when the row has no key or the key was deleted. */
+  key_name: string | null;
+  key_prefix: string | null;
+  key_status: string | null;
+  /** Null for API-key traffic or a deleted user. */
+  user_name: string | null;
+  user_email: string | null;
+}
+
+/** Requests per provider + model (GET /api/metrics/requests/facets). */
+export interface RequestFacet {
+  provider: string;
+  model: string;
+  requests: number;
+}
+
+/** One page of the request log (GET /api/metrics/requests). */
+export interface RequestPage {
+  requests: RequestRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 async function parse<T>(res: Response): Promise<T> {
   const body = await res.json().catch(() => null);
   if (!res.ok) {

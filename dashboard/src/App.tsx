@@ -7,6 +7,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { EmailPage } from "./pages/EmailPage";
 import { LandingPage } from "./pages/LandingPage";
 import { ProvidersPage } from "./pages/ProvidersPage";
+import { RequestsPage } from "./pages/RequestsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TeamPage } from "./pages/TeamPage";
 import { AcceptInvitationPage } from "./pages/auth/AcceptInvitationPage";
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/providers" element={<ProvidersPage />} />
           <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/requests" element={<RequestsPage />} />
           <Route path="/email" element={<EmailPage />} />
           <Route path="/team" element={<TeamPage />} />
           <Route path="/settings" element={<SettingsPage />} />

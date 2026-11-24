@@ -1,3 +1,5 @@
+import { RequestCacheBadge } from "../components/RequestCacheBadge";
+import { RequestStatusBadge } from "../components/RequestStatusBadge";
 import {
   Badge,
   Card,
@@ -26,12 +28,19 @@ import {
   pct,
   rowDecodeTps,
 } from "../lib/format";
+import { NO_API_KEY } from "../lib/requestExplorer";
 import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
 
 const now = Math.floor(Date.now() / 1000);
 const dayStart = now - 24 * 3600;
 
 export function AnalyticsPage() {
+  const navigate = useNavigate();
+  const openKeyRequests = (apiKeyId: string | null) =>
+    navigate(
+      `/requests?apiKeyId=${encodeURIComponent(apiKeyId ?? NO_API_KEY)}`,
+    );
   const summary = useQuery({
     queryKey: ["analytics-summary"],
     queryFn: () =>
@@ -200,7 +209,13 @@ export function AnalyticsPage() {
                   return (
                     <tr
                       key={k.apiKeyId ?? "none"}
-                      className="border-b border-gray-50 last:border-0"
+                      tabIndex={0}
+                      title="Show this key's requests"
+                      onClick={() => openKeyRequests(k.apiKeyId)}
+                      onKeyDown={(e) =>
+                        e.key === "Enter" && openKeyRequests(k.apiKeyId)
+                      }
+                      className="cursor-pointer border-b border-gray-50 last:border-0 hover:bg-gray-50"
                     >
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2 whitespace-nowrap">
@@ -427,7 +442,18 @@ export function AnalyticsPage() {
         )}
       </Card>
 
-      <Card title="Recent requests">
+      <Card
+        title="Recent requests"
+        subtitle="Latest 25. Click a row for details."
+        actions={
+          <Link
+            to="/requests"
+            className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+          >
+            View all →
+          </Link>
+        }
+      >
         {(requests.data?.requests ?? []).length === 0 ? (
           <EmptyState title="No requests in the last 24 hours" />
         ) : (
@@ -456,7 +482,13 @@ export function AnalyticsPage() {
                   return (
                     <tr
                       key={r.id}
-                      className="border-b border-gray-50 last:border-0"
+                      tabIndex={0}
+                      onClick={() => navigate(`/requests?request=${r.id}`)}
+                      onKeyDown={(e) =>
+                        e.key === "Enter" &&
+                        navigate(`/requests?request=${r.id}`)
+                      }
+                      className="cursor-pointer border-b border-gray-50 last:border-0 hover:bg-gray-50"
                     >
                       <td className="px-5 py-3 whitespace-nowrap">
                         <div className="flex flex-col">
@@ -477,81 +509,13 @@ export function AnalyticsPage() {
                         {r.model || "—"}
                       </td>
                       <td className="px-5 py-3">
-                        {r.status_code < 400 ? (
-                          <Badge tone="green">{r.status_code}</Badge>
-                        ) : (
-                          <Badge tone="red">{r.status_code}</Badge>
-                        )}
+                        <RequestStatusBadge
+                          status={r.status_code}
+                          error={r.error_message}
+                        />
                       </td>
                       <td className="px-5 py-3">
-                        {r.cache_hit ? (
-                          <Tooltip content="Served 100% from the proxy response cache without making an upstream LLM API call ($0 cost)">
-                            <Badge tone="green">
-                              <span className="font-semibold">⚡ Instant</span>
-                            </Badge>
-                          </Tooltip>
-                        ) : (r.tokens_cache_read ?? 0) > 0 ? (
-                          <Tooltip
-                            content={
-                              <div className="space-y-1">
-                                <p className="font-semibold text-sky-300">
-                                  Provider Prompt Cache Hit
-                                </p>
-                                <p>
-                                  {fmtTokens(r.tokens_cache_read)} tokens reused
-                                  from cache (
-                                  {pct(
-                                    (r.tokens_cache_read ?? 0) /
-                                      ((r.tokens_input ?? 0) +
-                                        (r.tokens_cache_read ?? 0)),
-                                  )}{" "}
-                                  of input).
-                                </p>
-                                <p className="text-[10px] text-gray-300">
-                                  Billed at a discount vs fresh input tokens.
-                                </p>
-                              </div>
-                            }
-                          >
-                            <Badge tone="blue">
-                              <span>
-                                {pct(
-                                  (r.tokens_cache_read ?? 0) /
-                                    ((r.tokens_input ?? 0) +
-                                      (r.tokens_cache_read ?? 0)),
-                                )}{" "}
-                                cached
-                              </span>
-                              <span className="text-[10px] opacity-75 font-mono">
-                                ({fmtTokens(r.tokens_cache_read)})
-                              </span>
-                            </Badge>
-                          </Tooltip>
-                        ) : (r.tokens_cache_write ?? 0) > 0 ? (
-                          <Tooltip
-                            content={
-                              <div className="space-y-1">
-                                <p className="font-semibold text-amber-300">
-                                  Prompt Cache Creation
-                                </p>
-                                <p>
-                                  {fmtTokens(r.tokens_cache_write)} input tokens
-                                  written to the provider cache for faster
-                                  future requests.
-                                </p>
-                              </div>
-                            }
-                          >
-                            <Badge tone="amber">
-                              <span>cache write</span>
-                              <span className="text-[10px] opacity-75 font-mono">
-                                ({fmtTokens(r.tokens_cache_write)})
-                              </span>
-                            </Badge>
-                          </Tooltip>
-                        ) : (
-                          <span className="text-gray-300 select-none">—</span>
-                        )}
+                        <RequestCacheBadge row={r} />
                       </td>
                       <td className="px-5 py-3">{fmtMs(r.latency_ms)}</td>
                       <td className="px-5 py-3">{fmtMs(r.ttft_ms)}</td>
