@@ -3,7 +3,7 @@ import {
   getPiAiProviderSpec,
   canonicalProviderName,
 } from "./provider-registry";
-import type { UpstreamFetcher } from "./transport";
+import { assertVpcUrl, type UpstreamFetcher } from "./transport";
 
 export type KeyRotationStrategy = "first" | "round-robin" | "failover";
 
@@ -120,6 +120,8 @@ export class V1OpenAICompatibleClient {
     const attempts =
       this.rotationStrategy === "first" ? keys.slice(0, 1) : keys;
     let lastResponse: Response | undefined;
+    // [fork] W1: a vpc binding may only reach the upstream's /v1/ API.
+    if (this.fetcher) assertVpcUrl(this.fullUrl(path));
     for (let index = 0; index < Math.max(attempts.length, 1); index++) {
       // [fork] W1: injected binding when present, global fetch otherwise.
       const response = await (this.fetcher ?? globalThis).fetch(
@@ -133,7 +135,7 @@ export class V1OpenAICompatibleClient {
       if (
         response.ok ||
         !this.shouldTryNext(response) ||
-        index === attempts.length - 1
+        index >= attempts.length - 1 // [fork] W2: keyless = single attempt
       )
         return response;
       // Consume the failed response before trying another credential.

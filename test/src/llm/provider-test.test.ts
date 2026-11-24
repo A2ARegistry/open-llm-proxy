@@ -571,3 +571,61 @@ describe("provider-test for a keyless custom provider", () => {
     );
   });
 });
+
+// [fork] W1: vpc probes never echo upstream content and stay on /v1/.
+describe("provider-test hardening for vpc providers", () => {
+  const binding = { fetch: vi.fn() };
+  const base = { baseUrl: "http://127.0.0.1:11435" };
+
+  it("does not probe a URL outside the /v1/ API", async () => {
+    binding.fetch.mockReset();
+    const result = await testProviderConnection({
+      provider: "local-m5",
+      keys: [],
+      settings: { ...base, chatCompletionPath: "/admin", defaultModel: "q" },
+      fetcher: binding,
+    });
+    expect(result.ok).toBe(false);
+    expect(binding.fetch).not.toHaveBeenCalled();
+  });
+
+  it("returns a generic error instead of the upstream error body", async () => {
+    binding.fetch.mockReset().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "PRIVATE ECHO" } }), {
+        status: 500,
+      }),
+    );
+    const result = await testProviderConnection({
+      provider: "local-m5",
+      keys: [],
+      settings: {
+        ...base,
+        chatCompletionPath: "/v1/chat/completions",
+        defaultModel: "q",
+      },
+      fetcher: binding,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("Upstream error (500)");
+    expect(JSON.stringify(result)).not.toContain("PRIVATE ECHO");
+  });
+
+  it("returns a generic model-list error instead of the upstream body", async () => {
+    binding.fetch.mockReset().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "PRIVATE ECHO" } }), {
+        status: 500,
+      }),
+    );
+    const result = await fetchProviderModels({
+      provider: "local-m5",
+      keys: [],
+      settings: { ...base, modelsPath: "/v1/models" },
+      fetcher: binding,
+    });
+    expect(result).toEqual({
+      ok: false,
+      status: 500,
+      error: "Upstream error (500)",
+    });
+  });
+});

@@ -8,8 +8,38 @@ export interface UpstreamFetcher {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
 
-const VPC_PATH_KEYS = ["chatCompletionPath", "modelsPath", "embeddingsPath"];
-const VPC_PATH_PREFIX = "/v1/";
+/** The only upstream endpoints a vpc provider may reach, by settings key. */
+const VPC_PATHS: Record<string, string> = {
+  chatCompletionPath: "/v1/chat/completions",
+  modelsPath: "/v1/models",
+  embeddingsPath: "/v1/embeddings",
+};
+const VPC_ALLOWED_PATHS = new Set(Object.values(VPC_PATHS));
+
+/**
+ * Throw unless `url` is exactly one of the allowed `/v1/` endpoints, with no
+ * query, fragment or credentials. Checked on the final URL right before each
+ * vpc fetch, so it holds whatever path fallbacks produced it.
+ */
+export function assertVpcUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new TransportNotConfiguredError("VPC upstream URL is not valid");
+  }
+  if (
+    !VPC_ALLOWED_PATHS.has(parsed.pathname) ||
+    parsed.search ||
+    parsed.hash ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new TransportNotConfiguredError(
+      `VPC upstream path ${parsed.pathname} is not allowed`,
+    );
+  }
+}
 
 /**
  * Parse `VPC_BINDINGS` into binding name → allowed organization ids.
@@ -43,26 +73,30 @@ function isAllowed(
 
 /** The private host is fixed by the binding; only its OpenAI API is reachable. */
 function assertVpcTarget(settings: Record<string, unknown>): void {
-  let basePath: string;
+  let base: URL;
   try {
-    basePath = new URL(String(settings.baseUrl)).pathname;
+    base = new URL(String(settings.baseUrl));
   } catch {
     throw new TransportNotConfiguredError(
       "settings.baseUrl must be a URL for the vpc transport",
     );
   }
-  if (basePath !== "/") {
+  if (
+    base.pathname !== "/" ||
+    base.search ||
+    base.hash ||
+    base.username ||
+    base.password
+  ) {
     throw new TransportNotConfiguredError(
-      "settings.baseUrl must not include a path for the vpc transport",
+      "settings.baseUrl must be scheme://host:port only for the vpc transport",
     );
   }
-  for (const key of VPC_PATH_KEYS) {
+  for (const [key, allowed] of Object.entries(VPC_PATHS)) {
     const path = settings[key];
-    if (path === undefined) continue;
-    const resolved = new URL(String(path), "http://vpc.invalid").pathname;
-    if (!resolved.startsWith(VPC_PATH_PREFIX)) {
+    if (path !== undefined && path !== allowed) {
       throw new TransportNotConfiguredError(
-        `settings.${key} must stay under ${VPC_PATH_PREFIX} for the vpc transport`,
+        `settings.${key} must be ${allowed} for the vpc transport`,
       );
     }
   }

@@ -665,7 +665,13 @@ function ProviderFormModal({
           baseUrl: baseUrl.trim(),
           ...(chatPath.trim() ? { chatCompletionPath: chatPath.trim() } : {}),
           ...(modelsPath.trim() ? { modelsPath: modelsPath.trim() } : {}),
-          // [fork] W1
+          // [fork] W1: vpc providers only reach the fixed /v1/ endpoints.
+          ...(isVpc
+            ? {
+                chatCompletionPath: "/v1/chat/completions",
+                modelsPath: "/v1/models",
+              }
+            : {}),
           transport,
           ...(transport === "vpc" ? { vpcBinding: vpcBinding.trim() } : {}),
           customModels: parseCustomModels(),

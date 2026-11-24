@@ -127,3 +127,45 @@ describe("V1OpenAICompatibleClient without keys", () => {
     );
   });
 });
+
+// [fork] W1: a vpc client only ever calls the upstream's /v1/ API.
+describe("V1OpenAICompatibleClient over a vpc binding", () => {
+  it("refuses a request whose final URL is outside the /v1/ API", async () => {
+    const binding = { fetch: vi.fn() };
+    const client = new V1OpenAICompatibleClient({
+      provider: "local-m5",
+      keys: [],
+      custom: {
+        baseUrl: "http://127.0.0.1:11435",
+        modelsPath: "/admin/shutdown",
+      },
+      fetcher: binding,
+    });
+
+    await expect(client.models()).rejects.toThrow(/not allowed/);
+    expect(binding.fetch).not.toHaveBeenCalled();
+  });
+});
+
+// [fork] W2: with zero keys there is nothing to fail over to.
+describe("V1OpenAICompatibleClient error responses without keys", () => {
+  it("returns a readable upstream error body when no keys are configured", async () => {
+    const binding = {
+      fetch: vi
+        .fn()
+        .mockResolvedValue(new Response("upstream exploded", { status: 500 })),
+    };
+    const client = new V1OpenAICompatibleClient({
+      provider: "local-m5",
+      keys: [],
+      custom: { baseUrl: "http://127.0.0.1:11435" },
+      fetcher: binding,
+    });
+
+    const response = await client.chatCompletions("{}");
+
+    expect(response.status).toBe(500);
+    expect(await response.text()).toBe("upstream exploded");
+    expect(binding.fetch).toHaveBeenCalledTimes(1);
+  });
+});

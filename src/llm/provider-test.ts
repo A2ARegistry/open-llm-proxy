@@ -17,7 +17,7 @@ import {
   isCustomProviderName,
   providerApiId,
 } from "./provider-registry";
-import type { UpstreamFetcher } from "./transport";
+import { assertVpcUrl, type UpstreamFetcher } from "./transport";
 import { V1OpenAICompatibleClient } from "./v1-provider";
 
 export interface ProviderTestResult {
@@ -458,7 +458,9 @@ async function probe(
     signal: controller.signal,
   };
   try {
-    // [fork] W1: injected binding when present, global fetch otherwise.
+    // [fork] W1: injected binding when present (only to the /v1/ API),
+    // global fetch otherwise.
+    if (opts.fetcher) assertVpcUrl(target.url);
     const res = await (opts.fetcher ?? globalThis).fetch(target.url, init);
     const body = await res.text().catch(() => "");
     const latencyMs = Date.now() - startedAt;
@@ -480,8 +482,10 @@ async function probe(
       logProbe(details, true);
       return { ok: true, status: res.status, modelCount, details };
     }
+    // [fork] W1: never surface a private (vpc) upstream's error text.
     const message =
-      extractErrorMessage(body) || `Upstream error (${res.status})`;
+      (!opts.fetcher && extractErrorMessage(body)) ||
+      `Upstream error (${res.status})`;
     details.error = message;
     logProbe(details, false);
     return { ok: false, status: res.status, error: message, details };
@@ -610,6 +614,15 @@ export async function fetchProviderModels(input: {
     });
     const res = await client.models({ signal: controller.signal });
     if (!res.ok) {
+      // [fork] W1: never surface a private (vpc) upstream's error text.
+      if (input.fetcher) {
+        await res.body?.cancel();
+        return {
+          ok: false,
+          status: res.status,
+          error: `Upstream error (${res.status})`,
+        };
+      }
       return {
         ok: false,
         status: res.status,

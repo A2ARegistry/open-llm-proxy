@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isPrivateTransport, resolveFetcher } from "~/src/llm/transport";
+import {
+  assertVpcUrl,
+  isPrivateTransport,
+  resolveFetcher,
+} from "~/src/llm/transport";
 import { TransportNotConfiguredError } from "~/src/llm/transport-error";
 
 const binding = { fetch: async () => new Response("ok") };
@@ -135,25 +139,26 @@ describe("resolveFetcher", () => {
     ).toBe(binding);
   });
 
-  it.each(["chatCompletionPath", "modelsPath", "embeddingsPath"])(
-    "rejects a %s outside /v1/",
-    (key) => {
-      expectNotConfigured(
-        () => resolveFetcher(env, { ...vpc, [key]: "/admin/shutdown" }, ORG),
-        key,
-      );
-    },
-  );
-
-  it("rejects a path that climbs out of /v1/", () => {
+  it.each([
+    ["chatCompletionPath", "/admin/shutdown"],
+    ["modelsPath", "/v1/models/../../admin"],
+    ["embeddingsPath", "/v1/embeddings?x=1"],
+    ["chatCompletionPath", "/v1/chat/completions/extra"],
+  ])("rejects %s = %s", (key, value) => {
     expectNotConfigured(
-      () =>
-        resolveFetcher(
-          env,
-          { ...vpc, chatCompletionPath: "/v1/../admin" },
-          ORG,
-        ),
-      "chatCompletionPath",
+      () => resolveFetcher(env, { ...vpc, [key]: value }, ORG),
+      key,
+    );
+  });
+
+  it.each([
+    "http://127.0.0.1:11435/?x=1",
+    "http://127.0.0.1:11435/#frag",
+    "http://user:pw@127.0.0.1:11435",
+  ])("rejects base URL %s", (baseUrl) => {
+    expectNotConfigured(
+      () => resolveFetcher(env, { ...vpc, baseUrl }, ORG),
+      "baseUrl",
     );
   });
 
@@ -187,5 +192,30 @@ describe("isPrivateTransport", () => {
     expect(isPrivateTransport({ transport: "public" })).toBe(false);
     expect(isPrivateTransport({})).toBe(false);
     expect(isPrivateTransport(undefined)).toBe(false);
+  });
+});
+
+describe("assertVpcUrl", () => {
+  it.each([
+    "http://127.0.0.1:11435/v1/chat/completions",
+    "http://127.0.0.1:11435/v1/models",
+    "http://127.0.0.1:11435/v1/embeddings",
+  ])("accepts %s", (url) => {
+    expect(() => assertVpcUrl(url)).not.toThrow();
+  });
+
+  it.each([
+    "http://127.0.0.1:11435/chat/completions",
+    "http://127.0.0.1:11435/v1/admin",
+    "http://127.0.0.1:11435/v1/models?x=1",
+    "http://127.0.0.1:11435/v1/models#x",
+    "http://127.0.0.1:11435/v1/%2e%2e/admin",
+    "http://127.0.0.1:11435/v1/%2fadmin",
+    "http://127.0.0.1:11435//v1/models",
+    "http://127.0.0.1:11435/v1\\..\\admin",
+    "http://u:p@127.0.0.1:11435/v1/models",
+    "not a url",
+  ])("rejects %s", (url) => {
+    expect(() => assertVpcUrl(url)).toThrow(TransportNotConfiguredError);
   });
 });
