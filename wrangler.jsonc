@@ -78,6 +78,10 @@
   "durable_objects": {
     "bindings": [
       {
+        "name": "BOX_SAMPLER",
+        "class_name": "BoxSampler"
+      },
+      {
         "name": "EMAIL_TEMPLATE_CACHE",
         "class_name": "EmailingCacheDO"
       },
@@ -109,6 +113,10 @@
         "ResponseCache",
         "SessionManager"
       ]
+    },
+    {
+      "tag": "v2.1",
+      "new_sqlite_classes": ["BoxSampler"]
     }
   ],
   "d1_databases": [
@@ -172,6 +180,10 @@
       "durable_objects": {
         "bindings": [
           {
+            "name": "BOX_SAMPLER",
+            "class_name": "BoxSampler"
+          },
+          {
             "name": "EMAIL_TEMPLATE_CACHE",
             "class_name": "EmailingCacheDO"
           },
@@ -203,6 +215,10 @@
             "ResponseCache",
             "SessionManager"
           ]
+        },
+        {
+          "tag": "v2.1",
+          "new_sqlite_classes": ["BoxSampler"]
         }
       ],
       "d1_databases": [

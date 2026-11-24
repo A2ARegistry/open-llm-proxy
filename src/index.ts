@@ -1,5 +1,6 @@
 import { runAlertChecks } from "./alerts/evaluator";
 import { createApp } from "./app";
+import { BoxSampler } from "./durable/box-sampler";
 import { MetricsBuffer } from "./durable/metrics-buffer";
 import { RateLimiter } from "./durable/rate-limiter";
 import { ResponseCache } from "./durable/response-cache";
@@ -10,6 +11,7 @@ import { initLogger } from "./utils/logger";
 // Cloudflare Durable Objects
 import { EmailingCacheDO } from "@contentgrowth/content-emailing/backend/EmailingCacheDO.js";
 
+export { BoxSampler };
 export { MetricsBuffer };
 export { RateLimiter };
 export { ResponseCache };
