@@ -77,6 +77,25 @@ describe("toHost", () => {
     expect(h.gpuPowerW).toBeGreaterThan(0);
   });
 
+  it("reads each temperature from its own chip", () => {
+    const text = [
+      'node_hwmon_chip_names{chip="pci_cpu",chip_name="k10temp"} 1',
+      'node_hwmon_chip_names{chip="pci_gpu",chip_name="amdgpu"} 1',
+      'node_hwmon_chip_names{chip="nvme_nvme0",chip_name="nvme"} 1',
+      'node_hwmon_temp_celsius{chip="pci_cpu",sensor="temp1"} 61',
+      'node_hwmon_temp_celsius{chip="pci_gpu",sensor="temp1"} 72',
+      'node_hwmon_temp_celsius{chip="nvme_nvme0",sensor="temp2"} 99',
+      'node_hwmon_temp_celsius{chip="nvme_nvme0",sensor="temp1"} 43',
+      'node_hwmon_power_average_watt{chip="pci_gpu",sensor="power1"} 118',
+      'node_hwmon_power_average_watt{chip="pci_cpu",sensor="power1"} 5',
+    ].join("\n");
+    const h = toHost("BOXSTATS", text)!;
+    expect(h.cpuTempC).toBe(61);
+    expect(h.gpuTempC).toBe(72);
+    expect(h.ssdTempC).toBe(43);
+    expect(h.gpuPowerW).toBe(118);
+  });
+
   it("never reads VRAM", () => {
     const before = toHost("BOXSTATS", nodeMetrics)!.gpuMemUsedBytes;
     const edited = nodeMetrics.replace(
