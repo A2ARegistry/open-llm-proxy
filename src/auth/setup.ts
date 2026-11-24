@@ -3,6 +3,7 @@ import { getAuthSecret } from "../bootstrap/secrets";
 import { sendTemplateEmail } from "../email/service";
 import { handleSignup } from "../tenants/onboarding";
 import { normalizeConfiguredUrl } from "../utils/base-url";
+import { hashPassword, verifyPasswordRecord } from "./password-hashing";
 import { createAuth } from "@contentgrowth/content-auth/backend";
 import { organization } from "better-auth/plugins";
 
@@ -147,11 +148,15 @@ async function buildAuth(
       autoSignInAfterVerification: true,
       sendVerificationEmail,
     },
+    // [fork] scrypt instead of content-auth's PBKDF2 (capped at 100k on
+    // Workers); still verifies existing PBKDF2 hashes.
+    useCloudflareNativeHashing: false,
     emailAndPassword: {
       enabled: true,
       minPasswordLength: 12,
       requireEmailVerification: true,
       sendResetPassword,
+      password: { hash: hashPassword, verify: verifyPasswordRecord },
     },
     turnstile: (env as any).TURNSTILE_SECRET
       ? { secretKey: (env as any).TURNSTILE_SECRET! }

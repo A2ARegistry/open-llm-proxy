@@ -1,45 +1,12 @@
 import { auditLog } from "../audit/audit-logger";
+import { hashPassword, verifyPassword } from "../auth/password-hashing";
 import { setSetting } from "../db/settings";
 import { assignTenantPrefixes } from "../tenants/prefixes";
-import {
-  fromBase64,
-  newId,
-  nowSeconds,
-  pbkdf2Sha256,
-  randomBytes,
-  toBase64,
-} from "../utils/crypto";
+import { newId, nowSeconds } from "../utils/crypto";
 
-/**
- * PBKDF2-SHA256 password hashing in the content-auth format:
- * `pbkdf2:<iterations>:<salt b64>:<hash b64>`.
- */
-
-const PBKDF2_ITERATIONS = 100000;
-
-export async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16);
-  const hash = await pbkdf2Sha256(password, salt, PBKDF2_ITERATIONS);
-  return `pbkdf2:${PBKDF2_ITERATIONS}:${toBase64(salt)}:${toBase64(hash)}`;
-}
-
-export async function verifyPassword(
-  password: string,
-  stored: string,
-): Promise<boolean> {
-  const [alg, iterationsStr, saltB64, hashB64] = stored.split(":");
-  if (alg !== "pbkdf2" || !iterationsStr || !saltB64 || !hashB64) return false;
-  const hash = await pbkdf2Sha256(
-    password,
-    fromBase64(saltB64),
-    parseInt(iterationsStr, 10),
-  );
-  const expected = fromBase64(hashB64);
-  if (hash.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < hash.length; i++) diff |= hash[i] ^ expected[i];
-  return diff === 0;
-}
+// [fork] Password hashing moved to ../auth/password-hashing (scrypt, still
+// verifies content-auth PBKDF2 hashes); re-exported for existing callers.
+export { hashPassword, verifyPassword };
 
 export const DEFAULT_ADMIN_EMAIL = "admin@example.com";
 export const DEFAULT_ADMIN_PASSWORD = "AwesomeProxy!!";

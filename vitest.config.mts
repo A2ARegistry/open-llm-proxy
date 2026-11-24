@@ -9,6 +9,8 @@ export default defineConfig({
     }),
   ],
   test: {
+    // [fork] scrypt password hashing takes ~1.2 s per call.
+    testTimeout: 30000,
     alias: {
       "~/src": resolve(__dirname, "./src"),
     },

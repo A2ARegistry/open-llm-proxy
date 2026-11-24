@@ -176,9 +176,10 @@ describe("rotateInitialAdminPassword", () => {
 });
 
 describe("password hashing helpers", () => {
-  it("produces content-auth pbkdf2 format and verifies", async () => {
+  // [fork] scrypt replaces PBKDF2 (see src/auth/password-hashing.ts).
+  it("produces scrypt format and verifies", async () => {
     const hash = await hashPassword("s3cret!!word");
-    expect(hash).toMatch(/^pbkdf2:100000:/);
+    expect(hash).toMatch(/^scrypt:16384:16:1:/);
     expect(await verifyPassword("s3cret!!word", hash)).toBe(true);
     expect(await verifyPassword("other!", hash)).toBe(false);
     expect(await verifyPassword("x", "argon2:junk")).toBe(false);
