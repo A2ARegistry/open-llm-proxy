@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { googleUsageOf } from "~/src/llm/google-direct-adapter";
+import { StreamTimer } from "~/src/metrics/stream-timer";
 import {
   sseUsageOf,
   usageCapturingTransform,
@@ -87,6 +88,39 @@ describe("usageCapturingTransform", () => {
     await Promise.resolve();
     expect(recorded).toEqual([null]);
   });
+
+  it("times the first output chunk, skipping keepalives and progress", async () => {
+    const times = [1_300, 2_300];
+    const timer = new StreamTimer(1_000, () => times.shift()!);
+    const recorded: unknown[] = [];
+    await drain(
+      sse([
+        `: keepalive\n\n`,
+        `data: {"choices":[],"prompt_progress":{"processed":5,"total":10}}\n\n`,
+        `data: {"choices":[{"delta":{"role":"assistant","content":""}}]}\n\n`,
+        `data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n`,
+        `data: {"choices":[{"delta":{"content":" there"}}]}\n\n`,
+        `data: [DONE]\n\n`,
+      ]).pipeThrough(
+        usageCapturingTransform((_u, t) => recorded.push(t), timer),
+      ),
+    );
+    expect(recorded).toEqual([{ ttftMs: 300, decodeMs: 1_000 }]);
+  });
+
+  it("keeps TTFT but drops decode time when the client cancels", async () => {
+    const times = [1_200];
+    const timer = new StreamTimer(1_000, () => times.shift()!);
+    const recorded: unknown[] = [];
+    const stream = sse([
+      `data: {"choices":[{"delta":{"content":"partial"}}]}\n\n`,
+    ]).pipeThrough(usageCapturingTransform((_u, t) => recorded.push(t), timer));
+    const reader = stream.getReader();
+    await reader.read();
+    await reader.cancel();
+    await Promise.resolve();
+    expect(recorded).toEqual([{ ttftMs: 200, decodeMs: null }]);
+  });
 });
 
 describe("googleUsageOf", () => {
@@ -106,6 +140,16 @@ describe("googleUsageOf", () => {
       totalTokens: 1050,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     });
+  });
+
+  it("counts Gemini thinking tokens as output", () => {
+    expect(
+      googleUsageOf({
+        promptTokenCount: 10,
+        candidatesTokenCount: 50,
+        thoughtsTokenCount: 200,
+      }),
+    ).toMatchObject({ input: 10, output: 250 });
   });
 
   it("handles missing metadata", () => {

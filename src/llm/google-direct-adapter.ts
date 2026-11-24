@@ -313,6 +313,7 @@ interface GoogleGenerateContentResponse {
     candidatesTokenCount?: number;
     totalTokenCount?: number;
     cachedContentTokenCount?: number;
+    thoughtsTokenCount?: number;
   };
 }
 
@@ -320,18 +321,21 @@ interface GoogleGenerateContentResponse {
  * Map Gemini usageMetadata to pi-ai usage. Mirrors the pi-ai google-generative-ai
  * convention: promptTokenCount INCLUDES cached tokens, so `input` excludes them
  * and they are reported as cacheRead (prompt-cache hits). Gemini has no cache
- * write count on this endpoint, so cacheWrite stays 0.
+ * write count on this endpoint, so cacheWrite stays 0. Thinking tokens
+ * (`thoughtsTokenCount`) are billed as output and are not part of
+ * `candidatesTokenCount`, so they are added to `output`, as pi-ai does.
  */
 export function googleUsageOf(meta: {
   promptTokenCount?: number;
   candidatesTokenCount?: number;
   totalTokenCount?: number;
   cachedContentTokenCount?: number;
+  thoughtsTokenCount?: number;
 }): AssistantMessage["usage"] {
   const cacheRead = meta.cachedContentTokenCount || 0;
   return {
     input: Math.max(0, (meta.promptTokenCount || 0) - cacheRead),
-    output: meta.candidatesTokenCount || 0,
+    output: (meta.candidatesTokenCount || 0) + (meta.thoughtsTokenCount || 0),
     cacheRead,
     cacheWrite: 0,
     totalTokens: meta.totalTokenCount || 0,
