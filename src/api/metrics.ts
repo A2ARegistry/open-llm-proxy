@@ -2,6 +2,12 @@ import type { AppBindings } from "../app";
 import { cacheUsageByModel, spendForRange } from "../metrics/cost-tracker";
 import { usageByKey } from "../metrics/key-usage";
 import { percentile } from "../metrics/percentile";
+import {
+  getRequest,
+  listRequests,
+  parseRequestFilters,
+  requestFacets,
+} from "../metrics/request-log";
 import { speedByModel } from "../metrics/speed-stats";
 import { Hono } from "hono";
 
@@ -128,34 +134,44 @@ metricsRouter.get("/keys", async (c) => {
   return c.json({ start, end, keys });
 });
 
-// GET /api/metrics/requests — recent request rows (tenant-scoped).
+// GET /api/metrics/requests — newest-first request rows plus total count.
+// Filters: provider, model, apiKeyId ("none" = keyless), status, cache.
 metricsRouter.get("/requests", async (c) => {
   const orgId = c.get("session")!.organizationId!;
   const { start, end, provider } = rangeParams(c);
-  const q = (k: string) => c.req.query(k);
-  const limit = Math.min(Number(q("limit")) || 50, 200);
-  const offset = Math.max(Number(q("offset")) || 0, 0);
+  const invalid = validateRange(start, end);
+  if (invalid) return c.json({ error: invalid }, 400);
+  const filters = parseRequestFilters((k) => c.req.query(k));
+  if (typeof filters === "string") return c.json({ error: filters }, 400);
+  const limit = Math.min(Number(c.req.query("limit")) || 50, 200);
+  const offset = Math.max(Number(c.req.query("offset")) || 0, 0);
 
-  const where: string[] = [
-    "organization_id = ?",
-    "timestamp >= ?",
-    "timestamp < ?",
-  ];
-  const params: (string | number)[] = [orgId, start, end];
-  if (provider) {
-    where.push("provider = ?");
-    params.push(provider);
-  }
-  params.push(String(limit), String(offset));
+  const { requests, total } = await listRequests(
+    c.env,
+    orgId,
+    { start, end, provider, ...filters },
+    limit,
+    offset,
+  );
+  return c.json({ requests, total, limit, offset });
+});
 
-  const { results } = await c.env.DB.prepare(
-    `SELECT id, api_key_id, timestamp, provider, model, method, status_code, latency_ms,
-            tokens_input, tokens_output, tokens_cached, tokens_cache_read,
-            tokens_cache_write, cost_usd, error_message, cache_hit, ttft_ms, decode_ms
-     FROM request_metrics WHERE ${where.join(" AND ")}
-     ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
-  )
-    .bind(...params)
-    .all();
-  return c.json({ requests: results as unknown[] });
+// GET /api/metrics/requests/facets — providers and models in the window,
+// for the request log's filter dropdowns.
+metricsRouter.get("/requests/facets", async (c) => {
+  const orgId = c.get("session")!.organizationId!;
+  const { start, end } = rangeParams(c);
+  const invalid = validateRange(start, end);
+  if (invalid) return c.json({ error: invalid }, 400);
+
+  const facets = await requestFacets(c.env, orgId, start, end);
+  return c.json({ start, end, facets });
+});
+
+// GET /api/metrics/requests/:id — one request with its key and user.
+metricsRouter.get("/requests/:id", async (c) => {
+  const orgId = c.get("session")!.organizationId!;
+  const request = await getRequest(c.env, orgId, c.req.param("id"));
+  if (!request) return c.json({ error: "Request not found" }, 404);
+  return c.json({ request });
 });
