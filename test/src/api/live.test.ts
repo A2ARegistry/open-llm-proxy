@@ -228,15 +228,22 @@ describe("GET /api/live/at", () => {
     } as unknown as Env);
 
   it("uses the request start and the provider's binding", async () => {
-    // req_live_new: finished at NOW - 5, 900 ms latency -> started NOW - 5.9.
-    const start = NOW - 5.9;
-    const ts = Math.round(start / 10) * 10;
+    // Finished at NOW, 60 s latency -> started NOW - 60: the row near the
+    // start must win over the one near the logged timestamp.
     await env.DB.prepare(
-      "INSERT OR REPLACE INTO inference_samples (binding, resolution_s, ts, ok, in_flight) VALUES ('HALOGEN', 10, ?, 1, 3)",
+      `INSERT OR REPLACE INTO request_metrics
+         (id, organization_id, timestamp, provider, model, method, status_code, latency_ms, cache_hit)
+       VALUES ('req_long', ?, ?, 'local-m5', 'qwen', 'chat', 200, 60000, 0)`,
     )
-      .bind(ts)
+      .bind(ORG, NOW)
       .run();
-    const res = await at("?request=req_live_new");
+    const ts = Math.round((NOW - 60) / 10) * 10;
+    await env.DB.prepare(
+      "INSERT OR REPLACE INTO inference_samples (binding, resolution_s, ts, ok, in_flight) VALUES ('HALOGEN', 10, ?, 1, 3), ('HALOGEN', 10, ?, 1, 9)",
+    )
+      .bind(ts, Math.round(NOW / 10) * 10)
+      .run();
+    const res = await at("?request=req_long");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       sample: {

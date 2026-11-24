@@ -179,7 +179,9 @@ function rollupGroups(
   const groups = new Map<number, typeof rows>();
   for (const r of rows) {
     const ts = Math.floor(r.ts / bucketS) * bucketS;
-    groups.set(ts, [...(groups.get(ts) ?? []), r]);
+    const group = groups.get(ts);
+    if (group) group.push(r);
+    else groups.set(ts, [r]);
   }
   const mean = (v: number[]) => v.reduce((s, x) => s + x, 0) / v.length;
   return [...groups].map(([ts, g]) => ({
