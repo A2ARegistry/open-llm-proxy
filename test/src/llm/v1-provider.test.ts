@@ -105,3 +105,25 @@ describe("V1OpenAICompatibleClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+// [fork] W2: keyless custom providers (the local box has no API key).
+describe("V1OpenAICompatibleClient without keys", () => {
+  it("sends no authorization header for a keyless custom provider", async () => {
+    const binding = {
+      fetch: vi.fn().mockResolvedValue(new Response("{}", { status: 200 })),
+    };
+    const client = new V1OpenAICompatibleClient({
+      provider: "local-m5",
+      keys: [],
+      custom: { baseUrl: "http://127.0.0.1:11435" },
+      fetcher: binding,
+    });
+
+    await client.chatCompletions("{}");
+
+    const headers = binding.fetch.mock.calls[0][1].headers;
+    expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain(
+      "authorization",
+    );
+  });
+});

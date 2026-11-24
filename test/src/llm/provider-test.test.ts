@@ -547,3 +547,27 @@ describe("provider-test with an injected fetcher", () => {
     vi.unstubAllGlobals();
   });
 });
+
+// [fork] W2: keyless custom providers (the local box has no API key).
+describe("provider-test for a keyless custom provider", () => {
+  it("probes without a key and without an authorization header", async () => {
+    const binding = {
+      fetch: vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ data: [] }), { status: 200 }),
+        ),
+    };
+    const result = await testProviderConnection({
+      provider: "local-m5",
+      keys: [],
+      settings: { baseUrl: "http://127.0.0.1:11435", modelsPath: "/v1/models" },
+      fetcher: binding,
+    });
+    expect(result.ok).toBe(true);
+    const headers = binding.fetch.mock.calls[0][1].headers ?? {};
+    expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain(
+      "authorization",
+    );
+  });
+});
