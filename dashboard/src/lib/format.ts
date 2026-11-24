@@ -78,6 +78,24 @@ export function fmtMs(ms: number | null | undefined): string {
   return `${Math.round(ms)}ms`;
 }
 
+/** Formats a tokens-per-second rate, e.g. "42.5 tok/s". */
+export function fmtTps(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}K tok/s`;
+  return `${value.toFixed(1)} tok/s`;
+}
+
+/** Decode tokens/s for one request row: output after the first token / decode time. */
+export function rowDecodeTps(
+  tokensOutput: number | null | undefined,
+  decodeMs: number | null | undefined,
+): number | null {
+  if (!tokensOutput || tokensOutput < 2 || !decodeMs || decodeMs <= 0) {
+    return null;
+  }
+  return ((tokensOutput - 1) * 1000) / decodeMs;
+}
+
 export function pct(ratio: number): string {
   return `${(ratio * 100).toFixed(0)}%`;
 }

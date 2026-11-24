@@ -44,6 +44,8 @@ import { V1OpenAICompatibleClient } from "../llm/v1-provider";
 import type { TokenUsage } from "../metrics/cost-tracker";
 import { recordChatRequest } from "../metrics/request-logger";
 import { maybeDisableAfterSpend } from "../metrics/spend-guard";
+import { SseOutputDetector } from "../metrics/sse-output-detector";
+import { StreamTimer, type StreamTimings } from "../metrics/stream-timer";
 import { TraceSession, textCaptureTransform } from "../tracing/collector";
 import { ApiKeyAuth } from "../types";
 import { log } from "../utils/logger";
@@ -420,6 +422,7 @@ export async function chatCompletionsV2(
     costUsd?: number | null;
     errorMessage?: string | null;
     cacheHit?: number;
+    timings?: StreamTimings | null;
   }) => {
     ctx.waitUntil(
       recordChatRequest(env, attempt, outcome).catch((err) =>
@@ -575,6 +578,7 @@ export async function chatCompletionsV2(
     const state = { emittedRole: false };
     const responseId = `chatcmpl-${Math.random().toString(36).slice(2)}`;
     let finalMessage: AssistantMessage | undefined;
+    const timer = new StreamTimer(attempt.startedAt);
     try {
       for await (const event of googleAdapter.streamGenerateContent({
         model: modelId,
@@ -590,6 +594,7 @@ export async function chatCompletionsV2(
             }
           : undefined,
       })) {
+        timer.observeEvent(event);
         if (event.type === "done") finalMessage = event.message;
         if (event.type === "error") finalMessage = event.error;
         for (const chunk of eventToOpenAIChunks(
@@ -616,6 +621,7 @@ export async function chatCompletionsV2(
         usage: finalMessage ? usageOf(finalMessage) : null,
         costUsd: finalMessage?.usage?.cost?.total ?? null,
         errorMessage: `Upstream error (${info.status ?? "unknown"}): ${info.message}`,
+        timings: timer.finish(false),
       });
       trace?.setUpstreamResponse({ status: info.status, error: info.message });
       submitTrace();
@@ -629,6 +635,7 @@ export async function chatCompletionsV2(
         finalMessage?.stopReason === "error"
           ? (finalMessage.errorMessage ?? "Stream ended with an error")
           : null,
+      timings: timer.finish(finalMessage?.stopReason !== "error"),
     });
     const sseText = encodeSse(chunks);
     trace?.setOutboundResponse(sseText);
@@ -747,12 +754,14 @@ export async function chatCompletionsV2(
     const state = { emittedRole: false };
     const responseId = `chatcmpl-${Math.random().toString(36).slice(2)}`;
     let finalMessage: AssistantMessage | undefined;
+    const timer = new StreamTimer(attempt.startedAt);
     try {
       for await (const event of models.stream({
         model: piModel,
         context,
         signal,
       })) {
+        timer.observeEvent(event);
         if (event.type === "done") finalMessage = event.message;
         if (event.type === "error") finalMessage = event.error;
         for (const chunk of eventToOpenAIChunks(
@@ -777,6 +786,7 @@ export async function chatCompletionsV2(
         usage: finalMessage ? usageOf(finalMessage) : null,
         costUsd: finalMessage?.usage?.cost?.total ?? null,
         errorMessage: err instanceof Error ? err.message : String(err),
+        timings: timer.finish(false),
       });
       trace?.setUpstreamResponse({
         error: err instanceof Error ? err.message : String(err),
@@ -792,6 +802,7 @@ export async function chatCompletionsV2(
         finalMessage?.stopReason === "error"
           ? (finalMessage.errorMessage ?? "Stream ended with an error")
           : null,
+      timings: timer.finish(finalMessage?.stopReason !== "error"),
     });
     const sseText = encodeSse(chunks);
     // pi-ai does not expose the raw upstream exchange; only inbound +
@@ -926,9 +937,9 @@ export async function chatCompletionsV2(
     }
     const capturedText = trace ? textCaptureTransform() : null;
     const sseStream = upstream.body.pipeThrough(
-      usageCapturingTransform((usage) => {
-        record({ statusCode: upstream.status, usage });
-      }),
+      usageCapturingTransform((usage, timings) => {
+        record({ statusCode: upstream.status, usage, timings });
+      }, new StreamTimer(attempt.startedAt)),
     );
     const tracedStream = capturedText
       ? sseStream.pipeThrough(capturedText.stream)
@@ -1090,31 +1101,38 @@ const USAGE_TAIL_BYTES = 64 * 1024;
 /**
  * Pass-through SSE transform that captures the upstream body so usage can be
  * parsed when the stream ends (or is cancelled), then recorded exactly once.
+ * Also times the first output chunk, for TTFT and decode tokens/s.
  */
 export function usageCapturingTransform(
-  record: (usage: TokenUsage | null) => void,
+  record: (usage: TokenUsage | null, timings: StreamTimings) => void,
+  timer: StreamTimer = new StreamTimer(Date.now()),
 ): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder();
+  const detector = new SseOutputDetector();
   let tail = "";
   let done = false;
-  const finish = () => {
+  const finish = (completed: boolean) => {
     if (done) return;
     done = true;
-    record(sseUsageOf(tail));
+    record(sseUsageOf(tail), timer.finish(completed));
   };
   return new TransformStream({
     transform(chunk, controller) {
       controller.enqueue(chunk);
-      tail += decoder.decode(chunk, { stream: true });
+      const text = decoder.decode(chunk, { stream: true });
+      if (!timer.hasFirstOutput && detector.feed(text)) {
+        timer.markFirstOutput();
+      }
+      tail += text;
       // Bound memory: usage only ever appears in the final chunks.
       if (tail.length > USAGE_TAIL_BYTES * 2)
         tail = tail.slice(-USAGE_TAIL_BYTES);
     },
     flush() {
-      finish();
+      finish(true);
     },
     cancel() {
-      finish();
+      finish(false);
     },
   });
 }

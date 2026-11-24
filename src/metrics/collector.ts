@@ -18,6 +18,8 @@ export interface MetricDraft {
   cost_usd?: number | null;
   error_message?: string | null;
   cache_hit?: number;
+  ttft_ms?: number | null;
+  decode_ms?: number | null;
 }
 
 function normalize(draft: MetricDraft): BufferedMetric {
@@ -38,6 +40,8 @@ function normalize(draft: MetricDraft): BufferedMetric {
     cost_usd: draft.cost_usd ?? null,
     error_message: draft.error_message ?? null,
     cache_hit: draft.cache_hit ?? 0,
+    ttft_ms: draft.ttft_ms ?? null,
+    decode_ms: draft.decode_ms ?? null,
   };
 }
 
@@ -47,8 +51,8 @@ async function insertDirect(env: Env, row: BufferedMetric): Promise<void> {
       (id, organization_id, user_id, api_key_id, timestamp, provider, model, method,
        status_code, latency_ms, tokens_input, tokens_output, tokens_cached,
        tokens_cache_read, tokens_cache_write,
-       cost_usd, error_message, cache_hit)
-     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       cost_usd, error_message, cache_hit, ttft_ms, decode_ms)
+     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       `${row.organization_id}_${newUuid().replace(/-/g, "")}`,
@@ -68,6 +72,8 @@ async function insertDirect(env: Env, row: BufferedMetric): Promise<void> {
       row.cost_usd,
       row.error_message,
       row.cache_hit,
+      row.ttft_ms,
+      row.decode_ms,
     )
     .run();
 }

@@ -17,6 +17,8 @@ export interface BufferedMetric {
   cost_usd: number | null;
   error_message: string | null;
   cache_hit: number;
+  ttft_ms: number | null;
+  decode_ms: number | null;
 }
 
 interface MetricRow {
@@ -37,6 +39,8 @@ interface MetricRow {
   cost_usd: number | null;
   error_message: string | null;
   cache_hit: number;
+  ttft_ms: number | null;
+  decode_ms: number | null;
 }
 
 const FLUSH_THRESHOLD = 200;
@@ -70,7 +74,9 @@ export class MetricsBuffer extends DurableObject {
         tokens_cache_write INTEGER,
         cost_usd REAL,
         error_message TEXT,
-        cache_hit INTEGER NOT NULL DEFAULT 0
+        cache_hit INTEGER NOT NULL DEFAULT 0,
+        ttft_ms INTEGER,
+        decode_ms INTEGER
       )`,
     );
     // In-place migration for DO shards created before the distinct cache
@@ -88,6 +94,14 @@ export class MetricsBuffer extends DurableObject {
       this.ctx.storage.sql.exec(
         "ALTER TABLE metrics_buffer ADD COLUMN tokens_cache_write INTEGER",
       );
+    }
+    // Same for shards created before the stream timing columns (0004).
+    for (const col of ["ttft_ms", "decode_ms"]) {
+      if (!names.has(col)) {
+        this.ctx.storage.sql.exec(
+          `ALTER TABLE metrics_buffer ADD COLUMN ${col} INTEGER`,
+        );
+      }
     }
     this.schemaReady = true;
   }
@@ -125,8 +139,8 @@ export class MetricsBuffer extends DurableObject {
           (id, organization_id, api_key_id, timestamp, provider, model, method,
            status_code, latency_ms, tokens_input, tokens_output, tokens_cached,
            tokens_cache_read, tokens_cache_write,
-           cost_usd, error_message, cache_hit)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           cost_usd, error_message, cache_hit, ttft_ms, decode_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         e.organization_id.concat("_", String(Math.random())),
         e.organization_id,
         e.api_key_id,
@@ -144,6 +158,8 @@ export class MetricsBuffer extends DurableObject {
         e.cost_usd,
         e.error_message,
         e.cache_hit,
+        e.ttft_ms ?? null,
+        e.decode_ms ?? null,
       );
       accepted++;
     }
@@ -160,7 +176,7 @@ export class MetricsBuffer extends DurableObject {
         `SELECT id, organization_id, api_key_id, timestamp, provider, model, method,
                 status_code, latency_ms, tokens_input, tokens_output, tokens_cached,
                 tokens_cache_read, tokens_cache_write,
-                cost_usd, error_message, cache_hit
+                cost_usd, error_message, cache_hit, ttft_ms, decode_ms
          FROM metrics_buffer ORDER BY timestamp LIMIT 1000`,
       )
       .toArray() as unknown as Record<string, unknown>[];
@@ -175,8 +191,8 @@ export class MetricsBuffer extends DurableObject {
             (id, organization_id, user_id, api_key_id, timestamp, provider, model, method,
              status_code, latency_ms, tokens_input, tokens_output, tokens_cached,
              tokens_cache_read, tokens_cache_write,
-             cost_usd, error_message, cache_hit)
-           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             cost_usd, error_message, cache_hit, ttft_ms, decode_ms)
+           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           (r as unknown as MetricRow).id,
           (r as unknown as MetricRow).organization_id,
@@ -195,6 +211,8 @@ export class MetricsBuffer extends DurableObject {
           (r as unknown as MetricRow).cost_usd,
           (r as unknown as MetricRow).error_message,
           (r as unknown as MetricRow).cache_hit,
+          (r as unknown as MetricRow).ttft_ms,
+          (r as unknown as MetricRow).decode_ms,
         ),
       );
     }

@@ -117,6 +117,21 @@ export interface LatencyStat {
   avg: number;
 }
 
+/** Streaming speed for one provider + model (GET /api/metrics/speed). */
+export interface SpeedStat {
+  provider: string;
+  model: string;
+  /** Successful streamed requests with a measured first output. */
+  requests: number;
+  ttftP50: number;
+  ttftP95: number;
+  /** Output tokens/s after the first token. */
+  decodeTpsP50: number | null;
+  decodeTpsP95: number | null;
+  /** Uncached input tokens / TTFT (includes queue and network time). */
+  prefillTpsP50: number | null;
+}
+
 /** Prompt-cache usage for one provider + model (GET /api/metrics/cache). */
 export interface CacheUsageRow {
   provider: string;
@@ -152,6 +167,9 @@ export interface RequestRow {
   cost_usd: number | null;
   error_message: string | null;
   cache_hit: number | null;
+  /** Streamed requests only: time to first output, then decode duration. */
+  ttft_ms?: number | null;
+  decode_ms?: number | null;
 }
 
 async function parse<T>(res: Response): Promise<T> {

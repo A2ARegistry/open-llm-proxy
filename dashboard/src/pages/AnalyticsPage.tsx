@@ -7,14 +7,16 @@ import {
   Tooltip,
 } from "../components/ui";
 import { apiGet } from "../lib/api";
-import { CacheUsageRow, LatencyStat, RequestRow } from "../lib/api";
+import { CacheUsageRow, LatencyStat, RequestRow, SpeedStat } from "../lib/api";
 import {
   fmtCount,
   fmtDateTime,
   fmtMs,
   fmtTokens,
+  fmtTps,
   fmtUsd,
   pct,
+  rowDecodeTps,
 } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 
@@ -45,6 +47,13 @@ export function AnalyticsPage() {
     queryFn: () =>
       apiGet<{ latency: LatencyStat[] }>(
         `/api/metrics/latency?start=${dayStart}&end=${now}`,
+      ),
+  });
+  const speed = useQuery({
+    queryKey: ["analytics-speed"],
+    queryFn: () =>
+      apiGet<{ speed: SpeedStat[] }>(
+        `/api/metrics/speed?start=${dayStart}&end=${now}`,
       ),
   });
   const cache = useQuery({
@@ -83,6 +92,7 @@ export function AnalyticsPage() {
   // from "Tokens" and shown separately below.
   const tokens = (s.tokensInput ?? 0) + (s.tokensOutput ?? 0);
   const cacheRows = cache.data?.usage ?? [];
+  const speedRows = speed.data?.speed ?? [];
   const totalCacheRead = s.tokensCacheRead ?? 0;
   const totalCacheWrite = s.tokensCacheWrite ?? 0;
   const totalResponseHits = s.responseCacheHits ?? 0;
@@ -172,6 +182,64 @@ export function AnalyticsPage() {
                     <td className="px-5 py-3">{fmtMs(l.p95)}</td>
                     <td className="px-5 py-3">{fmtMs(l.p99)}</td>
                     <td className="px-5 py-3">{fmtMs(l.avg)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card
+        title="Speed by model"
+        subtitle="Streamed requests only. TTFT includes queue, prefill and network; prefill rate is uncached input ÷ TTFT."
+      >
+        {speedRows.length === 0 ? (
+          <EmptyState
+            title="No speed data yet"
+            description="Speed metrics appear once streamed requests flow through the proxy."
+          />
+        ) : (
+          <div className="-m-5 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-400">
+                  <th className="px-5 py-3 font-medium">Provider</th>
+                  <th className="px-5 py-3 font-medium">Model</th>
+                  <th className="px-5 py-3 font-medium">Streams</th>
+                  <th className="px-5 py-3 font-medium">TTFT p50</th>
+                  <th className="px-5 py-3 font-medium">TTFT p95</th>
+                  <th className="px-5 py-3 text-right font-medium">
+                    Decode p50
+                  </th>
+                  <th className="px-5 py-3 text-right font-medium">
+                    Decode p95
+                  </th>
+                  <th className="px-5 py-3 text-right font-medium">
+                    Prefill p50
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {speedRows.map((row) => (
+                  <tr
+                    key={`${row.provider}:${row.model}`}
+                    className="border-b border-gray-50 last:border-0"
+                  >
+                    <td className="px-5 py-3 font-medium">{row.provider}</td>
+                    <td className="px-5 py-3 text-gray-600">{row.model}</td>
+                    <td className="px-5 py-3">{fmtCount(row.requests)}</td>
+                    <td className="px-5 py-3">{fmtMs(row.ttftP50)}</td>
+                    <td className="px-5 py-3">{fmtMs(row.ttftP95)}</td>
+                    <td className="px-5 py-3 text-right font-medium">
+                      {fmtTps(row.decodeTpsP50)}
+                    </td>
+                    <td className="px-5 py-3 text-right text-gray-600">
+                      {fmtTps(row.decodeTpsP95)}
+                    </td>
+                    <td className="px-5 py-3 text-right text-gray-600">
+                      {fmtTps(row.prefillTpsP50)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -274,6 +342,8 @@ export function AnalyticsPage() {
                   <th className="px-5 py-3 font-medium">Status</th>
                   <th className="px-5 py-3 font-medium">Cache</th>
                   <th className="px-5 py-3 font-medium">Latency</th>
+                  <th className="px-5 py-3 font-medium">TTFT</th>
+                  <th className="px-5 py-3 text-right font-medium">Tok/s</th>
                   <th className="px-5 py-3 text-right font-medium">
                     Tokens (in/out)
                   </th>
@@ -380,6 +450,10 @@ export function AnalyticsPage() {
                         )}
                       </td>
                       <td className="px-5 py-3">{fmtMs(r.latency_ms)}</td>
+                      <td className="px-5 py-3">{fmtMs(r.ttft_ms)}</td>
+                      <td className="px-5 py-3 text-right text-gray-600">
+                        {fmtTps(rowDecodeTps(r.tokens_output, r.decode_ms))}
+                      </td>
                       <td className="px-5 py-3 text-right text-gray-600">
                         {r.tokens_input ?? 0} / {r.tokens_output ?? 0}
                       </td>

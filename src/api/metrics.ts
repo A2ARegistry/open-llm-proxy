@@ -1,5 +1,7 @@
 import type { AppBindings } from "../app";
 import { cacheUsageByModel, spendForRange } from "../metrics/cost-tracker";
+import { percentile } from "../metrics/percentile";
+import { speedByModel } from "../metrics/speed-stats";
 import { Hono } from "hono";
 
 export const metricsRouter = new Hono<AppBindings>();
@@ -71,12 +73,6 @@ metricsRouter.get("/latency", async (c) => {
     byProvider.set(row.provider, list);
   }
 
-  const percentile = (sorted: number[], p: number): number => {
-    if (sorted.length === 0) return 0;
-    const idx = Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1);
-    return sorted[Math.max(idx, 0)];
-  };
-
   const latency = Array.from(byProvider.entries()).map(([pv, vals]) => {
     const sorted = vals.sort((a, b) => a - b);
     const n = sorted.length;
@@ -106,6 +102,18 @@ metricsRouter.get("/cache", async (c) => {
   return c.json({ start, end, usage });
 });
 
+// GET /api/metrics/speed — streaming speed per provider + model over the
+// window: TTFT p50/p95, decode tokens/s, prefill tokens/s.
+metricsRouter.get("/speed", async (c) => {
+  const orgId = c.get("session")!.organizationId!;
+  const { start, end } = rangeParams(c);
+  const invalid = validateRange(start, end);
+  if (invalid) return c.json({ error: invalid }, 400);
+
+  const speed = await speedByModel(c.env, orgId, start, end);
+  return c.json({ start, end, speed });
+});
+
 // GET /api/metrics/requests — recent request rows (tenant-scoped).
 metricsRouter.get("/requests", async (c) => {
   const orgId = c.get("session")!.organizationId!;
@@ -129,7 +137,7 @@ metricsRouter.get("/requests", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT id, api_key_id, timestamp, provider, model, method, status_code, latency_ms,
             tokens_input, tokens_output, tokens_cached, tokens_cache_read,
-            tokens_cache_write, cost_usd, error_message, cache_hit
+            tokens_cache_write, cost_usd, error_message, cache_hit, ttft_ms, decode_ms
      FROM request_metrics WHERE ${where.join(" AND ")}
      ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
   )
