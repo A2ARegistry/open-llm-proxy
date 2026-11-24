@@ -15,6 +15,7 @@ import { fmtDate } from "../lib/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, KeyRound, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 export function ApiKeysPage() {
   const qc = useQueryClient();
@@ -129,7 +130,12 @@ export function ApiKeysPage() {
                     className="border-b border-gray-50 last:border-0"
                   >
                     <td className="px-5 py-3 font-medium text-gray-800">
-                      {k.name}
+                      <Link
+                        to={`/api-keys/${encodeURIComponent(k.id)}`}
+                        className="hover:text-indigo-700 hover:underline"
+                      >
+                        {k.name}
+                      </Link>
                     </td>
                     <td className="px-5 py-3 font-mono text-xs text-gray-500">
                       {k.keyPrefix}…

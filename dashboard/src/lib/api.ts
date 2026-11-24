@@ -219,6 +219,45 @@ export interface RequestPage {
   offset: number;
 }
 
+/** One time bucket of a key's traffic. */
+export interface KeySeriesPoint {
+  /** Bucket start, unix seconds (UTC hour or day). */
+  t: number;
+  requests: number;
+  errors: number;
+  costUsd: number;
+}
+
+/** Requests and cost per provider + model for one key. */
+export interface KeyModelUsage {
+  provider: string;
+  model: string;
+  requests: number;
+  errors: number;
+  costUsd: number;
+}
+
+/** One key's usage over a window (GET /api/metrics/keys/:id). */
+export interface KeyDetailUsage {
+  start: number;
+  end: number;
+  bucketSeconds: number;
+  summary: {
+    requests: number;
+    errors: number;
+    tokensInput: number;
+    tokensOutput: number;
+    tokensCacheRead: number;
+    costUsd: number;
+    latencyAvgMs: number | null;
+    lastRequestAt: number | null;
+  };
+  series: KeySeriesPoint[];
+  models: KeyModelUsage[];
+  /** All-time spend, the figure the spend cap is checked against. */
+  lifetimeCostUsd: number;
+}
+
 async function parse<T>(res: Response): Promise<T> {
   const body = await res.json().catch(() => null);
   if (!res.ok) {

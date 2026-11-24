@@ -1,8 +1,11 @@
+import { TimeRangeControl } from "../components/TimeRangeControl";
 import { UpstreamHealthBadges } from "../components/UpstreamHealthBadges";
 import { Badge, Card, EmptyState, Spinner, StatCard } from "../components/ui";
 import { apiGet } from "../lib/api";
 import { fmtCount, fmtDay, fmtUsd, fmtTokens } from "../lib/format";
-import { useQuery } from "@tanstack/react-query";
+import { RangePreset } from "../lib/timeRange";
+import { useTimeRange } from "../lib/useTimeRange";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import {
   CartesianGrid,
@@ -14,12 +17,13 @@ import {
   YAxis,
 } from "recharts";
 
-const now = Math.floor(Date.now() / 1000);
-const start = now - 30 * 86400;
+const DASHBOARD_RANGES: RangePreset[] = ["7d", "30d", "90d"];
 
 export function DashboardPage() {
+  const time = useTimeRange(DASHBOARD_RANGES, "30d");
   const costs = useQuery({
-    queryKey: ["costs"],
+    queryKey: ["costs", time.start, time.end],
+    placeholderData: keepPreviousData,
     queryFn: () =>
       apiGet<{
         days: { day: number; cost_usd: number | null }[];
@@ -37,7 +41,7 @@ export function DashboardPage() {
           promptCacheHits?: number | null;
           promptCacheHitRate?: number | null;
         };
-      }>(`/api/usage/costs?start=${start}&end=${now}`),
+      }>(`/api/usage/costs?start=${time.start}&end=${time.end}`),
   });
   const alerts = useQuery({
     queryKey: ["alerts"],
@@ -114,15 +118,22 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-500">
-          Usage and spend for the last 30 days.
-        </p>
-        {/* [fork] W7 */}
-        <div className="mt-2">
-          <UpstreamHealthBadges />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
+          <p className="text-sm text-gray-500">
+            Usage and spend for the {time.option.label.toLowerCase()}.
+          </p>
+          {/* [fork] W7 */}
+          <div className="mt-2">
+            <UpstreamHealthBadges />
+          </div>
         </div>
+        <TimeRangeControl
+          time={time}
+          allowed={DASHBOARD_RANGES}
+          refreshing={costs.isFetching}
+        />
       </div>
 
       {alertMsg && (
@@ -136,7 +147,10 @@ export function DashboardPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Total spend (30d)" value={fmtUsd(totalCost)} />
+        <StatCard
+          label={`Total spend (${time.option.short})`}
+          value={fmtUsd(totalCost)}
+        />
         <StatCard
           label="Total tokens"
           value={fmtTokens(totalTokens)}

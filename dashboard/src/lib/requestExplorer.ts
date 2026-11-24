@@ -1,13 +1,5 @@
 /** Request-log explorer state, kept in the URL so views can be shared. */
-
-export const RANGE_PRESETS = [
-  { value: "1h", label: "Last hour", seconds: 3600 },
-  { value: "24h", label: "Last 24 hours", seconds: 24 * 3600 },
-  { value: "7d", label: "Last 7 days", seconds: 7 * 24 * 3600 },
-  { value: "30d", label: "Last 30 days", seconds: 30 * 24 * 3600 },
-  { value: "90d", label: "Last 90 days", seconds: 90 * 24 * 3600 },
-] as const;
-export type RangePreset = (typeof RANGE_PRESETS)[number]["value"];
+import { ALL_RANGES, parseRange, RangePreset } from "./timeRange";
 
 export const STATUS_OPTIONS = [
   { value: "success", label: "Success (< 400)" },
@@ -65,11 +57,7 @@ export function parseExplorerState(params: URLSearchParams): ExplorerState {
   }
   const page = Math.floor(Number(params.get("page")));
   return {
-    range: oneOf(
-      RANGE_PRESETS.map((r) => r.value),
-      params.get("range") as RangePreset | null,
-      DEFAULT_RANGE,
-    ),
+    range: parseRange(params.get("range"), ALL_RANGES, DEFAULT_RANGE),
     filters,
     page: Number.isFinite(page) && page > 1 ? page : 1,
     pageSize: oneOf<number>(
@@ -94,16 +82,6 @@ export function explorerParams(state: ExplorerState): URLSearchParams {
     params.set("size", String(state.pageSize));
   if (state.requestId) params.set("request", state.requestId);
   return params;
-}
-
-/** [start, end) in unix seconds for a preset, ending at `nowMs`. */
-export function rangeWindow(
-  range: RangePreset,
-  nowMs: number,
-): { start: number; end: number } {
-  const preset = RANGE_PRESETS.find((r) => r.value === range)!;
-  const end = Math.floor(nowMs / 1000) + 1;
-  return { start: end - preset.seconds, end };
 }
 
 /** Query string for GET /api/metrics/requests. */

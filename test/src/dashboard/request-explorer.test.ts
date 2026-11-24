@@ -2,7 +2,6 @@ import {
   explorerParams,
   pageCount,
   parseExplorerState,
-  rangeWindow,
   requestsQuery,
 } from "../../../dashboard/src/lib/requestExplorer";
 import { describe, expect, it } from "vitest";
@@ -62,15 +61,6 @@ describe("explorerParams", () => {
       "range=1h&provider=openai&status=success&page=2&size=25&request=abc";
     const state = parseExplorerState(new URLSearchParams(url));
     expect(parseExplorerState(explorerParams(state))).toEqual(state);
-  });
-});
-
-describe("rangeWindow", () => {
-  it("ends just after now and spans the preset", () => {
-    expect(rangeWindow("1h", 10_000_500)).toEqual({
-      start: 10_001 - 3600,
-      end: 10_001,
-    });
   });
 });
 
