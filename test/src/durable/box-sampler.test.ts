@@ -253,11 +253,15 @@ describe("BoxSampler", () => {
       { HALOGEN: healthy(), NODE: node() },
       async (sampler, state) => {
         await state.storage.put("due", 10_000);
+        const before = Math.floor(Date.now() / 10_000) * 10;
         await sampler.alarm();
+        const after = Math.floor(Date.now() / 10_000) * 10;
         const row = state.storage.sql
           .exec("SELECT ts FROM pending WHERE kind = 'inference'")
           .one() as { ts: number };
-        expect(row.ts).toBe(Math.floor(Date.now() / 10_000) * 10);
+        expect(row.ts).toBeGreaterThan(10);
+        expect(row.ts).toBeGreaterThanOrEqual(before);
+        expect(row.ts).toBeLessThanOrEqual(after);
       },
     );
   });
