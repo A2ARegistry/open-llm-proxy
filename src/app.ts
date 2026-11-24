@@ -3,6 +3,7 @@ import { bootstrapRouter } from "./api/bootstrap";
 import { emailAdminRouter } from "./api/email-admin";
 import { healthRouter } from "./api/health";
 import { keysRouter } from "./api/keys";
+import { liveRouter } from "./api/live";
 import { metricsRouter } from "./api/metrics";
 import { providerConfigRouter } from "./api/provider-config";
 import { teamRouter } from "./api/team";
@@ -125,6 +126,11 @@ export function createApp(): Hono<AppBindings> {
   // [fork] W7: upstream (box) health, readable by any org member.
   app.use("/api/health/*", sessionAuthMiddleware, requireOrgMember);
   app.route("/api/health", healthRouter);
+
+  // [fork] W11: live box metrics (Live page), readable by any org member.
+  app.use("/api/live", sessionAuthMiddleware, requireOrgMember);
+  app.use("/api/live/*", sessionAuthMiddleware, requireOrgMember);
+  app.route("/api/live", liveRouter);
 
   // Tenant URL prefix (base URL) management: reads are member+, writes admin.
   app.use(

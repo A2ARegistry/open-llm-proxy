@@ -181,6 +181,20 @@ export async function listRequests(
   };
 }
 
+/** [fork] W11: the org's most recent request row, or null when it has none. */
+export async function latestRequest(
+  env: Env,
+  organizationId: string,
+): Promise<RequestLogRow | null> {
+  return env.DB.prepare(
+    `SELECT ${ROW_COLUMNS} FROM request_metrics m
+     WHERE m.organization_id = ?
+     ORDER BY m.timestamp DESC, m.id DESC LIMIT 1`,
+  )
+    .bind(organizationId)
+    .first<RequestLogRow>();
+}
+
 /** One request row with its key and user, or null if not in this org. */
 export async function getRequest(
   env: Env,
