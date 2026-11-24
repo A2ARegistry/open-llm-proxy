@@ -36,7 +36,8 @@ export async function getModelPricing(
 ): Promise<ModelPricing> {
   const row = await env.DB.prepare(
     `SELECT provider, model, input_per_1m, output_per_1m, cache_read_per_1m, cache_write_per_1m
-     FROM model_pricing WHERE provider = ? AND model = ?`,
+     FROM model_pricing WHERE provider = ? AND model IN (?, '*')
+     ORDER BY model = '*' LIMIT 1`, // [fork] W8: provider-wide '*' row as fallback
   )
     .bind(provider, model)
     .first<PricingRow>();
