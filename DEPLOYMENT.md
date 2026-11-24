@@ -188,6 +188,31 @@ Git builds (Step 3) cannot pass flags, so each flag also reads a build environme
 | `VPC_ALLOW`            | `--vpc-allow`           | `NAME=org_a\|org_b`, comma-separated |
 | `CUSTOM_DOMAIN`        | `--custom-domain`       | Hostname, e.g. `api.example.com`     |
 | `ZERO_PRICE_PROVIDERS` | `--zero-price-provider` | Provider ids, comma-separated        |
+| `HOST_METRICS`         | `--host-metrics`        | `NAME=org_a\|org_b`, comma-separated |
+
+#### Live page host metrics (optional)
+
+The dashboard's **Live** page reads the inference server's `GET /health` and `GET /metrics` through the
+`--vpc-allow` binding. To also show CPU, RAM, GPU, temperatures and power, run
+[node_exporter](https://github.com/prometheus/node_exporter) on the host, listening on loopback only, with the
+`cpu`, `meminfo`, `loadavg`, `hwmon` and `drm` collectors. Then:
+
+1. Create a second VPC service for it on the same tunnel:
+
+   ```bash
+   npx wrangler vpc service create <name> --type http --tunnel-id <TUNNEL_ID> --ipv4 127.0.0.1 --http-port 9100
+   ```
+
+2. Bind it and mark it as a host metrics source (not a provider):
+
+   ```bash
+   npm run deploy -- … --vpc-service-id HALOGEN=<SERVICE_ID> --vpc-allow HALOGEN=<ORG_ID> \
+     --vpc-service-id BOXSTATS=<HOST_SERVICE_ID> --host-metrics BOXSTATS=<ORG_ID>
+   ```
+
+`--host-metrics` services go to `HOST_METRICS_BINDINGS` instead of `VPC_BINDINGS`, so no provider and no health
+check can use them; the Worker only ever sends them `GET /metrics`. A name cannot be in both `--vpc-allow` and
+`--host-metrics`.
 
 Real ids are injected into the git-ignored generated config only; never commit them.
 

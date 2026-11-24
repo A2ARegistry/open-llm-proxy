@@ -126,6 +126,7 @@ describe("forkOptionsFromEnv", () => {
     "vpc-allow": undefined,
     "custom-domain": undefined,
     "zero-price-provider": undefined,
+    "host-metrics": undefined,
   };
 
   it("returns no options when neither flags nor env are set", () => {
@@ -134,6 +135,7 @@ describe("forkOptionsFromEnv", () => {
       vpcAllow: [],
       customDomain: undefined,
       zeroPriceProviders: [],
+      hostMetrics: [],
     });
   });
 
@@ -143,12 +145,14 @@ describe("forkOptionsFromEnv", () => {
       VPC_ALLOW: "HALOGEN=org_a|org_b,OTHER=*",
       CUSTOM_DOMAIN: " api.example.com ",
       ZERO_PRICE_PROVIDERS: "local-m5,,other",
+      HOST_METRICS: "BOXSTATS=org_a, OTHER=*",
     });
     expect(out).toEqual({
       vpcServiceIds: [`HALOGEN=${SERVICE_ID}`, `OTHER=${SERVICE_ID}`],
       vpcAllow: ["HALOGEN=org_a|org_b", "OTHER=*"],
       customDomain: "api.example.com",
       zeroPriceProviders: ["local-m5", "other"],
+      hostMetrics: ["BOXSTATS=org_a", "OTHER=*"],
     });
   });
 
@@ -174,5 +178,60 @@ describe("forkOptionsFromEnv", () => {
     expect(
       forkOptionsFromEnv(EMPTY_FLAGS, { CUSTOM_DOMAIN: "  " }).customDomain,
     ).toBeUndefined();
+  });
+});
+
+// [fork] W11: host metrics bindings for the live monitor.
+describe("applyForkOptions host metrics", () => {
+  it("host-metrics services go to HOST_METRICS_BINDINGS, not VPC_BINDINGS", () => {
+    const p = prod();
+    const out = applyForkOptions(p, {
+      vpcServiceIds: [`HALOGEN=${SERVICE_ID}`, `BOXSTATS=${SERVICE_ID}`],
+      vpcAllow: ["HALOGEN=org_1"],
+      hostMetrics: ["BOXSTATS=org_1"],
+    });
+    expect(p.vpc_services).toEqual([
+      { binding: "HALOGEN", service_id: SERVICE_ID, remote: true },
+      { binding: "BOXSTATS", service_id: SERVICE_ID, remote: true },
+    ]);
+    expect(p.vars.VPC_BINDINGS).toBe("HALOGEN:org_1");
+    expect(p.vars.HOST_METRICS_BINDINGS).toBe("BOXSTATS:org_1");
+    expect(out.warnings).toEqual([]);
+  });
+
+  it("rejects --host-metrics for an unbound service", () => {
+    expect(() =>
+      applyForkOptions(prod(), {
+        vpcServiceIds: [`HALOGEN=${SERVICE_ID}`],
+        hostMetrics: ["BOXSTATS=org_1"],
+      }),
+    ).toThrow(/BOXSTATS/);
+  });
+
+  it("rejects a name in both --vpc-allow and --host-metrics", () => {
+    expect(() =>
+      applyForkOptions(prod(), {
+        vpcServiceIds: [`BOXSTATS=${SERVICE_ID}`],
+        vpcAllow: ["BOXSTATS=org_1"],
+        hostMetrics: ["BOXSTATS=org_1"],
+      }),
+    ).toThrow(/BOXSTATS/);
+  });
+
+  it("rejects an invalid organization id", () => {
+    expect(() =>
+      applyForkOptions(prod(), {
+        vpcServiceIds: [`BOXSTATS=${SERVICE_ID}`],
+        hostMetrics: ["BOXSTATS=org 1"],
+      }),
+    ).toThrow(/--host-metrics/);
+  });
+
+  it("forkOptionsFromEnv prefers the --host-metrics flag over HOST_METRICS", () => {
+    const out = forkOptionsFromEnv(
+      { "host-metrics": ["BOXSTATS=org_flag"] },
+      { HOST_METRICS: "BOXSTATS=org_env" },
+    );
+    expect(out.hostMetrics).toEqual(["BOXSTATS=org_flag"]);
   });
 });

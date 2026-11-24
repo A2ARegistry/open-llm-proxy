@@ -35,16 +35,16 @@ function parseServices(list) {
   return services;
 }
 
-function parseAllow(list, services) {
+function parseAllow(list, services, flag = "--vpc-allow") {
   const allow = new Map();
   for (const raw of list) {
-    const [name, orgs] = splitPair(raw, "--vpc-allow");
+    const [name, orgs] = splitPair(raw, flag);
     if (!services.has(name)) {
-      throw new Error(`--vpc-allow: unknown VPC service "${name}"`);
+      throw new Error(`${flag}: unknown VPC service "${name}"`);
     }
     const ids = orgs.split("|");
     if (!ids.every((id) => id === "*" || ORG_RE.test(id))) {
-      throw new Error(`--vpc-allow: invalid organization id in "${raw}"`);
+      throw new Error(`${flag}: invalid organization id in "${raw}"`);
     }
     allow.set(name, ids.join("|"));
   }
@@ -57,6 +57,9 @@ function parseAllow(list, services) {
  * - `vpcServiceIds`: ["NAME=SERVICE_UUID", ...] → `vpc_services` entries.
  * - `vpcAllow`: ["NAME=org_a|org_b" | "NAME=*", ...] → `VPC_BINDINGS`.
  *   A service without one is listed bare, which allows nobody.
+ * - `hostMetrics`: ["NAME=org_a|org_b" | "NAME=*", ...] → `HOST_METRICS_BINDINGS`
+ *   ([fork] W11). Those services are left out of `VPC_BINDINGS`, so no
+ *   provider and no health check can use them.
  * - `customDomain`: "api.example.com" → custom-domain route, and
  *   workers.dev / preview URLs off.
  *
@@ -67,6 +70,19 @@ export function applyForkOptions(prod, options) {
   const warnings = [];
   const services = parseServices(options.vpcServiceIds ?? []);
   const allow = parseAllow(options.vpcAllow ?? [], services);
+  const hostAllow = parseAllow(
+    options.hostMetrics ?? [],
+    services,
+    "--host-metrics",
+  );
+  for (const name of hostAllow.keys()) {
+    if (allow.has(name)) {
+      throw new Error(
+        `--host-metrics: ${name} is also in --vpc-allow; a host metrics service cannot serve providers`,
+      );
+    }
+  }
+  const vpcNames = [...services.keys()].filter((name) => !hostAllow.has(name));
 
   if (services.size > 0) {
     prod.vpc_services = [...services].map(([binding, service_id]) => ({
@@ -75,10 +91,15 @@ export function applyForkOptions(prod, options) {
       remote: true,
     }));
     prod.vars ??= {};
-    prod.vars.VPC_BINDINGS = [...services.keys()]
+    prod.vars.VPC_BINDINGS = vpcNames
       .map((name) => (allow.has(name) ? `${name}:${allow.get(name)}` : name))
       .join(",");
-    for (const name of services.keys()) {
+    if (hostAllow.size > 0) {
+      prod.vars.HOST_METRICS_BINDINGS = [...hostAllow]
+        .map(([name, orgs]) => `${name}:${orgs}`)
+        .join(",");
+    }
+    for (const name of vpcNames) {
       if (!allow.has(name)) {
         warnings.push(
           `${name} has no --vpc-allow, so no organization can use it yet`,
@@ -116,6 +137,7 @@ function envList(value) {
  * - VPC_ALLOW: "NAME=org_a|org_b,NAME=*"
  * - CUSTOM_DOMAIN: "api.example.com"
  * - ZERO_PRICE_PROVIDERS: "provider-a,provider-b"
+ * - HOST_METRICS: "NAME=org_a|org_b,NAME=*" ([fork] W11)
  */
 export function forkOptionsFromEnv(flags, env) {
   const customDomain = (flags["custom-domain"] ?? env.CUSTOM_DOMAIN)?.trim();
@@ -125,6 +147,7 @@ export function forkOptionsFromEnv(flags, env) {
     customDomain: customDomain || undefined,
     zeroPriceProviders:
       flags["zero-price-provider"] ?? envList(env.ZERO_PRICE_PROVIDERS),
+    hostMetrics: flags["host-metrics"] ?? envList(env.HOST_METRICS),
   };
 }
 
