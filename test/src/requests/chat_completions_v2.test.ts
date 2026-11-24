@@ -1,11 +1,8 @@
-// [fork] W1/W6: chat completions with VPC providers (transport, privacy).
+// [fork] W1/W3: chat completions with VPC providers.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getProviderConfig } from "~/src/llm/credential-store";
 import type { DecryptedProviderConfig } from "~/src/llm/credential-store";
-import { getCachedResponse, putCachedResponse } from "~/src/llm/response-cache";
 import { chatCompletionsV2 } from "~/src/requests/chat_completions_v2";
-import { setTraceCollector } from "~/src/tracing/collector";
-import type { TraceEvent } from "~/src/tracing/collector";
 import type { ApiKeyAuth } from "~/src/types";
 
 const tenant = vi.hoisted(() => ({ settings: {} as Record<string, unknown> }));
@@ -145,62 +142,6 @@ describe("chatCompletionsV2 with a vpc provider", () => {
 
     expect(res.status).toBe(400);
     expect(binding.fetch).not.toHaveBeenCalled();
-  });
-});
-
-// [fork] W6: content retention is forced off for vpc providers.
-describe("chatCompletionsV2 privacy for vpc providers", () => {
-  const env = { VPC_BINDINGS: "HALOGEN:org_1", HALOGEN: { fetch: vi.fn() } };
-  const traces: TraceEvent[] = [];
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    traces.length = 0;
-    pending.length = 0;
-    setTraceCollector({ record: (event) => void traces.push(event) });
-    env.HALOGEN.fetch.mockImplementation(async () => completion());
-    tenant.settings = { cache: { enabled: true, ttl: 60 } };
-  });
-  afterEach(() => vi.unstubAllGlobals());
-
-  it("never traces a vpc provider, even with settings.trace on", async () => {
-    mockGetProviderConfig.mockResolvedValue({
-      ...localBox,
-      settings: { ...localBox.settings, trace: true },
-    });
-
-    const res = await chat(env);
-    await res.text();
-    await Promise.all(pending);
-
-    expect(res.status).toBe(200);
-    expect(traces).toEqual([]);
-  });
-
-  it("never reads or writes the response cache for a vpc provider", async () => {
-    mockGetProviderConfig.mockResolvedValue(localBox);
-
-    const res = await chat(env);
-    await Promise.all(pending);
-
-    expect(res.status).toBe(200);
-    expect(vi.mocked(getCachedResponse)).not.toHaveBeenCalled();
-    expect(vi.mocked(putCachedResponse)).not.toHaveBeenCalled();
-  });
-
-  it("still uses the tenant cache for a public provider", async () => {
-    const globalFetch = vi.fn().mockImplementation(async () => completion());
-    vi.stubGlobal("fetch", globalFetch);
-    mockGetProviderConfig.mockResolvedValue({
-      ...localBox,
-      settings: { baseUrl: "https://llm.example.com" },
-    });
-
-    const res = await chat(env);
-    await Promise.all(pending);
-
-    expect(res.status).toBe(200);
-    expect(vi.mocked(getCachedResponse)).toHaveBeenCalled();
   });
 });
 

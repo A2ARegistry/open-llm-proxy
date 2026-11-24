@@ -132,12 +132,6 @@
   // the top-level configuration above.
   "env": {
     "production": {
-      // [fork] W6: keep Workers Logs (metadata only), no request traces in
-      // production unless the owner opts in.
-      "observability": {
-        "logs": { "enabled": true },
-        "traces": { "enabled": false, "head_sampling_rate": 0 }
-      },
       // Set to false once a custom domain is attached (see DEPLOYMENT.md
       // Step 6) so production traffic only reaches your own domain.
       "workers_dev": true,

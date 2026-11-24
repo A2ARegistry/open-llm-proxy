@@ -580,9 +580,7 @@ function ProviderFormModal({
   const needsKey = catalogEntry?.needsKey ?? true;
   const isCustomSelected = selected === "custom";
   const showCustomFields = isCustomSelected || isCustom;
-  // [fork] W6: tracing is forced off for private (vpc) providers.
-  const isVpc = showCustomFields && transport === "vpc";
-  const traceActive = traceEnabled && !isVpc;
+  const isVpc = showCustomFields && transport === "vpc"; // [fork] W1
   const targetProvider =
     provider != null ? provider : isCustomSelected ? customId.trim() : selected;
 
@@ -633,7 +631,7 @@ function ProviderFormModal({
     const keysSetting = keys.length ? { keys } : {};
 
     // Always send the trace flag so disabling it persists too.
-    const traceSetting = { trace: traceActive }; // [fork] W6
+    const traceSetting = { trace: traceEnabled };
 
     // For custom providers, send name as top-level field
     const nameSetting =
@@ -727,7 +725,7 @@ function ProviderFormModal({
   const submit = async () => {
     setError(null);
     setSaveWarning(null);
-    if (traceActive && initialSettings?.trace !== true) {
+    if (traceEnabled && initialSettings?.trace !== true) {
       setShowTraceConfirm(true);
       return;
     }
@@ -1187,34 +1185,31 @@ function ProviderFormModal({
           </p>
         </div>
 
-        {/* [fork] W6: no trace toggle for private (vpc) providers */}
-        {!isVpc && (
-          <div
-            className={`rounded-lg border p-3 ${
-              traceEnabled
-                ? "border-amber-300 bg-amber-50"
-                : "border-gray-200 bg-gray-50/50"
-            }`}
-          >
-            <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-gray-700 select-none">
-              <input
-                type="checkbox"
-                checked={traceEnabled}
-                onChange={(e) => {
-                  setTraceEnabled(e.target.checked);
-                  setSaveWarning(null);
-                }}
-                className="h-3.5 w-3.5 accent-amber-600"
-              />
-              Diagnostic tracing (testing only)
-            </label>
-            <p className="mt-1 text-[11px] text-gray-500">
-              When enabled, every request to this provider logs the full raw +
-              converted request/response payloads for debugging — including user
-              message content. Keep it off in production.
-            </p>
-          </div>
-        )}
+        <div
+          className={`rounded-lg border p-3 ${
+            traceEnabled
+              ? "border-amber-300 bg-amber-50"
+              : "border-gray-200 bg-gray-50/50"
+          }`}
+        >
+          <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-gray-700 select-none">
+            <input
+              type="checkbox"
+              checked={traceEnabled}
+              onChange={(e) => {
+                setTraceEnabled(e.target.checked);
+                setSaveWarning(null);
+              }}
+              className="h-3.5 w-3.5 accent-amber-600"
+            />
+            Diagnostic tracing (testing only)
+          </label>
+          <p className="mt-1 text-[11px] text-gray-500">
+            When enabled, every request to this provider logs the full raw +
+            converted request/response payloads for debugging — including user
+            message content. Keep it off in production.
+          </p>
+        </div>
 
         {testResult && (
           <div>

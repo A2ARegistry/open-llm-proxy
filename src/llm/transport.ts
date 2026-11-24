@@ -145,13 +145,3 @@ export function resolveFetcher(
   }
   return binding as UpstreamFetcher;
 }
-
-/**
- * [fork] W6: providers on a private transport carry confidential traffic, so
- * content-retaining features (response cache, traces) are forced off for them.
- */
-export function isPrivateTransport(
-  settings: Record<string, unknown> | undefined,
-): boolean {
-  return settings?.transport === "vpc";
-}

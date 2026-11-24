@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  assertVpcUrl,
-  isPrivateTransport,
-  resolveFetcher,
-} from "~/src/llm/transport";
+import { assertVpcUrl, resolveFetcher } from "~/src/llm/transport";
 import { TransportNotConfiguredError } from "~/src/llm/transport-error";
 
 const binding = { fetch: async () => new Response("ok") };
@@ -183,15 +179,6 @@ describe("resolveFetcher", () => {
     } catch (err) {
       expect((err as TransportNotConfiguredError).code).toBe("not_configured");
     }
-  });
-});
-
-describe("isPrivateTransport", () => {
-  it("is true only for the vpc transport", () => {
-    expect(isPrivateTransport({ transport: "vpc" })).toBe(true);
-    expect(isPrivateTransport({ transport: "public" })).toBe(false);
-    expect(isPrivateTransport({})).toBe(false);
-    expect(isPrivateTransport(undefined)).toBe(false);
   });
 });
 
