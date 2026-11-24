@@ -6,6 +6,21 @@ export function fmtUsd(value: number | null | undefined, digits = 2): string {
   })}`;
 }
 
+const MIN_PRECISE_USD = 0.0001;
+
+/**
+ * [fork] Cost of a single request. Local models cost fractions of a cent per
+ * request, which fmtUsd rounds to $0.00, so below one cent show 2 significant
+ * digits. A true zero shows as "$0" so it stays distinct from a tiny cost.
+ */
+export function fmtUsdPrecise(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  if (value === 0) return "$0";
+  if (value < MIN_PRECISE_USD) return `<$${MIN_PRECISE_USD}`;
+  if (value >= 0.01) return fmtUsd(value);
+  return `$${value.toLocaleString("en-US", { maximumSignificantDigits: 2 })}`;
+}
+
 export function fmtTokens(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;

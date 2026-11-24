@@ -21,6 +21,7 @@ import {
   fmtTokens,
   fmtTps,
   fmtUsd,
+  fmtUsdPrecise,
   keyLabel,
   pct,
   rowDecodeTps,
@@ -560,8 +561,15 @@ export function AnalyticsPage() {
                       <td className="px-5 py-3 text-right text-gray-600">
                         {r.tokens_input ?? 0} / {r.tokens_output ?? 0}
                       </td>
-                      <td className="px-5 py-3 text-right text-gray-700">
-                        {fmtUsd(r.cost_usd)}
+                      <td
+                        className="px-5 py-3 text-right text-gray-700"
+                        title={
+                          r.cost_usd
+                            ? `$${Number(r.cost_usd.toPrecision(6))}`
+                            : undefined
+                        }
+                      >
+                        {fmtUsdPrecise(r.cost_usd)}
                       </td>
                     </tr>
                   );
