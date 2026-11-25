@@ -16,6 +16,7 @@ import {
   LiveThroughputChart,
   PREFILL_COLOR,
 } from "./LiveThroughputChart";
+import { LiveTrendCards } from "./LiveTrendCards";
 import { ThroughputStat } from "./ThroughputStat";
 import { Card, EmptyState, Spinner, StatCard } from "./ui";
 import type { ReactNode } from "react";
@@ -118,6 +119,12 @@ export function LiveHistoryView({
           value={fmtPctValue(sum.avgDraftPct)}
         />
       </div>
+
+      <LiveTrendCards
+        data={data}
+        domain={domain}
+        empty={stored ? undefined : empty}
+      />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="System vitals" subtitle="Peak over the range">

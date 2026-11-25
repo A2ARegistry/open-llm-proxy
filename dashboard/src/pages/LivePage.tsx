@@ -11,6 +11,7 @@ import {
   LiveThroughputChart,
   PREFILL_COLOR,
 } from "../components/LiveThroughputChart";
+import { LiveTrendCards } from "../components/LiveTrendCards";
 import { RamBreakdownBar } from "../components/RamBreakdownBar";
 import { ThroughputStat } from "../components/ThroughputStat";
 import { TimeRangeControl } from "../components/TimeRangeControl";
@@ -39,6 +40,7 @@ import {
   LIVE_POLL_MS,
   LIVE_SEED_REFRESH_MS,
   advanceLive,
+  percentOf,
   ratio,
   type LiveSeriesState,
 } from "../lib/liveSeries";
@@ -287,6 +289,8 @@ export function LivePage() {
         />
       </div>
 
+      <LiveTrendCards data={livePoints} domain={domain} />
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="System vitals" subtitle={host ? undefined : UNAVAILABLE}>
           {host ? (
@@ -301,11 +305,10 @@ export function LivePage() {
                 <LiveGauge label="GPU" percent={host.gpuBusyPercent} />
                 <LiveGauge
                   label="GPU memory"
-                  percent={
-                    host.gpuMemUsedBytes !== null && host.gpuMemTotalBytes
-                      ? (host.gpuMemUsedBytes / host.gpuMemTotalBytes) * 100
-                      : null
-                  }
+                  percent={percentOf(
+                    host.gpuMemUsedBytes,
+                    host.gpuMemTotalBytes,
+                  )}
                   hint={`${fmtGb(host.gpuMemUsedBytes)} · part of RAM`}
                 />
               </div>

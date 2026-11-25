@@ -4,11 +4,13 @@ import {
   axisTick,
   bucketLabel,
   fmtC,
+  fmtPctTick,
   fmtGb,
   fmtPctValue,
   hasStoredSamples,
   isLiveRange,
   liveWindow,
+  nearestTick,
   parseLiveRange,
   seededLivePoints,
   throughputPoints,
@@ -345,5 +347,35 @@ describe("seededLivePoints", () => {
     const out = seededLivePoints([], [pt(100_000), pt(120_000)], 0);
     expect(out).toHaveLength(3);
     expect(isBreak(out[1])).toBe(true);
+  });
+});
+
+describe("nearestTick", () => {
+  const ticks = [{ value: 0 }, { value: 10 }, { value: 20 }, { value: 30 }];
+
+  it("picks the exact tick", () => {
+    expect(nearestTick(ticks, { activeLabel: 20 })).toBe(2);
+  });
+
+  it("picks the closest tick between two, earlier on a tie", () => {
+    expect(nearestTick(ticks, { activeLabel: 14 })).toBe(1);
+    expect(nearestTick(ticks, { activeLabel: 16 })).toBe(2);
+    expect(nearestTick(ticks, { activeLabel: 15 })).toBe(1);
+  });
+
+  it("clamps to the ends", () => {
+    expect(nearestTick(ticks, { activeLabel: -5 })).toBe(0);
+    expect(nearestTick(ticks, { activeLabel: 99 })).toBe(3);
+  });
+
+  it("returns -1 with no ticks or no label", () => {
+    expect(nearestTick([], { activeLabel: 5 })).toBe(-1);
+    expect(nearestTick(ticks, {})).toBe(-1);
+  });
+});
+
+describe("fmtPctTick", () => {
+  it("rounds a 0-100 value", () => {
+    expect(fmtPctTick(42.6)).toBe("43%");
   });
 });
