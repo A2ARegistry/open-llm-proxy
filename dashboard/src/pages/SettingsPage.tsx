@@ -471,7 +471,7 @@ export function SettingsPage() {
           </div>
         </div>
 
-        <p className="mt-5 text-xs font-medium text-gray-600 dark:text-gray-300">
+        <p className="mt-5 text-xs font-medium text-gray-600">
           Cloud reference price (USD per 1M tokens)
         </p>
         <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
