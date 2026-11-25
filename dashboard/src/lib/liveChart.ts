@@ -18,6 +18,13 @@ export function parseLiveRange(raw: string | null): LiveRange {
     : "live";
 }
 
+/** An all-null point halfway between `prev` and `next`: a line break. */
+function breakBetween<T extends { t: number }>(prev: T, next: T): T {
+  return Object.fromEntries(
+    Object.keys(prev).map((k) => [k, k === "t" ? (prev.t + next.t) / 2 : null]),
+  ) as T;
+}
+
 /**
  * Insert an all-null point between consecutive points further apart than
  * `gapMs`, so a line chart shows a break (paused tab, outage) instead of a
@@ -30,16 +37,7 @@ export function withGaps<T extends { t: number }>(
   const out: T[] = [];
   points.forEach((point, i) => {
     const prev = points[i - 1];
-    if (prev && point.t - prev.t > gapMs) {
-      out.push(
-        Object.fromEntries(
-          Object.keys(prev).map((k) => [
-            k,
-            k === "t" ? (prev.t + point.t) / 2 : null,
-          ]),
-        ) as T,
-      );
-    }
+    if (prev && point.t - prev.t > gapMs) out.push(breakBetween(prev, point));
     out.push(point);
   });
   return out;
@@ -77,26 +75,51 @@ export function axisTick(ms: number, spanMs: number): string {
 /** Stored samples are 10 s apart; a longer step between them is a gap. */
 const SEED_GAP_MS = 15_000;
 
+/** [first, last] ms of each run of polls no more than LIVE_GAP_MS apart. */
+function pollRuns(points: { t: number }[]): [number, number][] {
+  const runs: [number, number][] = [];
+  for (const { t } of points) {
+    const last = runs[runs.length - 1];
+    if (last && t - last[1] <= LIVE_GAP_MS) last[1] = t;
+    else runs.push([t, t]);
+  }
+  return runs;
+}
+
 /**
- * Live chart points: stored 10 s samples (`seed`, from GET /api/live/history,
- * already gap-filled per bucket) from `windowStart` up to the first polled
- * point, then the polled points with gaps marked. The page keeps the last
- * ~10 min across a reload this way instead of starting empty. Seed points are
- * further apart than LIVE_GAP_MS, so `withGaps` is applied to the polled
- * points only; a break is added where the seed ends well before the polls
- * start (stored rows reach D1 up to ~1 min late).
+ * Live chart points: the polled points, with stored 10 s samples (`seed`,
+ * from GET /api/live/history, already gap-filled per bucket) wherever no
+ * polls cover the time since `windowStart`: before the first poll, and in
+ * stretches the browser did not poll (hidden tab, failed requests). The
+ * sampler writes whether or not the page is open, so a refetched seed fills
+ * those stretches. A line breaks where two polls are more than LIVE_GAP_MS
+ * apart, or any other neighbours more than SEED_GAP_MS apart (stored rows
+ * reach D1 up to ~1 min late, so the newest stretch fills on a later fetch).
  */
 export function seededLivePoints<T extends { t: number }>(
   seed: T[],
   points: T[],
   windowStart: number,
 ): T[] {
-  const live = withGaps(points, LIVE_GAP_MS);
-  const firstPoll = points.length ? points[0].t : Infinity;
-  const stored = seed.filter((p) => p.t >= windowStart && p.t < firstPoll);
-  if (!stored.length || !live.length) return [...stored, ...live];
-  const joint = withGaps([stored[stored.length - 1], live[0]], SEED_GAP_MS);
-  return [...stored, ...joint.slice(1, -1), ...live];
+  const runs = pollRuns(points);
+  const stored = seed.filter(
+    (p) =>
+      p.t >= windowStart &&
+      !runs.some(([from, to]) => p.t >= from && p.t <= to),
+  );
+  const merged = [
+    ...stored.map((point) => ({ point, polled: false })),
+    ...points.map((point) => ({ point, polled: true })),
+  ].sort((a, b) => a.point.t - b.point.t);
+  const out: T[] = [];
+  merged.forEach((cur, i) => {
+    const prev = merged[i - 1];
+    const gapMs = prev?.polled && cur.polled ? LIVE_GAP_MS : SEED_GAP_MS;
+    if (prev && cur.point.t - prev.point.t > gapMs)
+      out.push(breakBetween(prev.point, cur.point));
+    out.push(cur.point);
+  });
+  return out;
 }
 
 /** [from, to] ms of the Live view's browser history, ending at `atMs`. */
