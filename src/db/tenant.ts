@@ -80,7 +80,7 @@ export interface TenantSettings {
     fromAddress?: string;
     provider?: string;
   };
-  // [fork] W13: electricity price, overhead and cloud reference for the Power page.
+  // [fork] W13: electricity price and overhead for the Power page.
   power?: PowerSettings;
   [key: string]: unknown;
 }

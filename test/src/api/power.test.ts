@@ -17,6 +17,7 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS request_metrics (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, user_id TEXT, api_key_id TEXT, timestamp INTEGER NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, method TEXT NOT NULL, status_code INTEGER NOT NULL, latency_ms INTEGER NOT NULL, tokens_input INTEGER, tokens_output INTEGER, tokens_cached INTEGER, tokens_cache_read INTEGER, tokens_cache_write INTEGER, cost_usd REAL, error_message TEXT, cache_hit INTEGER NOT NULL DEFAULT 0, ttft_ms INTEGER, decode_ms INTEGER);
 CREATE TABLE IF NOT EXISTS provider_configs (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, provider TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, config TEXT NOT NULL, UNIQUE(organization_id, provider));
 CREATE TABLE IF NOT EXISTS tenant_settings (organization_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (organization_id, key));
+CREATE TABLE IF NOT EXISTS model_pricing (provider TEXT NOT NULL, model TEXT NOT NULL, input_per_1m REAL NOT NULL DEFAULT 0, output_per_1m REAL NOT NULL DEFAULT 0, cache_read_per_1m REAL NOT NULL DEFAULT 0, cache_write_per_1m REAL NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (provider, model));
 CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, user_id TEXT NOT NULL, action TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT, details TEXT, timestamp INTEGER NOT NULL DEFAULT 0)
 `;
 
@@ -82,6 +83,7 @@ beforeEach(async () => {
     "provider_configs",
     "tenant_settings",
     "audit_logs",
+    "model_pricing",
   ]) {
     await env.DB.exec(`DELETE FROM ${t}`);
   }
@@ -114,21 +116,21 @@ beforeEach(async () => {
     .run();
 });
 
+/** A model_pricing row for the box provider `local-m5`. */
+const price = (model: string, input: number, output: number) =>
+  env.DB.prepare(
+    "INSERT INTO model_pricing (provider, model, input_per_1m, output_per_1m) VALUES ('local-m5', ?, ?, ?)",
+  )
+    .bind(model, input, output)
+    .run();
+
 const utcDays = (from: number, to: number) =>
   Math.floor((to - 1) / 86400) - Math.floor(from / 86400) + 1;
 
 describe("GET /api/power", () => {
   it("report for a range ending in the future", async () => {
-    await put({
-      pricePerKwhUsd: 0.2,
-      overheadW: 10,
-      cloudReference: {
-        inputPer1m: 1,
-        outputPer1m: 4,
-        cacheReadPer1m: 0,
-        cacheWritePer1m: 0,
-      },
-    });
+    await put({ pricePerKwhUsd: 0.2, overheadW: 10 });
+    await price("*", 1, 4);
     const from = T - 6 * HOUR;
     const to = T + 6 * HOUR;
     const { status, body } = await call(`/api/power?from=${from}&to=${to}`);
@@ -139,12 +141,51 @@ describe("GET /api/power", () => {
     expect(body.totals.peakW).toBe(45);
     expect(body.totals.tokens.output).toBe(500);
     expect(body.totals.cloudUsd).toBeCloseTo((1000 * 1 + 500 * 4) / 1e6); // no cache tokens
+    expect(body.totals.unpricedRequests).toBe(0);
+    expect(body.cloudRates).toEqual([
+      {
+        provider: "local-m5",
+        model: "*",
+        inputPer1m: 1,
+        outputPer1m: 4,
+        cacheReadPer1m: 0,
+        cacheWritePer1m: 0,
+      },
+    ]);
     expect(body.days).toHaveLength(utcDays(from, to));
     expect(body.projectionUsd).toBeGreaterThan(body.totals.electricityUsd);
     expect(body.idleFloor).toEqual({
       watts: 30,
       monthlyUsd: ((30 * 730) / 1000) * 0.2,
     });
+  });
+
+  it("exact model rate wins over the provider's '*' rate", async () => {
+    await price("*", 1, 4);
+    await price("qwen", 2, 8);
+    const { body } = await call(`/api/power?from=${T - 6 * HOUR}&to=${T}`);
+    expect(body.totals.cloudUsd).toBeCloseTo((1000 * 2 + 500 * 8) / 1e6);
+    expect(body.cloudRates.map((r: { model: string }) => r.model)).toEqual([
+      "*",
+      "qwen",
+    ]);
+  });
+
+  it("no rate gives no cloud figure, not a default price", async () => {
+    await price("other-model", 1, 4);
+    const { body } = await call(`/api/power?from=${T - 6 * HOUR}&to=${T}`);
+    expect(body.totals.cloudUsd).toBeNull();
+    expect(body.totals.savingsUsd).toBeNull();
+    expect(body.totals.unpricedRequests).toBe(1);
+  });
+
+  it("ignores rates of providers that are not the box", async () => {
+    await env.DB.prepare(
+      "INSERT INTO model_pricing (provider, model, input_per_1m, output_per_1m) VALUES ('openai', '*', 1, 1)",
+    ).run();
+    const { body } = await call(`/api/power?from=${T - 6 * HOUR}&to=${T}`);
+    expect(body.cloudRates).toEqual([]);
+    expect(body.totals.cloudUsd).toBeNull();
   });
 
   it("past range has no projection and honours tz", async () => {
@@ -186,6 +227,7 @@ describe("GET /api/power/months", () => {
     const { status, body } = await call("/api/power/months");
     expect(status).toBe(200);
     expect(body.months).toHaveLength(12);
+    expect(body.cloudRates).toEqual([]);
     expect(body.months[0].start).toBeLessThan(body.months[11].start);
     expect(body.months[0]).toMatchObject({
       effectiveS: 0,

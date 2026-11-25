@@ -1,7 +1,9 @@
 // [fork] W13: shapes of the /api/power responses (mirror of src/power/*).
 
-export interface CloudReference {
-  label?: string;
+/** A model_pricing row the box's tokens are priced from (USD per 1M). */
+export interface CloudRate {
+  provider: string;
+  model: string;
   inputPer1m: number;
   outputPer1m: number;
   cacheReadPer1m: number;
@@ -11,7 +13,6 @@ export interface CloudReference {
 export interface PowerSettings {
   pricePerKwhUsd?: number;
   overheadW?: number;
-  cloudReference?: CloudReference;
 }
 
 /** A settings update: `null` clears a field. */
@@ -40,6 +41,7 @@ export interface PowerTotals {
   electricityUsd: number | null;
   tokens: TokenSums;
   cloudUsd: number | null;
+  unpricedRequests: number;
   savingsUsd: number | null;
   electricityPer1mOutputUsd: number | null;
   cloudPer1mOutputUsd: number | null;
@@ -53,6 +55,7 @@ export interface PowerReport {
   tz: string;
   dataStart: number | null;
   settings: PowerSettings;
+  cloudRates: CloudRate[];
   totals: PowerTotals;
   days: PeriodTotals[];
   projectionUsd: number | null;
@@ -63,5 +66,6 @@ export interface PowerMonths {
   tz: string;
   dataStart: number | null;
   settings: PowerSettings;
+  cloudRates: CloudRate[];
   months: PeriodTotals[];
 }

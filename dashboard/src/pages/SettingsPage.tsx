@@ -442,7 +442,7 @@ export function SettingsPage() {
 
       <Card
         title="Power cost"
-        subtitle="Prices the box's electricity and the cloud cost of the same tokens on the Power page. Box power is read at the APU package; the overhead covers RAM, SSD, Wi-Fi, fans and PSU losses."
+        subtitle="Prices the box's electricity on the Power page. Box power is read at the APU package; the overhead covers RAM, SSD, Wi-Fi, fans and PSU losses. The cloud comparison uses the box model's rate in model pricing."
         actions={<PlugZap size={16} className="text-gray-400" />}
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -469,40 +469,6 @@ export function SettingsPage() {
               onChange={(e) => setPowerField("overhead")(e.target.value)}
             />
           </div>
-        </div>
-
-        <p className="mt-5 text-xs font-medium text-gray-600">
-          Cloud reference price (USD per 1M tokens)
-        </p>
-        <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <Label>Label</Label>
-            <Input
-              placeholder="e.g. Qwen on a hosted provider"
-              maxLength={80}
-              value={powerForm.label}
-              onChange={(e) => setPowerField("label")(e.target.value)}
-            />
-          </div>
-          {(
-            [
-              ["input", "Input"],
-              ["output", "Output"],
-              ["cacheRead", "Cache read"],
-              ["cacheWrite", "Cache write"],
-            ] as const
-          ).map(([field, label]) => (
-            <div key={field}>
-              <Label>{label}</Label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={powerForm[field]}
-                onChange={(e) => setPowerField(field)(e.target.value)}
-              />
-            </div>
-          ))}
         </div>
 
         <p className="mt-3 text-[11px] text-gray-400">
