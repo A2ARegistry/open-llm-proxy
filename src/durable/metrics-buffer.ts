@@ -1,3 +1,8 @@
+import {
+  throughputRowsBindings,
+  throughputRowsSql,
+  type ThroughputRequest,
+} from "../live/throughput";
 import { DurableObject } from "cloudflare:workers";
 
 export interface BufferedMetric {
@@ -41,6 +46,11 @@ interface MetricRow {
   cache_hit: number;
   ttft_ms: number | null;
   decode_ms: number | null;
+}
+
+/** DO name of an organization's buffer shard (writers and readers must agree). */
+export function metricsBufferName(organizationId: string): string {
+  return `org:${organizationId}`;
 }
 
 const FLUSH_THRESHOLD = 200;
@@ -225,6 +235,27 @@ export class MetricsBuffer extends DurableObject {
       ...ids,
     );
     return rows.length;
+  }
+
+  /**
+   * Rows not yet flushed to D1, in the same shape as the Live page's
+   * throughput read (RPC). Without this, a finished request stays invisible
+   * to "now" for up to one flush interval.
+   */
+  throughputRows(
+    orgId: string,
+    providers: string[],
+    from: number,
+    to: number,
+  ): ThroughputRequest[] {
+    if (providers.length === 0) return [];
+    this.ensureTable();
+    return this.ctx.storage.sql
+      .exec(
+        throughputRowsSql("metrics_buffer", providers.length),
+        ...throughputRowsBindings(orgId, providers, from, to),
+      )
+      .toArray() as unknown as ThroughputRequest[];
   }
 
   size(): number {

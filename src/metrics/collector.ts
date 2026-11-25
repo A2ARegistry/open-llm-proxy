@@ -1,4 +1,7 @@
-import type { BufferedMetric } from "../durable/metrics-buffer";
+import {
+  metricsBufferName,
+  type BufferedMetric,
+} from "../durable/metrics-buffer";
 import { newUuid, nowSeconds } from "../utils/crypto";
 
 export interface MetricDraft {
@@ -90,7 +93,9 @@ export async function pushMetric(env: Env, draft: MetricDraft): Promise<void> {
     .METRICS_BUFFER;
   if (buffer) {
     try {
-      const stub = buffer.get(buffer.idFromName(`org:${row.organization_id}`));
+      const stub = buffer.get(
+        buffer.idFromName(metricsBufferName(row.organization_id)),
+      );
       const res = await stub.fetch("http://internal/push", {
         method: "POST",
         body: JSON.stringify({ entries: [row] }),

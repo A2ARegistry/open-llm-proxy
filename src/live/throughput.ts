@@ -2,6 +2,8 @@
 // (Halogen's token counters only move when a request finishes).
 
 export interface ThroughputRequest {
+  /** Row id; lets rows read from D1 and from the metrics buffer be merged. */
+  id?: string;
   /** Unix seconds when the request finished. */
   timestamp: number;
   latency_ms: number;
@@ -148,10 +150,45 @@ function mean(values: number[]): number {
 }
 
 /**
+ * SQL for the rows of finished requests overlapping `[from, to)` in `table`
+ * (`request_metrics` in D1, or the MetricsBuffer's `metrics_buffer`, which has
+ * the same columns). Bound to `(orgId, ...providers, from, to + MAX_REQUEST_S,
+ * to)`; see `throughputRowsBindings`. Errors and response-cache hits are
+ * skipped; `prefill_tokens` excludes prompt-cache reads.
+ */
+export function throughputRowsSql(
+  table: string,
+  providerCount: number,
+): string {
+  const marks = new Array(providerCount).fill("?").join(", ");
+  return `SELECT id, timestamp, latency_ms, ttft_ms, decode_ms,
+            MAX(0, COALESCE(tokens_input, 0)
+                   - COALESCE(tokens_cache_read, tokens_cached, 0)) AS prefill_tokens,
+            COALESCE(tokens_output, 0) AS tokens_output
+       FROM ${table}
+      WHERE organization_id = ?
+        AND provider IN (${marks})
+        AND status_code < 400
+        AND cache_hit = 0
+        AND timestamp >= ?
+        AND timestamp < ?
+        AND timestamp - latency_ms / 1000.0 < ?
+      ORDER BY timestamp`;
+}
+
+/** Bindings for `throughputRowsSql`, bounded to requests finishing before `to + MAX_REQUEST_S`. */
+export function throughputRowsBindings(
+  orgId: string,
+  providers: string[],
+  from: number,
+  to: number,
+): (string | number)[] {
+  return [orgId, ...providers, from, to + MAX_REQUEST_S, to];
+}
+
+/**
  * Rows of finished requests overlapping `[from, to)`, as a statement for the
- * caller's own `DB.batch`. Bounded to requests finishing before
- * `to + MAX_REQUEST_S`. Errors and response-cache hits are skipped;
- * `prefill_tokens` excludes prompt-cache reads.
+ * caller's own `DB.batch`.
  */
 export function throughputRowsStatement(
   env: Env,
@@ -160,20 +197,19 @@ export function throughputRowsStatement(
   from: number,
   to: number,
 ): D1PreparedStatement {
-  const marks = providers.map(() => "?").join(", ");
   return env.DB.prepare(
-    `SELECT timestamp, latency_ms, ttft_ms, decode_ms,
-            MAX(0, COALESCE(tokens_input, 0)
-                   - COALESCE(tokens_cache_read, tokens_cached, 0)) AS prefill_tokens,
-            COALESCE(tokens_output, 0) AS tokens_output
-       FROM request_metrics
-      WHERE organization_id = ?
-        AND provider IN (${marks})
-        AND status_code < 400
-        AND cache_hit = 0
-        AND timestamp >= ?
-        AND timestamp < ?
-        AND timestamp - latency_ms / 1000.0 < ?
-      ORDER BY timestamp`,
-  ).bind(orgId, ...providers, from, to + MAX_REQUEST_S, to);
+    throughputRowsSql("request_metrics", providers.length),
+  ).bind(...throughputRowsBindings(orgId, providers, from, to));
+}
+
+/**
+ * D1 rows plus rows still waiting in the MetricsBuffer, without duplicates (a
+ * flush between the two reads can put a row in both).
+ */
+export function mergeThroughputRows(
+  stored: ThroughputRequest[],
+  pending: ThroughputRequest[],
+): ThroughputRequest[] {
+  const seen = new Set(stored.map((r) => r.id));
+  return [...stored, ...pending.filter((r) => !seen.has(r.id))];
 }

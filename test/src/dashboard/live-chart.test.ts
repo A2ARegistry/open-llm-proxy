@@ -123,12 +123,35 @@ describe("throughputPoints / throughputStats", () => {
     });
   });
 
-  it("reports the latest complete bucket (not the in-progress one) and peaks", () => {
+  it("averages the complete buckets (not the in-progress one) and reports peaks", () => {
     expect(throughputStats(tp)).toEqual({
-      decodeNow: 55,
-      prefillNow: 200,
+      decodeNow: 27.5,
+      prefillNow: 100,
       decodePeak: 55,
       prefillPeak: 800,
+    });
+  });
+
+  it("averages only the last minute of complete buckets", () => {
+    const pts = [100, 0, 6, 0, 0, 0, 0, 0, 999].map((d, i) => ({
+      ts: i * 10,
+      decodeTps: d,
+      prefillTps: d * 2,
+    }));
+    // Complete buckets 2..7 (6 of them); bucket 0 is older, bucket 8 is filling.
+    expect(throughputStats(pts)).toMatchObject({
+      decodeNow: 1,
+      prefillNow: 2,
+      decodePeak: 999,
+    });
+  });
+
+  it("is null with no points", () => {
+    expect(throughputStats([])).toEqual({
+      decodeNow: null,
+      prefillNow: null,
+      decodePeak: null,
+      prefillPeak: null,
     });
   });
 

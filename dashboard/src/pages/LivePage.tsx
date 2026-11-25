@@ -207,7 +207,7 @@ export function LivePage() {
         title="Aggregate throughput"
         subtitle={
           throughputEmpty === null
-            ? "From finished requests · 10 s buckets"
+            ? "From finished requests · 10 s buckets · current = last 1 min avg"
             : undefined
         }
         actions={

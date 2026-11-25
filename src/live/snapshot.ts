@@ -1,6 +1,10 @@
 // [fork] W11: one live snapshot of the self-hosted box for the dashboard.
 // Raw counters and gauges only; the dashboard derives rates between polls.
 import {
+  metricsBufferName,
+  type MetricsBuffer,
+} from "../durable/metrics-buffer";
+import {
   latestRequestStatement,
   type RequestLogRow,
 } from "../metrics/request-log";
@@ -18,6 +22,7 @@ import {
   type LiveBinding,
 } from "./sources";
 import {
+  mergeThroughputRows,
   spreadThroughput,
   throughputRowsStatement,
   type ThroughputPoint,
@@ -233,23 +238,53 @@ async function readRequestLog(
   const providers = (await vpcProviders(env, organizationId)).map(
     (p) => p.provider,
   );
-  const [last, rows] = await env.DB.batch([
-    latestRequestStatement(env, organizationId),
-    ...(providers.length > 0
-      ? [throughputRowsStatement(env, organizationId, providers, from, to)]
-      : []),
+  const [[last, rows], pending] = await Promise.all([
+    env.DB.batch([
+      latestRequestStatement(env, organizationId),
+      ...(providers.length > 0
+        ? [throughputRowsStatement(env, organizationId, providers, from, to)]
+        : []),
+    ]),
+    bufferedThroughputRows(env, organizationId, providers, from, to),
   ]);
   return {
     lastRequest: (last.results[0] as unknown as RequestLogRow) ?? null,
     throughput: rows
       ? spreadThroughput(
-          rows.results as unknown as ThroughputRequest[],
+          mergeThroughputRows(
+            rows.results as unknown as ThroughputRequest[],
+            pending,
+          ),
           from,
           to,
           THROUGHPUT_BUCKET_S,
         )
       : [],
   };
+}
+
+/**
+ * Finished requests still in the org's MetricsBuffer (flushed to D1 only once
+ * a minute). Best effort: a missing binding or failed call gives no rows, so
+ * the series falls back to D1 alone.
+ */
+async function bufferedThroughputRows(
+  env: Env,
+  organizationId: string,
+  providers: string[],
+  from: number,
+  to: number,
+): Promise<ThroughputRequest[]> {
+  const ns = (env as { METRICS_BUFFER?: DurableObjectNamespace<MetricsBuffer> })
+    .METRICS_BUFFER;
+  if (!ns || providers.length === 0) return [];
+  try {
+    const stub = ns.get(ns.idFromName(metricsBufferName(organizationId)));
+    return await stub.throughputRows(organizationId, providers, from, to);
+  } catch (err) {
+    console.error("MetricsBuffer throughput read failed", err);
+    return [];
+  }
 }
 
 /** Read every live source for `organizationId` in parallel (one D1 batch, no writes). */
