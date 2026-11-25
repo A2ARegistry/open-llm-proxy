@@ -233,14 +233,14 @@ describe("summarize", () => {
           {
             ts: 1000,
             decodeTps: 10,
-            prefillTps: 0,
+            prefillTps: 100,
             decodeTpsMax: 30,
-            prefillTpsMax: null,
+            prefillTpsMax: 500,
           },
           {
             ts: 1010,
             decodeTps: 20,
-            prefillTps: 0,
+            prefillTps: 300,
             decodeTpsMax: null,
             prefillTpsMax: null,
           },
@@ -249,6 +249,8 @@ describe("summarize", () => {
     );
     expect(s.avgDecodeTps).toBe(15);
     expect(s.peakDecodeTps).toBe(30);
+    expect(s.avgPrefillTps).toBe(200);
+    expect(s.peakPrefillTps).toBe(500);
     expect(s.peakQueued).toBe(5);
     expect(s.avgKvPct).toBeCloseTo(30);
     expect(s.peakKvPct).toBeCloseTo(90);
