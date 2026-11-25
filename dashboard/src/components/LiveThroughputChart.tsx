@@ -1,7 +1,11 @@
 // [fork] W12: decode / prefill throughput on a real time axis. A null point
 // breaks the line (paused or unsampled periods are not drawn as data).
 import { fmtTps } from "../lib/format";
-import { axisTick, type ThroughputChartPoint } from "../lib/liveChart";
+import {
+  LIVE_SYNC,
+  axisTick,
+  type ThroughputChartPoint,
+} from "../lib/liveChart";
 import {
   Area,
   AreaChart,
@@ -30,6 +34,7 @@ export function LiveThroughputChart({
       <AreaChart
         data={data}
         margin={{ top: 5, right: 10, bottom: 0, left: -10 }}
+        {...LIVE_SYNC}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
         <XAxis

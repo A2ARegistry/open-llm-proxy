@@ -225,3 +225,41 @@ export function fmtC(value: number | null): string {
 export function fmtPctValue(value: number | null): string {
   return value === null ? "Unavailable" : pct(value / 100);
 }
+
+/** Charts sharing this id move their hover cursor and tooltip together. */
+export const LIVE_SYNC_ID = "live";
+
+/**
+ * Recharts `syncMethod`: index of the tick nearest in time to the hovered
+ * one, so charts with different sample times (2 s polls, 10 s buckets) still
+ * line up. Ticks are in time order; -1 when there is nothing to match.
+ */
+export function nearestTick(
+  ticks: { value?: unknown }[],
+  hovered: { activeLabel?: unknown },
+): number {
+  const target = Number(hovered.activeLabel);
+  if (ticks.length === 0 || !Number.isFinite(target)) return -1;
+  let lo = 0;
+  let hi = ticks.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (Number(ticks[mid].value) < target) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo === 0) return 0;
+  const before = Number(ticks[lo - 1].value);
+  const after = Number(ticks[lo].value);
+  return target - before <= after - target ? lo - 1 : lo;
+}
+
+/** Spread on every Live chart so their cursors stay in step. */
+export const LIVE_SYNC = {
+  syncId: LIVE_SYNC_ID,
+  syncMethod: nearestTick,
+} as const;
+
+/** "42%" for a 0-100 value. */
+export function fmtPctTick(value: number): string {
+  return `${Math.round(value)}%`;
+}

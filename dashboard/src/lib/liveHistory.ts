@@ -7,7 +7,7 @@ import type {
   Series,
   SeriesPoint,
 } from "./api";
-import type { LivePoint } from "./liveSeries";
+import { percentOf, type LivePoint } from "./liveSeries";
 import { fillBuckets, type RangePreset } from "./timeRange";
 
 export const LIVE_RANGES: readonly (RangePreset | "live")[] = [
@@ -31,13 +31,21 @@ const EMPTY_POINT = (t: number): HistoryPoint => ({
   t,
   decodeTps: null,
   prefillTps: null,
+  queued: null,
+  kvPct: null,
+  cacheHitPct: null,
+  draftPct: null,
   cpuPercent: null,
+  ramPct: null,
   gpuBusyPercent: null,
+  gpuMemPct: null,
   cpuTempC: null,
   gpuTempC: null,
   ssdTempC: null,
   gpuPowerW: null,
 });
+
+const pct = (v: number | null): number | null => (v === null ? null : v * 100);
 
 function byTs<T>(series: Series<T> | null): Map<number, SeriesPoint<T>> {
   return new Map((series?.points ?? []).map((p) => [p.ts, p]));
@@ -48,21 +56,36 @@ function byTs<T>(series: Series<T> | null): Map<number, SeriesPoint<T>> {
  * so charts break at gaps; a stored throughput of 0 stays 0 (idle).
  */
 export function historyPoints(h: LiveHistory): HistoryPoint[] {
+  const inference = byTs(h.inference);
   const host = byTs(h.host);
   const throughput = new Map(
     h.throughput.map((p) => [Math.floor(p.ts / h.bucketS) * h.bucketS, p]),
   );
   const stored: HistoryPoint[] = [];
-  const stamps = new Set([...host.keys(), ...throughput.keys()]);
+  const stamps = new Set([
+    ...inference.keys(),
+    ...host.keys(),
+    ...throughput.keys(),
+  ]);
   for (const ts of stamps) {
+    const infAvg = inference.get(ts)?.avg;
     const hostAvg = host.get(ts)?.avg;
     const tp = throughput.get(ts);
     stored.push({
       t: ts,
       decodeTps: tp?.decodeTps ?? null,
       prefillTps: tp?.prefillTps ?? null,
+      queued: infAvg?.queued ?? null,
+      kvPct: pct(infAvg?.kv_usage_ratio ?? null),
+      cacheHitPct: pct(infAvg?.cache_hit_ratio ?? null),
+      draftPct: pct(infAvg?.draft_accept_ratio ?? null),
       cpuPercent: hostAvg?.cpu_busy_pct ?? null,
+      ramPct: percentOf(hostAvg?.mem_in_use_bytes, hostAvg?.mem_total_bytes),
       gpuBusyPercent: hostAvg?.gpu_busy_pct ?? null,
+      gpuMemPct: percentOf(
+        hostAvg?.gpu_mem_used_bytes,
+        hostAvg?.gpu_mem_total_bytes,
+      ),
       cpuTempC: hostAvg?.cpu_temp_c ?? null,
       gpuTempC: hostAvg?.gpu_temp_c ?? null,
       ssdTempC: hostAvg?.ssd_temp_c ?? null,
@@ -106,8 +129,6 @@ function peak(values: (number | null | undefined)[]): number | null {
   const v = values.filter((x): x is number => x != null);
   return v.length === 0 ? null : Math.max(...v);
 }
-
-const pct = (v: number | null): number | null => (v === null ? null : v * 100);
 
 /** Peak of a column: the bucket's max when stored, else its average. */
 function peakOf<T, K extends keyof T & string>(

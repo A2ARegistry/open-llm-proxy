@@ -73,7 +73,20 @@ describe("historyPoints", () => {
       history({
         inference: {
           binding: "i",
-          points: [{ ts: 1010, ok: 1, samples: null, avg: inf(), max: {} }],
+          points: [
+            {
+              ts: 1010,
+              ok: 1,
+              samples: null,
+              avg: inf({
+                queued: 2,
+                kv_usage_ratio: 0.8,
+                cache_hit_ratio: 0.97,
+                draft_accept_ratio: 0.5,
+              }),
+              max: {},
+            },
+          ],
         },
         host: {
           binding: "h",
@@ -84,7 +97,11 @@ describe("historyPoints", () => {
               samples: null,
               avg: host({
                 cpu_busy_pct: 42,
+                mem_total_bytes: 200,
+                mem_in_use_bytes: 150,
                 gpu_busy_pct: 7,
+                gpu_mem_used_bytes: 25,
+                gpu_mem_total_bytes: 100,
                 cpu_temp_c: 50,
                 gpu_temp_c: 60,
                 ssd_temp_c: 40,
@@ -109,8 +126,14 @@ describe("historyPoints", () => {
       t: 1_010_000,
       decodeTps: 0,
       prefillTps: 9,
+      queued: 2,
+      kvPct: 80,
+      cacheHitPct: 97,
+      draftPct: 50,
       cpuPercent: 42,
+      ramPct: 75,
       gpuBusyPercent: 7,
+      gpuMemPct: 25,
       cpuTempC: 50,
       gpuTempC: 60,
       ssdTempC: 40,
@@ -171,6 +194,30 @@ describe("historyPoints with unaligned throughput", () => {
     expect(
       pts.filter((p) => p.decodeTps === 5 && p.prefillTps === 6),
     ).toHaveLength(3);
+  });
+});
+
+describe("historyPoints inference-only buckets", () => {
+  it("keeps a bucket that only has an inference row", () => {
+    const pts = historyPoints(
+      history({
+        inference: {
+          binding: "i",
+          points: [
+            {
+              ts: 1020,
+              ok: 1,
+              samples: null,
+              avg: inf({ queued: 1 }),
+              max: {},
+            },
+          ],
+        },
+      }),
+    );
+    expect(pts[2].queued).toBe(1);
+    expect(pts[2].ramPct).toBeNull();
+    expect(pts[0].queued).toBeNull();
   });
 });
 

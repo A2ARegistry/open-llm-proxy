@@ -10,6 +10,7 @@ import {
   LIVE_GAP_MS,
   advanceLive,
   appendPoint,
+  percentOf,
   ratio,
   toPoint,
   type LivePoint,
@@ -183,5 +184,81 @@ describe("ratio", () => {
     expect(ratio(0, 0)).toBeNull();
     expect(ratio(null, 4)).toBeNull();
     expect(ratio(3, null)).toBeNull();
+  });
+});
+
+describe("toPoint inference and memory", () => {
+  it("queue, KV and memory shares come from the latest snapshot", () => {
+    const p = toPoint(null, snap(2000, { queued: 2, kvUsageRatio: 0.25 }));
+    expect(p.queued).toBe(2);
+    expect(p.kvPct).toBe(25);
+    // in use = (128 - 64) + min(32, 64) = 96 of 128
+    expect(p.ramPct).toBe(75);
+    expect(p.gpuMemPct).toBe(10);
+  });
+
+  it("first point has no cache or draft rate", () => {
+    const p = toPoint(null, snap(2000));
+    expect(p.cacheHitPct).toBeNull();
+    expect(p.draftPct).toBeNull();
+  });
+
+  it("cache and draft rates from counter deltas", () => {
+    const p = toPoint(
+      snap(0, {
+        cacheHitsTotal: 3,
+        cacheMissesTotal: 1,
+        draftTokensTotal: 10,
+        draftAcceptedTotal: 8,
+      }),
+      snap(2000, {
+        cacheHitsTotal: 6,
+        cacheMissesTotal: 2,
+        draftTokensTotal: 20,
+        draftAcceptedTotal: 17,
+      }),
+    );
+    expect(p.cacheHitPct).toBe(75);
+    expect(p.draftPct).toBe(90);
+  });
+
+  it("no lookups or drafts in the interval gives a gap, not 0%", () => {
+    const p = toPoint(snap(0), snap(2000));
+    expect(p.cacheHitPct).toBeNull();
+    expect(p.draftPct).toBeNull();
+  });
+
+  it("a counter reset gives no rate", () => {
+    const p = toPoint(
+      snap(0, { cacheHitsTotal: 30, draftTokensTotal: 100 }),
+      snap(2000, { cacheHitsTotal: 1, draftTokensTotal: 2 }),
+    );
+    expect(p.cacheHitPct).toBeNull();
+    expect(p.draftPct).toBeNull();
+  });
+
+  it("a gap longer than LIVE_GAP_MS gives no cache rate", () => {
+    const p = toPoint(
+      snap(0, { cacheHitsTotal: 3 }),
+      snap(LIVE_GAP_MS + 1000, { cacheHitsTotal: 9 }),
+    );
+    expect(p.cacheHitPct).toBeNull();
+  });
+
+  it("null sources give null fields", () => {
+    const p = toPoint(snap(0, null, null), snap(2000, null, null));
+    expect(p.queued).toBeNull();
+    expect(p.kvPct).toBeNull();
+    expect(p.ramPct).toBeNull();
+    expect(p.gpuMemPct).toBeNull();
+  });
+});
+
+describe("percentOf", () => {
+  it("is a 0-100 share, null without data or a zero whole", () => {
+    expect(percentOf(1, 4)).toBe(25);
+    expect(percentOf(null, 4)).toBeNull();
+    expect(percentOf(1, undefined)).toBeNull();
+    expect(percentOf(1, 0)).toBeNull();
   });
 });
