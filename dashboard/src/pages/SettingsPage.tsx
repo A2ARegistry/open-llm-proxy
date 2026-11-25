@@ -10,8 +10,14 @@ import {
 } from "../components/ui";
 import { apiGet, apiSend, TenantInfo } from "../lib/api";
 import { fmtUsd } from "../lib/format";
+import {
+  fromPowerForm,
+  toPowerForm,
+  type PowerForm,
+} from "../lib/powerSettingsForm";
+import type { PowerSettings } from "../lib/powerTypes";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { BellRing, Globe, ShieldAlert, Zap } from "lucide-react";
+import { BellRing, Globe, PlugZap, ShieldAlert, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface AlertSettings {
@@ -97,6 +103,42 @@ export function SettingsPage() {
     queryKey: ["tenant"],
     queryFn: () => apiGet<TenantInfo>("/api/tenant"),
   });
+  // [fork] W13: power cost settings for the Power page.
+  const power = useQuery({
+    queryKey: ["power-settings"],
+    queryFn: () => apiGet<{ power: PowerSettings }>("/api/power/settings"),
+  });
+  const [powerForm, setPowerForm] = useState<PowerForm>(toPowerForm({}));
+  const [powerMsg, setPowerMsg] = useState<string | null>(null);
+  const [powerErr, setPowerErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (power.data) setPowerForm(toPowerForm(power.data.power));
+  }, [power.data]);
+
+  const savePower = useMutation({
+    mutationFn: () => {
+      const body = fromPowerForm(powerForm);
+      if ("error" in body) return Promise.reject(new Error(body.error));
+      return apiSend<{ power: PowerSettings }>(
+        "PUT",
+        "/api/power/settings",
+        body,
+      );
+    },
+    onSuccess: () => {
+      setPowerMsg("Power cost saved.");
+      setPowerErr(null);
+      power.refetch();
+    },
+    onError: (err: Error) => {
+      setPowerErr(err.message);
+      setPowerMsg(null);
+    },
+  });
+  const setPowerField = (field: keyof PowerForm) => (value: string) =>
+    setPowerForm((f) => ({ ...f, [field]: value }));
+
   const [customPrefix, setCustomPrefix] = useState("");
   const [prefixMsg, setPrefixMsg] = useState<string | null>(null);
   const [prefixErr, setPrefixErr] = useState<string | null>(null);
@@ -394,6 +436,88 @@ export function SettingsPage() {
             loading={saveLimits.isPending}
           >
             Save limits
+          </Button>
+        </div>
+      </Card>
+
+      <Card
+        title="Power cost"
+        subtitle="Prices the box's electricity and the cloud cost of the same tokens on the Power page. Box power is read at the APU package; the overhead covers RAM, SSD, Wi-Fi, fans and PSU losses."
+        actions={<PlugZap size={16} className="text-gray-400" />}
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <Label>Electricity price (USD per kWh)</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="e.g. 0.20"
+              value={powerForm.price}
+              onChange={(e) => setPowerField("price")(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label>Overhead (W)</Label>
+            <Input
+              type="number"
+              min="0"
+              max="500"
+              step="1"
+              placeholder="e.g. 10"
+              value={powerForm.overhead}
+              onChange={(e) => setPowerField("overhead")(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <p className="mt-5 text-xs font-medium text-gray-600 dark:text-gray-300">
+          Cloud reference price (USD per 1M tokens)
+        </p>
+        <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Label>Label</Label>
+            <Input
+              placeholder="e.g. Qwen on a hosted provider"
+              maxLength={80}
+              value={powerForm.label}
+              onChange={(e) => setPowerField("label")(e.target.value)}
+            />
+          </div>
+          {(
+            [
+              ["input", "Input"],
+              ["output", "Output"],
+              ["cacheRead", "Cache read"],
+              ["cacheWrite", "Cache write"],
+            ] as const
+          ).map(([field, label]) => (
+            <div key={field}>
+              <Label>{label}</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={powerForm[field]}
+                onChange={(e) => setPowerField(field)(e.target.value)}
+              />
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-3 text-[11px] text-gray-400">
+          Leave a field blank to clear it. Changes re-price the whole history.
+        </p>
+
+        {powerErr && <p className="mt-3 text-sm text-red-600">{powerErr}</p>}
+        {powerMsg && <p className="mt-3 text-sm text-green-700">{powerMsg}</p>}
+
+        <div className="mt-4">
+          <Button
+            onClick={() => savePower.mutate()}
+            loading={savePower.isPending}
+          >
+            Save power cost
           </Button>
         </div>
       </Card>
