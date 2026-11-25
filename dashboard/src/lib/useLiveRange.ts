@@ -11,6 +11,8 @@ export interface LiveRangeState {
   /** [start, end) in unix seconds of a past range; meaningless when live. */
   start: number;
   end: number;
+  /** Bumps on every refresh, so callers can key queries on it. */
+  refreshes: number;
   setRange(range: LiveRange): void;
   /** Move a past range's end to now. */
   refresh(): void;
@@ -20,6 +22,7 @@ export function useLiveRange(): LiveRangeState {
   const [params, setParams] = useSearchParams();
   const range = parseLiveRange(params.get("range"));
   const [anchorMs, setAnchorMs] = useState(() => Date.now());
+  const [refreshes, setRefreshes] = useState(0);
   const win = useMemo(
     () => rangeWindow(isLiveRange(range) ? "1h" : range, anchorMs),
     [range, anchorMs],
@@ -29,6 +32,7 @@ export function useLiveRange(): LiveRangeState {
     range,
     isLive: isLiveRange(range),
     ...win,
+    refreshes,
     setRange: (next) => {
       const updated = new URLSearchParams(params);
       if (isLiveRange(next)) updated.delete("range");
@@ -36,6 +40,9 @@ export function useLiveRange(): LiveRangeState {
       setAnchorMs(Date.now());
       setParams(updated, { replace: true });
     },
-    refresh: () => setAnchorMs(Date.now()),
+    refresh: () => {
+      setAnchorMs(Date.now());
+      setRefreshes((n) => n + 1);
+    },
   };
 }

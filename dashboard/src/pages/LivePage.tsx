@@ -69,7 +69,7 @@ export function LivePage() {
   const snapshot = live.data?.snapshot ?? null;
 
   const stored = useQuery({
-    queryKey: ["live-history", time.start, time.end],
+    queryKey: ["live-history", time.start, time.end, time.refreshes],
     queryFn: () => liveHistory(time.start, time.end),
     enabled: !time.isLive,
     staleTime: Infinity,
