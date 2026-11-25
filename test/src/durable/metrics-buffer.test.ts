@@ -174,8 +174,9 @@ describe("MetricsBuffer DO", () => {
             provider: "box",
             timestamp: now,
             latency_ms: 2000,
-            tokens_input: 1000,
+            tokens_input: 400,
             tokens_cache_read: 600,
+            tokens_cache_write: 50,
           }),
           metric({ provider: "box", timestamp: now, status_code: 500 }),
           metric({ provider: "other", timestamp: now }),
@@ -190,7 +191,7 @@ describe("MetricsBuffer DO", () => {
       latency_ms: 2000,
       ttft_ms: 150,
       decode_ms: 1_850,
-      prefill_tokens: 400,
+      prefill_tokens: 450,
       tokens_output: 100,
     });
     expect(typeof pending[0].id).toBe("string");

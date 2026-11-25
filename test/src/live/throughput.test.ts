@@ -187,6 +187,7 @@ describe("throughputRowsStatement", () => {
       input?: number | null;
       cacheRead?: number | null;
       cached?: number | null;
+      cacheWrite?: number | null;
       output?: number | null;
     } = {},
   ) {
@@ -194,8 +195,8 @@ describe("throughputRowsStatement", () => {
       `INSERT INTO request_metrics
          (id, organization_id, timestamp, provider, model, method, status_code,
           latency_ms, tokens_input, tokens_output, tokens_cached, tokens_cache_read,
-          cache_hit, ttft_ms, decode_ms)
-       VALUES (?, ?, ?, ?, 'm', 'chat', ?, ?, ?, ?, ?, ?, ?, 100, 900)`,
+          tokens_cache_write, cache_hit, ttft_ms, decode_ms)
+       VALUES (?, ?, ?, ?, 'm', 'chat', ?, ?, ?, ?, ?, ?, ?, ?, 100, 900)`,
     )
       .bind(
         id,
@@ -208,6 +209,7 @@ describe("throughputRowsStatement", () => {
         o.output === undefined ? 50 : o.output,
         o.cached ?? null,
         o.cacheRead ?? null,
+        o.cacheWrite ?? null,
         o.cacheHit ?? 0,
       )
       .run();
@@ -271,10 +273,12 @@ describe("throughputRowsStatement", () => {
     expect(results).toHaveLength(1);
   });
 
-  it("subtracts cache reads, falling back to tokens_cached, never below 0", async () => {
-    await insert("read", { ts: 1001, input: 500, cacheRead: 200, cached: 50 });
-    await insert("cached", { ts: 1002, input: 500, cached: 50 });
-    await insert("over", { ts: 1003, input: 10, cacheRead: 50 });
+  it("counts stored input (already net of cache hits) plus cache writes as prefill", async () => {
+    // tokens_input is stored with cache reads and writes already removed, so a
+    // cache-heavy request (2000 prompt tokens, 1800 reused) prefilled 200.
+    await insert("heavy", { ts: 1001, input: 200, cacheRead: 1800, cached: 1800 });
+    await insert("write", { ts: 1002, input: 300, cacheWrite: 100, cached: 100 });
+    await insert("legacy", { ts: 1003, input: 500, cached: 50 });
     await insert("null", { ts: 1004, input: null, output: null });
     const { results } = await throughputRowsStatement(
       env as unknown as Env,
@@ -287,7 +291,7 @@ describe("throughputRowsStatement", () => {
       prefill_tokens: number;
       tokens_output: number;
     }>();
-    expect(results.map((r) => r.prefill_tokens)).toEqual([300, 450, 0, 0]);
+    expect(results.map((r) => r.prefill_tokens)).toEqual([200, 400, 500, 0]);
     expect(results[3].tokens_output).toBe(0);
   });
 });

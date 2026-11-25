@@ -154,7 +154,10 @@ function mean(values: number[]): number {
  * (`request_metrics` in D1, or the MetricsBuffer's `metrics_buffer`, which has
  * the same columns). Bound to `(orgId, ...providers, from, to + MAX_REQUEST_S,
  * to)`; see `throughputRowsBindings`. Errors and response-cache hits are
- * skipped; `prefill_tokens` excludes prompt-cache reads.
+ * skipped. `prefill_tokens` is the prompt tokens the box actually processed:
+ * `tokens_input` is stored with prompt-cache reads and writes already removed
+ * (see `request-logger.ts`), so only cache writes, which were computed, are
+ * added back. Cache reads were reused, not prefilled.
  */
 export function throughputRowsSql(
   table: string,
@@ -162,8 +165,8 @@ export function throughputRowsSql(
 ): string {
   const marks = new Array(providerCount).fill("?").join(", ");
   return `SELECT id, timestamp, latency_ms, ttft_ms, decode_ms,
-            MAX(0, COALESCE(tokens_input, 0)
-                   - COALESCE(tokens_cache_read, tokens_cached, 0)) AS prefill_tokens,
+            COALESCE(tokens_input, 0)
+              + COALESCE(tokens_cache_write, 0) AS prefill_tokens,
             COALESCE(tokens_output, 0) AS tokens_output
        FROM ${table}
       WHERE organization_id = ?
