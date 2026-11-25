@@ -78,6 +78,8 @@ export function historyPoints(h: LiveHistory): HistoryPoint[] {
 export interface RangeSummary {
   avgDecodeTps: number | null;
   peakDecodeTps: number | null;
+  avgPrefillTps: number | null;
+  peakPrefillTps: number | null;
   peakQueued: number | null;
   avgKvPct: number | null;
   peakKvPct: number | null;
@@ -151,6 +153,10 @@ export function summarize(h: LiveHistory): RangeSummary {
   return {
     avgDecodeTps: mean(h.throughput.map((p) => p.decodeTps)),
     peakDecodeTps: peak(h.throughput.map((p) => p.decodeTpsMax ?? p.decodeTps)),
+    avgPrefillTps: mean(h.throughput.map((p) => p.prefillTps)),
+    peakPrefillTps: peak(
+      h.throughput.map((p) => p.prefillTpsMax ?? p.prefillTps),
+    ),
     peakQueued: peakOf(inf, "queued"),
     avgKvPct: pct(avgOf(inf, "kv_usage_ratio")),
     peakKvPct: pct(peakOf(inf, "kv_usage_ratio")),

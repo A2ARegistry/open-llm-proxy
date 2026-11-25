@@ -1,7 +1,6 @@
 // [fork] W12: the Live page for a past range: stored box history (10 s rows,
 // or 10-min rows beyond 2 h) instead of the 2 s poll.
 import type { LiveHistory } from "../lib/api";
-import { fmtTps } from "../lib/format";
 import {
   fmtC,
   fmtGb,
@@ -12,7 +11,12 @@ import {
 import { summarize, type HistoryPoint } from "../lib/liveHistory";
 import { LiveGauge } from "./LiveGauge";
 import { LiveTempChart } from "./LiveTempChart";
-import { LiveThroughputChart } from "./LiveThroughputChart";
+import {
+  DECODE_COLOR,
+  LiveThroughputChart,
+  PREFILL_COLOR,
+} from "./LiveThroughputChart";
+import { ThroughputStat } from "./ThroughputStat";
 import { Card, EmptyState, Spinner, StatCard } from "./ui";
 import type { ReactNode } from "react";
 
@@ -73,7 +77,23 @@ export function LiveHistoryView({
 
       <Card
         title="Aggregate throughput"
-        subtitle={`Decode avg ${fmtTps(sum.avgDecodeTps)} (peak ${fmtTps(sum.peakDecodeTps)})`}
+        subtitle="Average over the range · from finished requests"
+        actions={
+          <div className="flex gap-6">
+            <ThroughputStat
+              label="Decode avg"
+              color={DECODE_COLOR}
+              value={sum.avgDecodeTps}
+              peak={sum.peakDecodeTps}
+            />
+            <ThroughputStat
+              label="Prefill avg"
+              color={PREFILL_COLOR}
+              value={sum.avgPrefillTps}
+              peak={sum.peakPrefillTps}
+            />
+          </div>
+        }
       >
         {stored ? <LiveThroughputChart data={data} domain={domain} /> : empty}
       </Card>

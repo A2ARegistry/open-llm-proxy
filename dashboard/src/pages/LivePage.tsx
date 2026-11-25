@@ -6,7 +6,12 @@
 import { LiveGauge } from "../components/LiveGauge";
 import { LiveHistoryView } from "../components/LiveHistoryView";
 import { LiveTempChart } from "../components/LiveTempChart";
-import { LiveThroughputChart } from "../components/LiveThroughputChart";
+import {
+  DECODE_COLOR,
+  LiveThroughputChart,
+  PREFILL_COLOR,
+} from "../components/LiveThroughputChart";
+import { ThroughputStat } from "../components/ThroughputStat";
 import { TimeRangeControl } from "../components/TimeRangeControl";
 import { Badge, Card, EmptyState, Spinner, StatCard } from "../components/ui";
 import { apiGet, liveHistory, type LiveSnapshot } from "../lib/api";
@@ -202,8 +207,26 @@ export function LivePage() {
         title="Aggregate throughput"
         subtitle={
           throughputEmpty === null
-            ? `Decode ${fmtTps(tps.decodeNow)} (peak ${fmtTps(tps.decodePeak)}) · Prefill ${fmtTps(tps.prefillNow)} (peak ${fmtTps(tps.prefillPeak)}) · from finished requests, 10 s buckets`
+            ? "From finished requests · 10 s buckets"
             : undefined
+        }
+        actions={
+          throughputEmpty === null ? (
+            <div className="flex gap-6">
+              <ThroughputStat
+                label="Decode"
+                color={DECODE_COLOR}
+                value={tps.decodeNow}
+                peak={tps.decodePeak}
+              />
+              <ThroughputStat
+                label="Prefill"
+                color={PREFILL_COLOR}
+                value={tps.prefillNow}
+                peak={tps.prefillPeak}
+              />
+            </div>
+          ) : undefined
         }
       >
         {throughputEmpty === null ? (

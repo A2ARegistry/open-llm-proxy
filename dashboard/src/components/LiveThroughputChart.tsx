@@ -13,6 +13,9 @@ import {
   YAxis,
 } from "recharts";
 
+export const DECODE_COLOR = "#f59e0b";
+export const PREFILL_COLOR = "#3b82f6";
+
 export function LiveThroughputChart({
   data,
   domain,
@@ -39,26 +42,35 @@ export function LiveThroughputChart({
           tickFormatter={(t) => axisTick(Number(t), span)}
           minTickGap={40}
         />
-        <YAxis tick={{ fontSize: 11 }} />
+        {/* Prefill runs ~10x decode, so each series gets its own scale:
+            decode on the left, prefill on the right, ticks in series color. */}
+        <YAxis yAxisId="decode" tick={{ fontSize: 11, fill: DECODE_COLOR }} />
+        <YAxis
+          yAxisId="prefill"
+          orientation="right"
+          tick={{ fontSize: 11, fill: PREFILL_COLOR }}
+        />
         <Tooltip
           formatter={(v) => fmtTps(Number(v))}
           labelFormatter={(t) => new Date(Number(t)).toLocaleString()}
         />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         <Area
+          yAxisId="decode"
           type="linear"
           dataKey="decodeTps"
           name="Decode"
-          stroke="#f59e0b"
+          stroke={DECODE_COLOR}
           fill="#fde68a"
           isAnimationActive={false}
           connectNulls={false}
         />
         <Area
+          yAxisId="prefill"
           type="linear"
           dataKey="prefillTps"
           name="Prefill"
-          stroke="#3b82f6"
+          stroke={PREFILL_COLOR}
           fill="#bfdbfe"
           fillOpacity={0.4}
           isAnimationActive={false}
