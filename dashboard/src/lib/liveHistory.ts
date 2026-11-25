@@ -43,7 +43,9 @@ function byTs<T>(series: Series<T> | null): Map<number, SeriesPoint<T>> {
  */
 export function historyPoints(h: LiveHistory): LivePoint[] {
   const host = byTs(h.host);
-  const throughput = new Map(h.throughput.map((p) => [p.ts, p]));
+  const throughput = new Map(
+    h.throughput.map((p) => [Math.floor(p.ts / h.bucketS) * h.bucketS, p]),
+  );
   const stored: LivePoint[] = [];
   const stamps = new Set([...host.keys(), ...throughput.keys()]);
   for (const ts of stamps) {

@@ -220,6 +220,18 @@ describe("queryHistory", () => {
     expect(h.throughput[6].decodeTps).toBe(0);
   });
 
+  it("aligns an unaligned from to the bucket and still counts all tokens", async () => {
+    await request("r1", 3060, 60_000);
+    const h = await queryHistory(e, ORG, 3003, 3103);
+    expect(h.from).toBe(3000);
+    expect(h.throughput.every((p) => p.ts % h.bucketS === 0)).toBe(true);
+    const decodeTokens = h.throughput.reduce(
+      (sum, p) => sum + p.decodeTps * h.bucketS,
+      0,
+    );
+    expect(decodeTokens).toBeCloseTo(12000);
+  });
+
   it("throughput on a short range is empty without vpc providers", async () => {
     await env.DB.exec("DELETE FROM provider_configs");
     const h = await queryHistory(e, ORG, 3000, 3100);

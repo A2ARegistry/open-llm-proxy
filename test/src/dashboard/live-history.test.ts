@@ -152,6 +152,27 @@ describe("historyPoints", () => {
   });
 });
 
+describe("historyPoints with unaligned throughput", () => {
+  it("lines points up on the bucket grid", () => {
+    const pts = historyPoints(
+      history({
+        from: 1003,
+        to: 1033,
+        throughput: [0, 1, 2].map((i) => ({
+          ts: 1003 + 10 * i,
+          decodeTps: 5,
+          prefillTps: 6,
+          decodeTpsMax: null,
+          prefillTpsMax: null,
+        })),
+      }),
+    );
+    expect(
+      pts.filter((p) => p.decodeTps === 5 && p.prefillTps === 6),
+    ).toHaveLength(3);
+  });
+});
+
 describe("summarize", () => {
   it("is all null for an empty response", () => {
     const s = summarize(history());

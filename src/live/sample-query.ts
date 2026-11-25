@@ -201,11 +201,16 @@ function rollupGroups(
 export async function queryHistory(
   env: Env,
   orgId: string,
-  from: number,
+  requestedFrom: number,
   to: number,
 ): Promise<LiveHistory> {
-  const bucketS = historyBucket(from, to);
+  const bucketS = historyBucket(requestedFrom, to);
   const raw = bucketS === SAMPLE_INTERVAL_S;
+  // Raw buckets start on multiples of 10 s, like the stored rows, so the
+  // client can line series up by timestamp.
+  const from = raw
+    ? requestedFrom - (requestedFrom % SAMPLE_INTERVAL_S)
+    : requestedFrom;
   const inference = inferenceBinding(env, orgId);
   const host = hostBinding(env, orgId);
   const providers = raw
