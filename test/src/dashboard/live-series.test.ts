@@ -1,4 +1,4 @@
-// [fork] W11: live page series math (rates from counter deltas).
+// [fork] W11: live page series math (cpu from counter deltas).
 import type {
   HostSnapshot,
   InferenceSnapshot,
@@ -66,36 +66,23 @@ function snap(
     inference: inf === null ? null : inference({ sampledAt: at, ...inf }),
     host: h === null ? null : host({ sampledAt: at, ...h }),
     lastRequest: null,
+    throughput: [],
   };
 }
 
 describe("toPoint", () => {
-  it("decode tok/s from counter delta", () => {
+  it("carries no token rates (throughput comes from the request log)", () => {
     const p = toPoint(
       snap(0, { predictedTokensTotal: 1000, promptTokensTotal: 5000 }),
       snap(2000, { predictedTokensTotal: 1040, promptTokensTotal: 7000 }),
     );
     expect(p.t).toBe(2000);
-    expect(p.decodeTps).toBe(20);
-    expect(p.prefillTps).toBe(1000);
+    expect(p).not.toHaveProperty("decodeTps");
+    expect(p).not.toHaveProperty("prefillTps");
   });
 
-  it("counter reset gives a gap", () => {
-    const p = toPoint(
-      snap(0, { predictedTokensTotal: 1000 }),
-      snap(2000, { predictedTokensTotal: 50 }),
-    );
-    expect(p.decodeTps).toBeNull();
-  });
-
-  it("no time elapsed gives a gap", () => {
-    expect(toPoint(snap(2000), snap(2000)).decodeTps).toBeNull();
-  });
-
-  it("first point has no rates", () => {
+  it("first point has no cpu rate", () => {
     const p = toPoint(null, snap(2000));
-    expect(p.decodeTps).toBeNull();
-    expect(p.prefillTps).toBeNull();
     expect(p.cpuPercent).toBeNull();
     expect(p.gpuBusyPercent).toBe(90);
     expect(p.gpuTempC).toBe(75);
@@ -112,7 +99,6 @@ describe("toPoint", () => {
 
   it("null source gives null fields", () => {
     const p = toPoint(snap(0, null, null), snap(2000, null, null));
-    expect(p.decodeTps).toBeNull();
     expect(p.cpuPercent).toBeNull();
     expect(p.cpuTempC).toBeNull();
     expect(p.ssdTempC).toBeNull();
@@ -121,7 +107,7 @@ describe("toPoint", () => {
 });
 
 describe("toPoint sample times", () => {
-  it("rates use each source's own sample time, not the snapshot time", () => {
+  it("cpu rate uses the host's own sample time, not the snapshot time", () => {
     const p = toPoint(
       snap(
         1900,
@@ -134,11 +120,10 @@ describe("toPoint sample times", () => {
         { cpuIdleSecondsTotal: 106, cpuSecondsTotal: 208, sampledAt: 2000 },
       ),
     );
-    expect(p.decodeTps).toBe(20);
     expect(p.cpuPercent).toBe(25);
   });
 
-  it("a gap longer than LIVE_GAP_MS gives no rates", () => {
+  it("a gap longer than LIVE_GAP_MS gives no cpu rate", () => {
     expect(LIVE_GAP_MS).toBe(5000);
     const p = toPoint(
       snap(
@@ -152,22 +137,24 @@ describe("toPoint sample times", () => {
         { cpuIdleSecondsTotal: 160, cpuSecondsTotal: 400 },
       ),
     );
-    expect(p.decodeTps).toBeNull();
     expect(p.cpuPercent).toBeNull();
     expect(p.gpuTempC).toBe(75);
   });
 });
 
 describe("advanceLive", () => {
-  it("rates come from the previous snapshot, then it becomes the new previous", () => {
+  it("cpu comes from the previous snapshot, then it becomes the new previous", () => {
     const a = advanceLive(
       { prev: null, points: [] },
-      snap(0, { predictedTokensTotal: 1000 }),
+      snap(0, {}, { cpuIdleSecondsTotal: 100, cpuSecondsTotal: 200 }),
     );
     expect(a.points).toHaveLength(1);
-    expect(a.points[0].decodeTps).toBeNull();
-    const b = advanceLive(a, snap(2000, { predictedTokensTotal: 1040 }));
-    expect(b.points.map((p) => p.decodeTps)).toEqual([null, 20]);
+    expect(a.points[0].cpuPercent).toBeNull();
+    const b = advanceLive(
+      a,
+      snap(2000, {}, { cpuIdleSecondsTotal: 106, cpuSecondsTotal: 208 }),
+    );
+    expect(b.points.map((p) => p.cpuPercent)).toEqual([null, 25]);
     expect(b.prev?.at).toBe(2000);
   });
 

@@ -21,7 +21,13 @@ export const LIVE_RANGES: readonly (RangePreset | "live")[] = [
   "1y",
 ];
 
-const EMPTY_POINT = (t: number): LivePoint => ({
+/** A stored-history chart point: host fields plus the throughput series. */
+export interface HistoryPoint extends LivePoint {
+  decodeTps: number | null;
+  prefillTps: number | null;
+}
+
+const EMPTY_POINT = (t: number): HistoryPoint => ({
   t,
   decodeTps: null,
   prefillTps: null,
@@ -41,12 +47,12 @@ function byTs<T>(series: Series<T> | null): Map<number, SeriesPoint<T>> {
  * One point per bucket in [from, to). Buckets with no stored row are all-null
  * so charts break at gaps; a stored throughput of 0 stays 0 (idle).
  */
-export function historyPoints(h: LiveHistory): LivePoint[] {
+export function historyPoints(h: LiveHistory): HistoryPoint[] {
   const host = byTs(h.host);
   const throughput = new Map(
     h.throughput.map((p) => [Math.floor(p.ts / h.bucketS) * h.bucketS, p]),
   );
-  const stored: LivePoint[] = [];
+  const stored: HistoryPoint[] = [];
   const stamps = new Set([...host.keys(), ...throughput.keys()]);
   for (const ts of stamps) {
     const hostAvg = host.get(ts)?.avg;
