@@ -2,6 +2,7 @@
 
 export const RANGE_PRESETS = [
   { value: "1h", label: "Last hour", short: "1h", seconds: 3600 },
+  { value: "6h", label: "Last 6 hours", short: "6h", seconds: 6 * 3600 },
   { value: "24h", label: "Last 24 hours", short: "24h", seconds: 24 * 3600 },
   { value: "7d", label: "Last 7 days", short: "7d", seconds: 7 * 24 * 3600 },
   {
@@ -16,11 +17,18 @@ export const RANGE_PRESETS = [
     short: "90d",
     seconds: 90 * 24 * 3600,
   },
+  {
+    value: "1y",
+    label: "Last year",
+    short: "1y",
+    seconds: 365 * 24 * 3600,
+  },
 ] as const;
 export type RangePreset = (typeof RANGE_PRESETS)[number]["value"];
 export type RangeOption = (typeof RANGE_PRESETS)[number];
 
-export const ALL_RANGES: RangePreset[] = RANGE_PRESETS.map((r) => r.value);
+/** Ranges the metrics pages offer; 6h and 1y are only for the Live page. */
+export const ALL_RANGES: RangePreset[] = ["1h", "24h", "7d", "30d", "90d"];
 
 export function rangeOption(range: RangePreset): RangeOption {
   return RANGE_PRESETS.find((r) => r.value === range)!;

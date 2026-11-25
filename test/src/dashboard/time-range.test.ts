@@ -1,4 +1,5 @@
 import {
+  ALL_RANGES,
   fillBuckets,
   parseRange,
   rangeOption,
@@ -33,5 +34,24 @@ describe("fillBuckets", () => {
       { t: 3600, n: 0 },
       { t: 7200, n: 2 },
     ]);
+  });
+});
+
+describe("6h and 1y presets", () => {
+  it("parse when allowed and window correctly", () => {
+    expect(parseRange("6h", ["6h", "1y"], "1y")).toBe("6h");
+    expect(parseRange("1y", ["1y"], "1y")).toBe("1y");
+    expect(rangeWindow("6h", 10_000_500)).toEqual({
+      start: 10_001 - 21600,
+      end: 10_001,
+    });
+    expect(rangeWindow("1y", 10_000_500)).toEqual({
+      start: 10_001 - 365 * 86400,
+      end: 10_001,
+    });
+  });
+
+  it("stay out of the metrics pages' ALL_RANGES", () => {
+    expect(ALL_RANGES).toEqual(["1h", "24h", "7d", "30d", "90d"]);
   });
 });
