@@ -22,6 +22,12 @@ describe("parsePowerSettings", () => {
     ).toEqual({ cloudReference: { ...ref, label: "Qwen hosted" } });
   });
 
+  it("accepts a reference without a label", () => {
+    expect(parsePowerSettings({ cloudReference: ref })).toEqual({
+      cloudReference: ref,
+    });
+  });
+
   it("passes null through to clear a field", () => {
     expect(
       parsePowerSettings({

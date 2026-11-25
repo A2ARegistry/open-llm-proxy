@@ -93,6 +93,22 @@ describe("summarize", () => {
     expect(totals.peakW).toBe(40);
   });
 
+  it("keeps the peak when a later period has none", () => {
+    const two: PeriodRaw[] = [
+      { ...raw[0], end: 1800 },
+      { ...raw[0], start: 1800, measuredS: 0, measuredWs: 0, peakW: null },
+    ];
+    expect(summarize(two, 0, 10_000, {}).totals.peakW).toBe(60);
+  });
+
+  it("projects without an overhead", () => {
+    const s = { pricePerKwhUsd: 0.2 };
+    const { totals } = summarize(raw, 0, 3600, s);
+    expect(projectUsd(totals, 3600, s)).toBeCloseTo(
+      totals.electricityUsd! + ((20 * 3600) / 3.6e6) * 0.2,
+    );
+  });
+
   it("null money without settings", () => {
     const { totals } = summarize(raw, 0, 10_000, {});
     expect(totals.totalKwh).toBeGreaterThan(0);
