@@ -289,10 +289,47 @@ describe("seededLivePoints", () => {
     expect(out.some(isBreak)).toBe(false);
   });
 
-  it("drops seed points at or after the first poll and before the window", () => {
-    const seed = [pt(5_000), pt(10_000), pt(20_000), pt(30_000)];
+  it("drops seed points covered by polls and before the window", () => {
+    const seed = [pt(5_000), pt(10_000), pt(20_000), pt(22_000)];
     const out = seededLivePoints(seed, [pt(20_000), pt(22_000)], 8_000);
     expect(out.map((p) => p.t)).toEqual([10_000, 20_000, 22_000]);
+  });
+
+  it("fills a stretch without polls (hidden tab) with stored samples", () => {
+    const polls = [pt(100_000), pt(102_000), pt(160_000), pt(162_000)];
+    const seed = [110, 120, 130, 140, 150].map((s) => pt(s * 1000, 50));
+    const out = seededLivePoints(seed, polls, 0);
+    expect(out.map((p) => p.t)).toEqual([
+      100_000, 102_000, 110_000, 120_000, 130_000, 140_000, 150_000, 160_000,
+      162_000,
+    ]);
+    expect(out.some(isBreak)).toBe(false);
+  });
+
+  it("ignores stored samples inside a run of polls", () => {
+    const polls = [pt(100_000), pt(102_000), pt(104_000)];
+    const out = seededLivePoints([pt(102_000, 99)], polls, 0);
+    expect(out).toEqual(polls);
+  });
+
+  it("keeps a break where neither polls nor stored samples cover", () => {
+    const polls = [pt(100_000), pt(102_000), pt(200_000)];
+    const seed = [pt(110_000), pt(120_000)];
+    const out = seededLivePoints(seed, polls, 0);
+    const breaks = out.filter(isBreak);
+    expect(breaks).toHaveLength(1);
+    expect(breaks[0].t).toBeGreaterThan(120_000);
+    expect(breaks[0].t).toBeLessThan(200_000);
+  });
+
+  it("keeps stored empty buckets as breaks inside a poll gap", () => {
+    const polls = [pt(100_000), pt(102_000), pt(140_000)];
+    const seed = [pt(110_000), pt(120_000, null), pt(130_000)];
+    const out = seededLivePoints(seed, polls, 0);
+    expect(out.map((p) => p.t)).toEqual([
+      100_000, 102_000, 110_000, 120_000, 130_000, 140_000,
+    ]);
+    expect(out.filter(isBreak).map((p) => p.t)).toEqual([120_000]);
   });
 
   it("breaks the line where stored samples end well before the first poll", () => {

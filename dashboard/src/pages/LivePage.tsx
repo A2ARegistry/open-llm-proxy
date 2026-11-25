@@ -1,7 +1,7 @@
 // [fork] W11: live view of the self-hosted box (throughput, queue, KV,
 // cache, CPU/RAM/GPU, temperatures, power). Live mode polls GET /api/live and
-// keeps ~10 min of points in the browser, seeded on load with the stored 10 s
-// samples of that window so a reload does not empty the charts; past ranges
+// keeps ~10 min of points in the browser, filled with the stored 10 s samples
+// of that window wherever it did not poll (before load, hidden tab); past ranges
 // read the stored history (GET /api/live/history) through LiveHistoryView.
 import { LiveGauge } from "../components/LiveGauge";
 import { LiveHistoryView } from "../components/LiveHistoryView";
@@ -36,6 +36,7 @@ import {
 import { LIVE_RANGES, historyPoints } from "../lib/liveHistory";
 import {
   LIVE_POLL_MS,
+  LIVE_SEED_REFRESH_MS,
   advanceLive,
   ratio,
   type LiveSeriesState,
@@ -83,8 +84,10 @@ export function LivePage() {
   });
   const history = stored.data ?? null;
 
-  // Stored samples of the live window, read once per visit so the charts
-  // start full. Not cached: a later visit needs the samples of its own window.
+  // Stored samples of the live window: the charts start full and stretches
+  // without polls (hidden tab, failed requests) fill in. Reread every minute
+  // and when the tab is shown again (the sampler writes ~1 min behind). Not
+  // cached: a later visit needs the samples of its own window.
   const seed = useQuery({
     queryKey: ["live-seed"],
     queryFn: () => {
@@ -92,7 +95,10 @@ export function LivePage() {
       return liveHistory(Math.floor(from / 1000), Math.ceil(to / 1000));
     },
     enabled: time.isLive,
-    staleTime: Infinity,
+    refetchInterval: LIVE_SEED_REFRESH_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    staleTime: LIVE_SEED_REFRESH_MS / 2,
     gcTime: 0,
     retry: false,
   });

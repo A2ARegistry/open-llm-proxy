@@ -10,6 +10,12 @@ export const LIVE_POLL_MS = 2000;
 export const LIVE_HISTORY_POINTS = 300;
 /** Longest interval still turned into a rate (2.5 polls). */
 export const LIVE_GAP_MS = 5000;
+/**
+ * How often the Live view rereads the stored samples of its window, so
+ * stretches it did not poll (hidden tab, failed requests) fill in. The
+ * sampler writes to D1 about once a minute.
+ */
+export const LIVE_SEED_REFRESH_MS = 60_000;
 
 export interface LivePoint {
   t: number;
