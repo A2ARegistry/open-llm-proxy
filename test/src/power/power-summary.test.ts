@@ -2,7 +2,6 @@
 import { describe, expect, it } from "vitest";
 import type { PowerSettings } from "~/src/power/power-settings";
 import {
-  cloudCostUsd,
   effectiveSeconds,
   idleFloor,
   projectUsd,
@@ -10,16 +9,7 @@ import {
   type PeriodRaw,
 } from "~/src/power/power-summary";
 
-const settings: PowerSettings = {
-  pricePerKwhUsd: 0.2,
-  overheadW: 10,
-  cloudReference: {
-    inputPer1m: 1,
-    outputPer1m: 4,
-    cacheReadPer1m: 0.1,
-    cacheWritePer1m: 0,
-  },
-};
+const settings: PowerSettings = { pricePerKwhUsd: 0.2, overheadW: 10 };
 const tokens = {
   input: 3_000_000,
   output: 1_000_000,
@@ -43,6 +33,9 @@ const raw: PeriodRaw[] = [
     measuredS: 1800,
     peakW: 60,
     tokens,
+    // 3M in at $1, 1M out at $4, 1M cache read at $0.1 (priced in SQL)
+    cloudUsd: 7.1,
+    unpricedRequests: 0,
   },
 ];
 
@@ -56,8 +49,8 @@ describe("summarize", () => {
     expect(totals.overheadKwh).toBeCloseTo(0.01);
     expect(totals.totalKwh).toBeCloseTo(0.03);
     expect(totals.electricityUsd).toBeCloseTo(0.006);
-    // stored input already excludes cached tokens: 3M in, 1M out, 1M cache read
-    expect(totals.cloudUsd).toBeCloseTo(3 * 1 + 1 * 4 + 1 * 0.1);
+    expect(totals.cloudUsd).toBeCloseTo(7.1);
+    expect(totals.unpricedRequests).toBe(0);
     expect(totals.savingsUsd).toBeCloseTo(7.1 - 0.006);
     expect(totals.peakW).toBe(60);
     expect(totals.electricityPer1mOutputUsd).toBeCloseTo(0.006);
@@ -74,6 +67,8 @@ describe("summarize", () => {
         measuredS: 100,
         peakW: 10,
         tokens: noTokens,
+        cloudUsd: 0,
+        unpricedRequests: 0,
       },
       {
         start: 100,
@@ -82,6 +77,8 @@ describe("summarize", () => {
         measuredS: 50,
         peakW: 40,
         tokens: noTokens,
+        cloudUsd: 0,
+        unpricedRequests: 0,
       },
     ];
     const { totals, periods } = summarize(two, 0, 10_000, {});
@@ -110,17 +107,45 @@ describe("summarize", () => {
     );
   });
 
-  it("null money without settings", () => {
+  it("null electricity money without a kWh price", () => {
     const { totals } = summarize(raw, 0, 10_000, {});
     expect(totals.totalKwh).toBeGreaterThan(0);
     expect(totals.overheadKwh).toBe(0);
     expect([
       totals.electricityUsd,
-      totals.cloudUsd,
       totals.savingsUsd,
       totals.electricityPer1mOutputUsd,
-      totals.cloudPer1mOutputUsd,
-    ]).toEqual([null, null, null, null, null]);
+    ]).toEqual([null, null, null]);
+    expect(totals.cloudUsd).toBeCloseTo(7.1);
+  });
+
+  it("no cloud figure when every request is unpriced", () => {
+    const { totals } = summarize(
+      [{ ...raw[0], cloudUsd: 0, unpricedRequests: tokens.requests }],
+      0,
+      10_000,
+      settings,
+    );
+    expect(totals.cloudUsd).toBeNull();
+    expect(totals.savingsUsd).toBeNull();
+    expect(totals.cloudPer1mOutputUsd).toBeNull();
+    expect(totals.unpricedRequests).toBe(tokens.requests);
+  });
+
+  it("partly priced keeps the priced figure and counts the rest", () => {
+    const two: PeriodRaw[] = [
+      { ...raw[0], end: 1800 },
+      {
+        ...raw[0],
+        start: 1800,
+        cloudUsd: 0,
+        unpricedRequests: tokens.requests,
+      },
+    ];
+    const { totals, periods } = summarize(two, 0, 10_000, settings);
+    expect(totals.cloudUsd).toBeCloseTo(7.1);
+    expect(totals.unpricedRequests).toBe(tokens.requests);
+    expect(periods[1].cloudUsd).toBeNull();
   });
 
   it("no measured seconds gives no estimate", () => {
@@ -140,7 +165,7 @@ describe("summarize", () => {
 
   it("no output tokens gives no per-1M figures", () => {
     const { totals } = summarize(
-      [{ ...raw[0], tokens: noTokens }],
+      [{ ...raw[0], tokens: noTokens, cloudUsd: 0 }],
       0,
       10_000,
       settings,
@@ -176,18 +201,6 @@ describe("effectiveSeconds", () => {
     expect(effectiveSeconds({ start: 0, end: 3600 }, null, 10_000)).toBe(0);
     expect(effectiveSeconds({ start: 0, end: 3600 }, 0, 600)).toBe(600);
     expect(effectiveSeconds({ start: 0, end: 3600 }, 5000, 10_000)).toBe(0);
-  });
-});
-
-describe("cloudCostUsd", () => {
-  it("prices stored input as uncached and cache tokens at cache rates", () => {
-    // tokens_input is stored with cache hits already removed (pi-ai parseChunkUsage)
-    expect(
-      cloudCostUsd(
-        { input: 1e6, output: 0, cacheRead: 9e6, cacheWrite: 5e5, requests: 1 },
-        { ...settings.cloudReference!, cacheWritePer1m: 2 },
-      ),
-    ).toBeCloseTo(1 + 0.9 + 1);
   });
 });
 

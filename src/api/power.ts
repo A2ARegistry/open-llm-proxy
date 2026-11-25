@@ -57,6 +57,7 @@ powerRouter.get("/", async (c) => {
     tz,
     dataStart: data.dataStart,
     settings: data.settings,
+    cloudRates: data.cloudRates,
     totals,
     days: periods,
     projectionUsd:
@@ -92,6 +93,7 @@ powerRouter.get("/months", async (c) => {
     tz,
     dataStart: data.dataStart,
     settings: data.settings,
+    cloudRates: data.cloudRates,
     // Each month on its own, so its gaps are filled from its own average.
     months: data.periods.map((p) => ({
       start: p.start,

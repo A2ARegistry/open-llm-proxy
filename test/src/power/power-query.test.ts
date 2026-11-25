@@ -43,6 +43,20 @@ async function host(
     .run();
 }
 
+async function price(
+  provider: string,
+  model: string,
+  rates: [number, number, number, number],
+) {
+  await env.DB.prepare(
+    `INSERT INTO model_pricing
+       (provider, model, input_per_1m, output_per_1m, cache_read_per_1m, cache_write_per_1m)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(provider, model, ...rates)
+    .run();
+}
+
 async function provider(org: string, name: string, settings: object) {
   await env.DB.prepare(
     "INSERT INTO provider_configs (id, organization_id, provider, config) VALUES (?, ?, ?, ?)",
@@ -88,6 +102,9 @@ beforeAll(async () => {
   await env.DB.exec(
     "CREATE TABLE IF NOT EXISTS tenant_settings (organization_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (organization_id, key));",
   );
+  await env.DB.exec(
+    "CREATE TABLE IF NOT EXISTS model_pricing (provider TEXT NOT NULL, model TEXT NOT NULL, input_per_1m REAL NOT NULL DEFAULT 0, output_per_1m REAL NOT NULL DEFAULT 0, cache_read_per_1m REAL NOT NULL DEFAULT 0, cache_write_per_1m REAL NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (provider, model));",
+  );
   await env.DB.exec("DROP TABLE IF EXISTS host_samples");
   const create = migration
     .split(";")
@@ -102,6 +119,7 @@ beforeEach(async () => {
     "request_metrics",
     "provider_configs",
     "tenant_settings",
+    "model_pricing",
   ]) {
     await env.DB.exec(`DELETE FROM ${t}`);
   }
@@ -228,6 +246,8 @@ describe("loadPowerData tokens", () => {
     await request(T0 + 900, { org: OTHER });
     await request(T0 + 100); // before the first host sample
     const { periods } = await loadPowerData(e, ORG, range, NOW);
+    expect(periods[0].unpricedRequests).toBe(2);
+    expect(periods[0].cloudUsd).toBe(0);
     expect(periods[0].tokens).toEqual({
       input: 2000,
       output: 400,
@@ -243,6 +263,52 @@ describe("loadPowerData tokens", () => {
     await request(T0 + 10, { provider: "elsewhere" });
     const { periods } = await loadPowerData(e, ORG, range, NOW);
     expect(periods[0].tokens.requests).toBe(0);
+  });
+});
+
+describe("loadPowerData cloud pricing", () => {
+  // each request: 1000 in, 200 out, 300 cache read, model 'm'
+  it("prices from the provider's '*' row", async () => {
+    await host(600, T0, 10);
+    await price("local-m5", "*", [1, 4, 0.1, 2]);
+    await request(T0 + 10);
+    await request(T0 + 20);
+    const data = await loadPowerData(e, ORG, range, NOW);
+    expect(data.periods[0].cloudUsd).toBeCloseTo(
+      (2 * (1000 * 1 + 200 * 4 + 300 * 0.1)) / 1e6,
+    );
+    expect(data.periods[0].unpricedRequests).toBe(0);
+    expect(data.cloudRates).toEqual([
+      {
+        provider: "local-m5",
+        model: "*",
+        inputPer1m: 1,
+        outputPer1m: 4,
+        cacheReadPer1m: 0.1,
+        cacheWritePer1m: 2,
+      },
+    ]);
+  });
+
+  it("an exact model row wins over '*'", async () => {
+    await host(600, T0, 10);
+    await price("local-m5", "*", [1, 4, 0.1, 0]);
+    await price("local-m5", "m", [2, 8, 0, 0]);
+    await request(T0 + 10);
+    const data = await loadPowerData(e, ORG, range, NOW);
+    expect(data.periods[0].cloudUsd).toBeCloseTo((1000 * 2 + 200 * 8) / 1e6);
+    expect(data.cloudRates.map((r) => r.model)).toEqual(["*", "m"]);
+  });
+
+  it("other providers' rates are not used or listed", async () => {
+    await host(600, T0, 10);
+    await price("openai", "*", [1, 1, 1, 1]);
+    await price("local-m5", "other", [1, 1, 1, 1]);
+    await request(T0 + 10);
+    const data = await loadPowerData(e, ORG, range, NOW);
+    expect(data.periods[0].unpricedRequests).toBe(1);
+    expect(data.periods[0].cloudUsd).toBe(0);
+    expect(data.cloudRates.map((r) => r.provider)).toEqual(["local-m5"]);
   });
 });
 
@@ -292,6 +358,7 @@ describe("loadPowerData without a host binding", () => {
       settings: { overheadW: 5 },
       dataStart: null,
       idleP10W: null,
+      cloudRates: [],
       periods: [
         {
           start: T0,
@@ -306,6 +373,8 @@ describe("loadPowerData without a host binding", () => {
             cacheWrite: 0,
             requests: 0,
           },
+          cloudUsd: 0,
+          unpricedRequests: 0,
         },
       ],
     });

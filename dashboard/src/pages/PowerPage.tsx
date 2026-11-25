@@ -21,10 +21,10 @@ import {
   type PowerPreset,
 } from "../lib/powerRange";
 import type {
+  CloudRate,
   PeriodTotals,
   PowerMonths,
   PowerReport,
-  PowerSettings,
 } from "../lib/powerTypes";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
@@ -50,18 +50,23 @@ function SettingsHint({ what }: { what: string }) {
   );
 }
 
+const fmtRate = (r: CloudRate) =>
+  `${r.provider}${r.model === "*" ? "" : ` / ${r.model}`}: $${r.inputPer1m} in / $${r.outputPer1m} out / $${r.cacheReadPer1m} cache read / $${r.cacheWritePer1m} cache write per 1M`;
+
 function CloudCard({
   totals,
-  settings,
+  rates,
 }: {
   totals: PowerReport["totals"];
-  settings: PowerSettings;
+  rates: CloudRate[];
 }) {
-  const ref = settings.cloudReference;
-  if (!ref) {
+  if (rates.length === 0) {
     return (
       <Card title="Box vs cloud">
-        <SettingsHint what="a cloud reference price" />
+        <p className="text-sm text-gray-500">
+          The box's provider has no rate in model pricing, so there is nothing
+          to compare against. Add a <code>model_pricing</code> row for it.
+        </p>
       </Card>
     );
   }
@@ -69,7 +74,7 @@ function CloudCard({
   return (
     <Card
       title="Box vs cloud"
-      subtitle={`Same tokens at ${ref.label || "the cloud reference price"}: $${ref.inputPer1m} in / $${ref.outputPer1m} out / $${ref.cacheReadPer1m} cache read / $${ref.cacheWritePer1m} cache write per 1M.`}
+      subtitle={`Same tokens at the model pricing rate. ${rates.map(fmtRate).join("; ")}.`}
     >
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard
@@ -97,6 +102,12 @@ function CloudCard({
         Electricity includes idle time, so a quiet period can cost more per
         token.
       </p>
+      {totals.unpricedRequests > 0 && (
+        <p className="mt-2 text-sm text-amber-700">
+          {totals.unpricedRequests} requests use a model with no rate in model
+          pricing and are left out of the cloud figure.
+        </p>
+      )}
       {totals.electricityUsd === null && (
         <div className="mt-2">
           <SettingsHint what="a price per kWh" />
@@ -326,7 +337,7 @@ export function PowerPage() {
             </p>
           )}
 
-          <CloudCard totals={t} settings={r.settings} />
+          <CloudCard totals={t} rates={r.cloudRates} />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card title="APU power" subtitle="Measured at the APU package.">
@@ -344,7 +355,7 @@ export function PowerPage() {
               {hasPrice ? (
                 <PowerDailyChart
                   days={r.days}
-                  showCloud={r.settings.cloudReference !== undefined}
+                  showCloud={r.cloudRates.length > 0}
                 />
               ) : (
                 <SettingsHint what="a price per kWh" />

@@ -1,6 +1,6 @@
 // [fork] W13: energy, electricity cost and cloud comparison from per-period sums.
 import type { Period } from "./periods";
-import type { CloudReference, PowerSettings } from "./power-settings";
+import type { PowerSettings } from "./power-settings";
 
 const WS_PER_KWH = 3.6e6;
 const HOURS_PER_MONTH = 730;
@@ -21,6 +21,10 @@ export interface PeriodRaw extends Period {
   measuredS: number;
   peakW: number | null;
   tokens: TokenSums;
+  /** The priced requests' tokens at their `model_pricing` rates, in USD. */
+  cloudUsd: number;
+  /** Requests whose provider/model has no `model_pricing` row. */
+  unpricedRequests: number;
 }
 
 export interface PowerTotals {
@@ -37,7 +41,10 @@ export interface PowerTotals {
   peakW: number | null;
   electricityUsd: number | null;
   tokens: TokenSums;
+  /** Null when no request in the range has a `model_pricing` rate. */
   cloudUsd: number | null;
+  /** Requests left out of `cloudUsd` because they have no rate. */
+  unpricedRequests: number;
   savingsUsd: number | null;
   electricityPer1mOutputUsd: number | null;
   cloudPer1mOutputUsd: number | null;
@@ -63,20 +70,6 @@ export function effectiveSeconds(
   return Math.max(0, Math.min(p.end, now) - Math.max(p.start, dataStart));
 }
 
-/**
- * What `t` would cost at `ref`. `input` is stored with cache hits and writes
- * already removed, so each count is billed at its own rate (as computeCostUsd).
- */
-export function cloudCostUsd(t: TokenSums, ref: CloudReference): number {
-  return (
-    (t.input * ref.inputPer1m +
-      t.output * ref.outputPer1m +
-      t.cacheRead * ref.cacheReadPer1m +
-      t.cacheWrite * ref.cacheWritePer1m) /
-    1e6
-  );
-}
-
 const per1mOutput = (usd: number | null, output: number) =>
   usd === null || output === 0 ? null : (usd / output) * 1e6;
 
@@ -88,6 +81,10 @@ const addTokens = (a: TokenSums, b: TokenSums): TokenSums => ({
   requests: a.requests + b.requests,
 });
 
+/** Cloud figure: null when every request is unpriced (no rate to use). */
+const cloudOrNull = (cloudUsd: number, tokens: TokenSums, unpriced: number) =>
+  unpriced > 0 && unpriced === tokens.requests ? null : cloudUsd;
+
 /** Totals for one set of sums; `fillW` is the watts gaps are estimated at. */
 function totalsOf(
   effectiveS: number,
@@ -95,6 +92,7 @@ function totalsOf(
   measuredS: number,
   peakW: number | null,
   tokens: TokenSums,
+  cloud: { usd: number; unpriced: number },
   fillW: number | null,
   s: PowerSettings,
 ): PowerTotals {
@@ -112,6 +110,7 @@ function totalsOf(
       electricityUsd: null,
       tokens: { ...EMPTY_TOKENS },
       cloudUsd: null,
+      unpricedRequests: 0,
       savingsUsd: null,
       electricityPer1mOutputUsd: null,
       cloudPer1mOutputUsd: null,
@@ -124,9 +123,7 @@ function totalsOf(
   const totalKwh = measuredKwh + estimatedKwh + overheadKwh;
   const electricityUsd =
     s.pricePerKwhUsd === undefined ? null : totalKwh * s.pricePerKwhUsd;
-  const cloudUsd = s.cloudReference
-    ? cloudCostUsd(tokens, s.cloudReference)
-    : null;
+  const cloudUsd = cloudOrNull(cloud.usd, tokens, cloud.unpriced);
   return {
     effectiveS,
     measuredS,
@@ -140,6 +137,7 @@ function totalsOf(
     electricityUsd,
     tokens,
     cloudUsd,
+    unpricedRequests: cloud.unpriced,
     savingsUsd:
       cloudUsd === null || electricityUsd === null
         ? null
@@ -171,6 +169,7 @@ export function summarize(
   let effectiveS = 0;
   let peakW: number | null = null;
   let tokens = { ...EMPTY_TOKENS };
+  const cloud = { usd: 0, unpriced: 0 };
   for (const p of live) {
     if (p.effectiveS === 0) continue;
     measuredWs += p.measuredWs;
@@ -178,6 +177,8 @@ export function summarize(
     effectiveS += p.effectiveS;
     peakW = maxOrNull(peakW, p.peakW);
     tokens = addTokens(tokens, p.tokens);
+    cloud.usd += p.cloudUsd;
+    cloud.unpriced += p.unpricedRequests;
   }
   const fillW = measuredS > 0 ? measuredWs / measuredS : null;
   return {
@@ -187,6 +188,7 @@ export function summarize(
       measuredS,
       peakW,
       tokens,
+      cloud,
       fillW,
       s,
     ),
@@ -199,6 +201,7 @@ export function summarize(
         p.measuredS,
         p.peakW,
         p.tokens,
+        { usd: p.cloudUsd, unpriced: p.unpricedRequests },
         fillW,
         s,
       ),
