@@ -9,6 +9,7 @@ import {
   ListTree,
   LogOut,
   Mail,
+  PlugZap,
   Settings,
   Users,
 } from "lucide-react";
@@ -39,6 +40,7 @@ const NAV = [
   { to: "/api-keys", label: "API Keys", icon: KeyRound },
   { to: "/analytics", label: "Analytics", icon: Activity },
   { to: "/live", label: "Live", icon: Gauge }, // [fork] W11
+  { to: "/power", label: "Power", icon: PlugZap }, // [fork] W13
   { to: "/requests", label: "Requests", icon: ListTree },
   { to: "/email", label: "Email", icon: Mail },
   { to: "/team", label: "Team", icon: Users },

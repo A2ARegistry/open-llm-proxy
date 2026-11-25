@@ -5,6 +5,7 @@ import { healthRouter } from "./api/health";
 import { keysRouter } from "./api/keys";
 import { liveRouter } from "./api/live";
 import { metricsRouter } from "./api/metrics";
+import { powerRouter } from "./api/power";
 import { providerConfigRouter } from "./api/provider-config";
 import { teamRouter } from "./api/team";
 import { tenantRouter } from "./api/tenant";
@@ -131,6 +132,22 @@ export function createApp(): Hono<AppBindings> {
   app.use("/api/live", sessionAuthMiddleware, requireOrgMember);
   app.use("/api/live/*", sessionAuthMiddleware, requireOrgMember);
   app.route("/api/live", liveRouter);
+
+  // [fork] W13: box electricity cost (Power page). Reads member+, settings
+  // writes owner/admin (adminWriteGuard here, requireAdmin in the router).
+  app.use(
+    "/api/power",
+    sessionAuthMiddleware,
+    requireOrgMember,
+    adminWriteGuard,
+  );
+  app.use(
+    "/api/power/*",
+    sessionAuthMiddleware,
+    requireOrgMember,
+    adminWriteGuard,
+  );
+  app.route("/api/power", powerRouter);
 
   // Tenant URL prefix (base URL) management: reads are member+, writes admin.
   app.use(
