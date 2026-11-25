@@ -1,5 +1,5 @@
 // [fork] W12: cron keeps the sampler alive, rolls up and prunes daily.
-import migration from "../../../migrations/0006_box_samples.sql?raw";
+import { createBoxTables } from "./box-schema";
 import { env, runInDurableObject } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { BOX_SAMPLER_NAME } from "~/src/durable/box-sampler";
@@ -54,18 +54,11 @@ async function count(resolution: number): Promise<number> {
 }
 
 beforeAll(async () => {
-  for (const table of [
+  await createBoxTables(env.DB, [
     "inference_samples",
     "host_samples",
     "throughput_rollups",
-  ]) {
-    await env.DB.exec(`DROP TABLE IF EXISTS ${table}`);
-    const create = migration
-      .split(";")
-      .map((s) => s.replace(/--.*$/gm, "").replace(/\s+/g, " ").trim())
-      .find((s) => s.startsWith(`CREATE TABLE ${table} `))!;
-    await env.DB.exec(create);
-  }
+  ]);
   await env.DB.exec(
     "CREATE TABLE IF NOT EXISTS request_metrics (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, user_id TEXT, api_key_id TEXT, timestamp INTEGER NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, method TEXT NOT NULL, status_code INTEGER NOT NULL, latency_ms INTEGER NOT NULL, tokens_input INTEGER, tokens_output INTEGER, tokens_cached INTEGER, tokens_cache_read INTEGER, tokens_cache_write INTEGER, cost_usd REAL, error_message TEXT, cache_hit INTEGER NOT NULL DEFAULT 0, ttft_ms INTEGER, decode_ms INTEGER);",
   );

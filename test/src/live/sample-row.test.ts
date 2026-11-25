@@ -39,6 +39,7 @@ function host(over: Partial<HostSnapshot> = {}): HostSnapshot {
     cpuSecondsTotal: 200,
     memTotalBytes: 1000,
     memAvailableBytes: 400,
+    memMappedBytes: 300,
     gpuBusyPercent: 30,
     gpuMemUsedBytes: 10,
     gpuMemTotalBytes: 100,
@@ -142,6 +143,7 @@ describe("toHostRow", () => {
     expect(row.cpu_busy_pct).toBe(60);
     expect(row.mem_used_bytes).toBe(600);
     expect(row.mem_total_bytes).toBe(1000);
+    expect(row.mem_in_use_bytes).toBe(900);
     expect(row).toMatchObject({
       binding: "BOX",
       ts: 10,
@@ -159,7 +161,19 @@ describe("toHostRow", () => {
   it("missing memory figures give null used bytes", () => {
     const row = toHostRow("BOX", 10, null, host({ memAvailableBytes: null }));
     expect(row.mem_used_bytes).toBeNull();
+    expect(row.mem_in_use_bytes).toBeNull();
     expect(row.cpu_busy_pct).toBeNull();
+  });
+
+  it("missing mapped bytes give null in-use bytes", () => {
+    const row = toHostRow("BOX", 10, null, host({ memMappedBytes: null }));
+    expect(row.mem_used_bytes).toBe(600);
+    expect(row.mem_in_use_bytes).toBeNull();
+  });
+
+  it("mapped bytes count only up to what is available", () => {
+    const row = toHostRow("BOX", 10, null, host({ memMappedBytes: 500 }));
+    expect(row.mem_in_use_bytes).toBe(1000);
   });
 
   it("gap longer than 25 s gives null cpu", () => {

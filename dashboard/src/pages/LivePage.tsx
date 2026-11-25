@@ -11,6 +11,7 @@ import {
   LiveThroughputChart,
   PREFILL_COLOR,
 } from "../components/LiveThroughputChart";
+import { RamBreakdownBar } from "../components/RamBreakdownBar";
 import { ThroughputStat } from "../components/ThroughputStat";
 import { TimeRangeControl } from "../components/TimeRangeControl";
 import { Badge, Card, EmptyState, Spinner, StatCard } from "../components/ui";
@@ -40,6 +41,7 @@ import {
   ratio,
   type LiveSeriesState,
 } from "../lib/liveSeries";
+import { ramBreakdown } from "../lib/ramBreakdown";
 import type { RangePreset } from "../lib/timeRange";
 import { useLiveRange } from "../lib/useLiveRange";
 import { useQuery } from "@tanstack/react-query";
@@ -164,10 +166,7 @@ export function LivePage() {
   const domain = liveWindow(snapshot.at);
   const tps = throughputStats(snapshot.throughput);
   const throughputEmpty = throughputEmptyTitle(snapshot.throughput);
-  const memUsed =
-    host?.memTotalBytes != null && host.memAvailableBytes != null
-      ? host.memTotalBytes - host.memAvailableBytes
-      : null;
+  const ram = host ? ramBreakdown(host) : null;
   const cacheRate = inf
     ? ratio(
         inf.cacheHitsTotal,
@@ -285,27 +284,26 @@ export function LivePage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="System vitals" subtitle={host ? undefined : UNAVAILABLE}>
           {host ? (
-            <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-4">
-              <LiveGauge label="CPU" percent={now?.cpuPercent ?? null} />
-              <LiveGauge
-                label="RAM"
-                percent={
-                  memUsed !== null && host.memTotalBytes
-                    ? (memUsed / host.memTotalBytes) * 100
-                    : null
-                }
-                hint={`${fmtGb(memUsed)} of ${fmtGb(host.memTotalBytes)}`}
-              />
-              <LiveGauge label="GPU" percent={host.gpuBusyPercent} />
-              <LiveGauge
-                label="GPU memory"
-                percent={
-                  host.gpuMemUsedBytes !== null && host.gpuMemTotalBytes
-                    ? (host.gpuMemUsedBytes / host.gpuMemTotalBytes) * 100
-                    : null
-                }
-                hint={`${fmtGb(host.gpuMemUsedBytes)} · shared pool`}
-              />
+            <div className="space-y-5 p-5">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <LiveGauge label="CPU" percent={now?.cpuPercent ?? null} />
+                <LiveGauge
+                  label="RAM"
+                  percent={ram?.inUsePercent ?? null}
+                  hint={`${fmtGb(ram?.inUseBytes ?? null)} of ${fmtGb(host.memTotalBytes)}`}
+                />
+                <LiveGauge label="GPU" percent={host.gpuBusyPercent} />
+                <LiveGauge
+                  label="GPU memory"
+                  percent={
+                    host.gpuMemUsedBytes !== null && host.gpuMemTotalBytes
+                      ? (host.gpuMemUsedBytes / host.gpuMemTotalBytes) * 100
+                      : null
+                  }
+                  hint={`${fmtGb(host.gpuMemUsedBytes)} · part of RAM`}
+                />
+              </div>
+              {ram && <RamBreakdownBar ram={ram} />}
             </div>
           ) : (
             <EmptyState title="Host metrics unavailable" />

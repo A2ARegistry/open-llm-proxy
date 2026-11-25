@@ -220,6 +220,7 @@ export interface HostSnapshot {
   cpuSecondsTotal: number | null;
   memTotalBytes: number | null;
   memAvailableBytes: number | null;
+  memMappedBytes: number | null;
   gpuBusyPercent: number | null;
   gpuMemUsedBytes: number | null;
   gpuMemTotalBytes: number | null;
@@ -262,6 +263,8 @@ export interface HostAvg {
   cpu_busy_pct: number | null;
   mem_used_bytes: number | null;
   mem_total_bytes: number | null;
+  /** Null for rows stored before migration 0007. */
+  mem_in_use_bytes: number | null;
   gpu_busy_pct: number | null;
   gpu_mem_used_bytes: number | null;
   gpu_mem_total_bytes: number | null;

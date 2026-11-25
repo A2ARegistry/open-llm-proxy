@@ -1,5 +1,5 @@
 // [fork] W12: sample store writes, rollup and prune.
-import migration from "../../../migrations/0006_box_samples.sql?raw";
+import { createBoxTables } from "./box-schema";
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -54,15 +54,7 @@ async function count(table: string, resolution: number): Promise<number> {
 }
 
 beforeAll(async () => {
-  for (const table of ["inference_samples", "host_samples"]) {
-    await env.DB.exec(`DROP TABLE IF EXISTS ${table}`);
-    // exec needs one statement per line.
-    const create = migration
-      .split(";")
-      .map((s) => s.replace(/--.*$/gm, "").replace(/\s+/g, " ").trim())
-      .find((s) => s.startsWith(`CREATE TABLE ${table} `))!;
-    await env.DB.exec(create);
-  }
+  await createBoxTables(env.DB, ["inference_samples", "host_samples"]);
 });
 
 beforeEach(async () => {

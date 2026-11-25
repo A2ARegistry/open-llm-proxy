@@ -1,5 +1,5 @@
 // [fork] W12: history and request-time sample reads.
-import migration from "../../../migrations/0006_box_samples.sql?raw";
+import { createBoxTables } from "./box-schema";
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { queryHistory, historyBucket, sampleAt } from "~/src/live/sample-query";
@@ -87,19 +87,11 @@ beforeAll(async () => {
   await env.DB.exec(
     "CREATE TABLE IF NOT EXISTS provider_configs (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, provider TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, config TEXT NOT NULL, UNIQUE(organization_id, provider));",
   );
-  for (const table of [
+  await createBoxTables(env.DB, [
     "inference_samples",
     "host_samples",
     "throughput_rollups",
-  ]) {
-    await env.DB.exec(`DROP TABLE IF EXISTS ${table}`);
-    // exec needs one statement per line.
-    const create = migration
-      .split(";")
-      .map((s) => s.replace(/--.*$/gm, "").replace(/\s+/g, " ").trim())
-      .find((s) => s.startsWith(`CREATE TABLE ${table} `))!;
-    await env.DB.exec(create);
-  }
+  ]);
 });
 
 beforeEach(async () => {

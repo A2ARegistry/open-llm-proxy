@@ -126,7 +126,7 @@ export function LiveHistoryView({
             <LiveGauge
               label="RAM"
               percent={sum.peakRamPct}
-              hint={`peak ${fmtGb(sum.peakRamBytes)}`}
+              hint={`peak ${fmtGb(sum.peakRamBytes)} in use`}
             />
             <LiveGauge label="GPU" percent={sum.peakGpuPct} />
             <LiveGauge

@@ -91,7 +91,7 @@ export interface RangeSummary {
   /** Highest per-bucket used / total GPU memory, in percent. */
   peakGpuMemPct: number | null;
   peakRamBytes: number | null;
-  /** Highest per-bucket used / total RAM, in percent. */
+  /** Highest per-bucket in-use (incl. model files) / total RAM, in percent. */
   peakRamPct: number | null;
   peakCpuTempC: number | null;
   peakGpuTempC: number | null;
@@ -127,7 +127,7 @@ function peakOf<T, K extends keyof T & string>(
  */
 function peakShareOf(
   series: Series<HostAvg> | null,
-  used: "mem_used_bytes" | "gpu_mem_used_bytes",
+  used: "mem_in_use_bytes" | "gpu_mem_used_bytes",
   total: "mem_total_bytes" | "gpu_mem_total_bytes",
 ): number | null {
   return peak(
@@ -170,8 +170,8 @@ export function summarize(h: LiveHistory): RangeSummary {
       "gpu_mem_used_bytes",
       "gpu_mem_total_bytes",
     ),
-    peakRamBytes: peakOf(host, "mem_used_bytes"),
-    peakRamPct: peakShareOf(host, "mem_used_bytes", "mem_total_bytes"),
+    peakRamBytes: peakOf(host, "mem_in_use_bytes"),
+    peakRamPct: peakShareOf(host, "mem_in_use_bytes", "mem_total_bytes"),
     peakCpuTempC: peakOf(host, "cpu_temp_c"),
     peakGpuTempC: peakOf(host, "gpu_temp_c"),
   };

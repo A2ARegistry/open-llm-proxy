@@ -1,8 +1,8 @@
 // [fork] W11: GET /api/live.
-import migration from "../../../migrations/0006_box_samples.sql?raw";
 import halogenHealth from "../../fixtures/live/halogen-health.json?raw";
 import halogenMetrics from "../../fixtures/live/halogen-metrics.txt?raw";
 import nodeMetrics from "../../fixtures/live/node-exporter-metrics.txt?raw";
+import { createBoxTables } from "../live/box-schema";
 import { env } from "cloudflare:test";
 import { Hono } from "hono";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -75,19 +75,11 @@ beforeAll(async () => {
     .run();
   await env.DB.exec("DROP TABLE IF EXISTS inference_samples");
   await env.DB.exec("DROP TABLE IF EXISTS host_samples");
-  await env.DB.exec("DROP TABLE IF EXISTS throughput_rollups");
-  for (const table of [
+  await createBoxTables(env.DB, [
     "inference_samples",
     "host_samples",
     "throughput_rollups",
-  ]) {
-    await env.DB.exec(
-      migration
-        .split(";")
-        .map((x) => x.replace(/--.*$/gm, "").replace(/\s+/g, " ").trim())
-        .find((x) => x.startsWith(`CREATE TABLE ${table} `))!,
-    );
-  }
+  ]);
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO request_metrics

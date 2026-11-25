@@ -1,8 +1,8 @@
 // [fork] W12: BoxSampler samples the box every 10 s and flushes to D1.
-import migration from "../../../migrations/0006_box_samples.sql?raw";
 import halogenHealth from "../../fixtures/live/halogen-health.json?raw";
 import halogenMetrics from "../../fixtures/live/halogen-metrics.txt?raw";
 import nodeMetrics from "../../fixtures/live/node-exporter-metrics.txt?raw";
+import { createBoxTables } from "../live/box-schema";
 import { env, runInDurableObject } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BoxSampler } from "~/src/durable/box-sampler";
@@ -82,14 +82,7 @@ function failingDb() {
 
 beforeAll(async () => {
   // exec needs one statement per line.
-  for (const table of ["inference_samples", "host_samples"]) {
-    await env.DB.exec(`DROP TABLE IF EXISTS ${table}`);
-    const create = migration
-      .split(";")
-      .map((s) => s.replace(/--.*$/gm, "").replace(/\s+/g, " ").trim())
-      .find((s) => s.startsWith(`CREATE TABLE ${table} `))!;
-    await env.DB.exec(create);
-  }
+  await createBoxTables(env.DB, ["inference_samples", "host_samples"]);
 });
 
 beforeEach(async () => {

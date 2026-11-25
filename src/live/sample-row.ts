@@ -34,6 +34,7 @@ export interface HostSampleRow {
   cpu_busy_pct: number | null;
   mem_used_bytes: number | null;
   mem_total_bytes: number | null;
+  mem_in_use_bytes: number | null;
   gpu_busy_pct: number | null;
   gpu_mem_used_bytes: number | null;
   gpu_mem_total_bytes: number | null;
@@ -68,6 +69,7 @@ export const HOST_COLUMNS: (keyof HostSampleRow)[] = [
   "cpu_busy_pct",
   "mem_used_bytes",
   "mem_total_bytes",
+  "mem_in_use_bytes",
   "gpu_busy_pct",
   "gpu_mem_used_bytes",
   "gpu_mem_total_bytes",
@@ -98,6 +100,17 @@ function interval(
   if (!prev) return 0;
   const s = (next.sampledAt - prev.sampledAt) / 1000;
   return s > 0 && s <= MAX_GAP_S ? s : 0;
+}
+
+/**
+ * RAM in use including mapped files (model weights). MemAvailable treats those
+ * pages as reclaimable; only the part that fits in MemAvailable is added.
+ */
+function memInUse(next: HostSnapshot): number | null {
+  const { memTotalBytes: total, memAvailableBytes: available } = next;
+  const mapped = next.memMappedBytes;
+  if (total == null || available == null || mapped == null) return null;
+  return total - available + Math.min(mapped, available);
 }
 
 function sum(a: number | null, b: number | null): number | null {
@@ -167,6 +180,7 @@ export function toHostRow(
       cpu_busy_pct: null,
       mem_used_bytes: null,
       mem_total_bytes: null,
+      mem_in_use_bytes: null,
       gpu_busy_pct: null,
       gpu_mem_used_bytes: null,
       gpu_mem_total_bytes: null,
@@ -193,6 +207,7 @@ export function toHostRow(
         ? null
         : next.memTotalBytes - next.memAvailableBytes,
     mem_total_bytes: next.memTotalBytes,
+    mem_in_use_bytes: memInUse(next),
     gpu_busy_pct: next.gpuBusyPercent,
     gpu_mem_used_bytes: next.gpuMemUsedBytes,
     gpu_mem_total_bytes: next.gpuMemTotalBytes,
