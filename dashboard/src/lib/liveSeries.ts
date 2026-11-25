@@ -22,6 +22,8 @@ export interface LivePoint {
   t: number;
   /** Requests waiting for a slot. */
   queued: number | null;
+  /** Seconds the oldest queued request has waited. */
+  longestWaitS: number | null;
   /** KV pool in use, 0-100. */
   kvPct: number | null;
   /** Prompt cache hits / lookups since the previous sample, 0-100. */
@@ -102,6 +104,7 @@ export function toPoint(
   return {
     t: next.at,
     queued: inf?.queued ?? null,
+    longestWaitS: inf?.longestWaitS ?? null,
     kvPct: inf?.kvUsageRatio == null ? null : inf.kvUsageRatio * 100,
     cacheHitPct:
       infRated && hits !== null && misses !== null

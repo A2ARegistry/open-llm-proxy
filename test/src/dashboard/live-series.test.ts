@@ -189,8 +189,9 @@ describe("ratio", () => {
 
 describe("toPoint inference and memory", () => {
   it("queue, KV and memory shares come from the latest snapshot", () => {
-    const p = toPoint(null, snap(2000, { queued: 2, kvUsageRatio: 0.25 }));
+    const p = toPoint(null, snap(2000, { queued: 2, longestWaitS: 12.2, kvUsageRatio: 0.25 }));
     expect(p.queued).toBe(2);
+    expect(p.longestWaitS).toBe(12.2);
     expect(p.kvPct).toBe(25);
     // in use = (128 - 64) + min(32, 64) = 96 of 128
     expect(p.ramPct).toBe(75);

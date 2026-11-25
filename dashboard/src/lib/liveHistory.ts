@@ -32,6 +32,7 @@ const EMPTY_POINT = (t: number): HistoryPoint => ({
   decodeTps: null,
   prefillTps: null,
   queued: null,
+  longestWaitS: null,
   kvPct: null,
   cacheHitPct: null,
   draftPct: null,
@@ -68,7 +69,8 @@ export function historyPoints(h: LiveHistory): HistoryPoint[] {
     ...throughput.keys(),
   ]);
   for (const ts of stamps) {
-    const infAvg = inference.get(ts)?.avg;
+    const inf = inference.get(ts);
+    const infAvg = inf?.avg;
     const hostAvg = host.get(ts)?.avg;
     const tp = throughput.get(ts);
     stored.push({
@@ -76,6 +78,8 @@ export function historyPoints(h: LiveHistory): HistoryPoint[] {
       decodeTps: tp?.decodeTps ?? null,
       prefillTps: tp?.prefillTps ?? null,
       queued: infAvg?.queued ?? null,
+      // Peak, not average: a 10-minute rollup's mean wait hides a long one.
+      longestWaitS: inf?.max.longest_wait_s ?? infAvg?.longest_wait_s ?? null,
       kvPct: pct(infAvg?.kv_usage_ratio ?? null),
       cacheHitPct: pct(infAvg?.cache_hit_ratio ?? null),
       draftPct: pct(infAvg?.draft_accept_ratio ?? null),

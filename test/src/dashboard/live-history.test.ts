@@ -127,6 +127,7 @@ describe("historyPoints", () => {
       decodeTps: 0,
       prefillTps: 9,
       queued: 2,
+      longestWaitS: null,
       kvPct: 80,
       cacheHitPct: 97,
       draftPct: 50,
@@ -218,6 +219,30 @@ describe("historyPoints inference-only buckets", () => {
     expect(pts[2].queued).toBe(1);
     expect(pts[2].ramPct).toBeNull();
     expect(pts[0].queued).toBeNull();
+  });
+});
+
+describe("historyPoints longest wait", () => {
+  const row = (ts: number, avg: number | null, max: number | null) => ({
+    ts,
+    ok: 1,
+    samples: null,
+    avg: inf({ longest_wait_s: avg }),
+    max: max === null ? {} : { longest_wait_s: max },
+  });
+
+  it("charts the bucket's peak wait, else its average", () => {
+    const pts = historyPoints(
+      history({
+        inference: {
+          binding: "i",
+          points: [row(1000, 2, 12.2), row(1010, 3, null)],
+        },
+      }),
+    );
+    expect(pts[0].longestWaitS).toBe(12.2);
+    expect(pts[1].longestWaitS).toBe(3);
+    expect(pts[2].longestWaitS).toBeNull();
   });
 });
 
