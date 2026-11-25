@@ -32,7 +32,12 @@ import {
   requestsQuery,
   STATUS_OPTIONS,
 } from "../lib/requestExplorer";
-import { RANGE_PRESETS, RangePreset, rangeWindow } from "../lib/timeRange";
+import {
+  ALL_RANGES,
+  RANGE_PRESETS,
+  RangePreset,
+  rangeWindow,
+} from "../lib/timeRange";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -153,7 +158,9 @@ export function RequestsPage() {
               onChange={(v) =>
                 update({ range: v as RangePreset, page: 1, requestId: null })
               }
-              options={RANGE_PRESETS.map((r) => ({
+              options={RANGE_PRESETS.filter((r) =>
+                ALL_RANGES.includes(r.value),
+              ).map((r) => ({
                 value: r.value,
                 label: r.label,
               }))}

@@ -1,4 +1,4 @@
-import { apiGet, RequestDetail } from "../lib/api";
+import { apiGet, liveAt, RequestDetail, SampleAt } from "../lib/api";
 import {
   fmtDateTime,
   fmtMs,
@@ -7,6 +7,7 @@ import {
   fmtUsdPrecise,
   rowDecodeTps,
 } from "../lib/format";
+import { smallestLivePreset } from "../lib/liveRangeFor";
 import { NO_API_KEY } from "../lib/requestExplorer";
 import { RequestCacheBadge } from "./RequestCacheBadge";
 import { RequestStatusBadge } from "./RequestStatusBadge";
@@ -14,6 +15,7 @@ import { Badge, EmptyState, Spinner } from "./ui";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { ReactNode, useEffect } from "react";
+import { Link } from "react-router-dom";
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -59,6 +61,46 @@ function prefillTps(r: RequestDetail): number | null {
   return (r.tokens_input * 1000) / r.ttft_ms;
 }
 
+const dash = (v: number | null | undefined, fmt: (n: number) => string) =>
+  v === null || v === undefined ? "—" : fmt(v);
+
+function BoxAtThatTime({ s, tsSeconds }: { s: SampleAt; tsSeconds: number }) {
+  const inf = s.inference;
+  const host = s.host;
+  const whole = (n: number) => String(Math.round(n));
+  const deg = (n: number) => `${Math.round(n)} °C`;
+  const inFlightQueued =
+    inf && (inf.in_flight !== null || inf.queued !== null)
+      ? `${inf.in_flight ?? "—"} / ${inf.queued ?? "—"}`
+      : "—";
+  const range = smallestLivePreset(tsSeconds, Date.now());
+
+  return (
+    <div className="space-y-1">
+      <Section title="Box at that time">
+        <Field label="In flight / queued">{inFlightQueued}</Field>
+        <Field label="KV cache">
+          {dash(inf?.kv_usage_ratio, (n) => `${whole(n * 100)}%`)}
+        </Field>
+        <Field label="GPU busy">
+          {dash(host?.gpu_busy_pct, (n) => `${whole(n)}%`)}
+        </Field>
+        <Field label="CPU temp">{dash(host?.cpu_temp_c, deg)}</Field>
+        <Field label="GPU temp">{dash(host?.gpu_temp_c, deg)}</Field>
+      </Section>
+      {s.resolutionS === 600 && (
+        <p className="text-xs text-gray-400">(10 min average)</p>
+      )}
+      <Link
+        to={`/live?range=${range}`}
+        className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+      >
+        Open on Live
+      </Link>
+    </div>
+  );
+}
+
 function DetailBody({
   r,
   onFilter,
@@ -71,6 +113,11 @@ function DetailBody({
   const cacheRead = r.tokens_cache_read ?? 0;
   const cacheWrite = r.tokens_cache_write ?? 0;
   const output = r.tokens_output ?? 0;
+  const box = useQuery({
+    queryKey: ["live-at", r.id],
+    queryFn: () => liveAt(r.id),
+    staleTime: Infinity,
+  });
 
   return (
     <div className="space-y-6">
@@ -182,6 +229,8 @@ function DetailBody({
           </span>
         </Field>
       </Section>
+
+      {box.data && <BoxAtThatTime s={box.data} tsSeconds={r.timestamp} />}
     </div>
   );
 }

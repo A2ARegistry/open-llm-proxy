@@ -234,6 +234,83 @@ export interface LiveSnapshot {
   inference: InferenceSnapshot | null;
   host: HostSnapshot | null;
   lastRequest: RequestRow | null;
+  /** Request throughput of the last 10 minutes, one point per 10 s (idle = 0). */
+  throughput: ThroughputPoint[];
+}
+
+export interface ThroughputPoint {
+  ts: number;
+  decodeTps: number;
+  prefillTps: number;
+}
+
+// [fork] W12: stored box history (mirrors src/live/sample-query.ts).
+export interface InferenceAvg {
+  slots: number | null;
+  version: string | null;
+  in_flight: number | null;
+  queued: number | null;
+  longest_wait_s: number | null;
+  kv_usage_ratio: number | null;
+  kv_reserved_tokens: number | null;
+  cache_hit_ratio: number | null;
+  cache_saved_tps: number | null;
+  draft_accept_ratio: number | null;
+}
+
+export interface HostAvg {
+  cpu_busy_pct: number | null;
+  mem_used_bytes: number | null;
+  mem_total_bytes: number | null;
+  gpu_busy_pct: number | null;
+  gpu_mem_used_bytes: number | null;
+  gpu_mem_total_bytes: number | null;
+  cpu_temp_c: number | null;
+  gpu_temp_c: number | null;
+  ssd_temp_c: number | null;
+  gpu_power_w: number | null;
+}
+
+export interface SeriesPoint<T> {
+  ts: number;
+  ok: 0 | 1;
+  /** Raw rows ok in the bucket (10-minute rows only). */
+  samples: number | null;
+  avg: T;
+  /** `*_max` columns without the suffix; empty for raw 10 s rows. */
+  max: Partial<T>;
+}
+
+export interface ThroughputSeriesPoint {
+  ts: number;
+  decodeTps: number;
+  prefillTps: number;
+  decodeTpsMax: number | null;
+  prefillTpsMax: number | null;
+}
+
+export interface Series<T> {
+  binding: string;
+  points: SeriesPoint<T>[];
+}
+
+export interface LiveHistory {
+  from: number;
+  to: number;
+  bucketS: number;
+  inference: Series<InferenceAvg> | null;
+  host: Series<HostAvg> | null;
+  throughput: ThroughputSeriesPoint[];
+}
+
+export interface SampleAt {
+  /** The inference binding of the request's provider. */
+  binding: string;
+  /** Timestamp of the stored row that was picked. */
+  ts: number;
+  resolutionS: 10 | 600;
+  inference: InferenceAvg | null;
+  host: HostAvg | null;
 }
 
 /** A request row plus its key and user (GET /api/metrics/requests/:id). */
@@ -333,4 +410,17 @@ export async function apiSend<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   return parse<T>(res);
+}
+
+/** GET /api/live/history: stored box history for [from, to) in unix seconds. */
+export function liveHistory(from: number, to: number): Promise<LiveHistory> {
+  return apiGet<LiveHistory>(`/api/live/history?from=${from}&to=${to}`);
+}
+
+/** GET /api/live/at: the box state around one request, or null if none stored. */
+export async function liveAt(requestId: string): Promise<SampleAt | null> {
+  const body = await apiGet<{ sample: SampleAt | null }>(
+    `/api/live/at?request=${encodeURIComponent(requestId)}`,
+  );
+  return body.sample;
 }

@@ -6,6 +6,7 @@ import {
   hostBinding,
   hostMetricsBindingNames,
   inferenceBinding,
+  samplerBindings,
 } from "~/src/live/sources";
 
 const ORG = "org_live";
@@ -101,5 +102,35 @@ describe("fetchLiveText", () => {
     await vi.advanceTimersByTimeAsync(LIVE_TIMEOUT_MS);
     expect(await pending).toBeNull();
     expect(LIVE_TIMEOUT_MS).toBe(2000);
+  });
+});
+
+describe("samplerBindings", () => {
+  it("samples allowlisted bound vpc bindings", () => {
+    const halogen = fetcher();
+    const other = fetcher();
+    const env = {
+      VPC_BINDINGS: `HALOGEN:${ORG},OTHER`,
+      HALOGEN: halogen,
+      OTHER: other,
+    };
+    expect(samplerBindings(env).inference).toEqual([
+      { name: "HALOGEN", fetcher: halogen },
+    ]);
+  });
+
+  it("skips unbound", () => {
+    expect(samplerBindings({ VPC_BINDINGS: `HALOGEN:${ORG}` })).toEqual({
+      inference: [],
+      host: [],
+    });
+  });
+
+  it("host bindings", () => {
+    const box = fetcher();
+    const env = { HOST_METRICS_BINDINGS: `BOXSTATS:${ORG}`, BOXSTATS: box };
+    expect(samplerBindings(env).host).toEqual([
+      { name: "BOXSTATS", fetcher: box },
+    ]);
   });
 });

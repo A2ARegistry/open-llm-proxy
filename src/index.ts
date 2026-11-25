@@ -1,15 +1,18 @@
 import { runAlertChecks } from "./alerts/evaluator";
 import { createApp } from "./app";
+import { BoxSampler } from "./durable/box-sampler";
 import { MetricsBuffer } from "./durable/metrics-buffer";
 import { RateLimiter } from "./durable/rate-limiter";
 import { ResponseCache } from "./durable/response-cache";
 import { SessionManager } from "./durable/session-manager";
 import { checkUpstreams } from "./health/upstream-health";
+import { runHistoryMaintenance } from "./live/history-cron";
 import { sha256Hex } from "./utils/crypto";
 import { initLogger } from "./utils/logger";
 // Cloudflare Durable Objects
 import { EmailingCacheDO } from "@contentgrowth/content-emailing/backend/EmailingCacheDO.js";
 
+export { BoxSampler };
 export { MetricsBuffer };
 export { RateLimiter };
 export { ResponseCache };
@@ -84,5 +87,6 @@ export default {
     initLogger(env);
     ctx.waitUntil(runAlertChecks(env));
     ctx.waitUntil(checkUpstreams(env)); // [fork] W7
+    ctx.waitUntil(runHistoryMaintenance(env, Date.now())); // [fork] W12
   },
 } satisfies ExportedHandler<Env>;

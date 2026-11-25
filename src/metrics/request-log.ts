@@ -181,18 +181,19 @@ export async function listRequests(
   };
 }
 
-/** [fork] W11: the org's most recent request row, or null when it has none. */
-export async function latestRequest(
+/**
+ * [fork] W11: the org's most recent request row (null when it has none), as a
+ * statement for the caller's own `DB.batch`.
+ */
+export function latestRequestStatement(
   env: Env,
   organizationId: string,
-): Promise<RequestLogRow | null> {
+): D1PreparedStatement {
   return env.DB.prepare(
     `SELECT ${ROW_COLUMNS} FROM request_metrics m
      WHERE m.organization_id = ?
      ORDER BY m.timestamp DESC, m.id DESC LIMIT 1`,
-  )
-    .bind(organizationId)
-    .first<RequestLogRow>();
+  ).bind(organizationId);
 }
 
 /** One request row with its key and user, or null if not in this org. */

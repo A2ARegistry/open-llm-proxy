@@ -1,6 +1,9 @@
-// [fork] W11: turns /api/live snapshots into chart points. Rates come from
+// [fork] W11: turns /api/live snapshots into chart points. CPU use comes from
 // counter deltas between two snapshots; a counter that went down (server
 // restart) or no elapsed time gives a gap (null), never a negative value.
+// Token throughput is not derived here: the box's token counters only move
+// when a request finishes, so deltas draw one spike per request. It comes
+// from the request log (`snapshot.throughput`).
 import type { LiveSnapshot } from "./api";
 
 export const LIVE_POLL_MS = 2000;
@@ -10,8 +13,6 @@ export const LIVE_GAP_MS = 5000;
 
 export interface LivePoint {
   t: number;
-  decodeTps: number | null;
-  prefillTps: number | null;
   cpuPercent: number | null;
   gpuBusyPercent: number | null;
   cpuTempC: number | null;
@@ -26,15 +27,6 @@ function delta(
 ): number | null {
   if (prev == null || next == null || next < prev) return null;
   return next - prev;
-}
-
-function perSecond(
-  prev: number | null | undefined,
-  next: number | null | undefined,
-  seconds: number,
-): number | null {
-  const d = delta(prev, next);
-  return d === null || seconds <= 0 ? null : d / seconds;
 }
 
 /** `num / den`, or null when either is missing or `den` is 0. */
@@ -62,11 +54,8 @@ export function toPoint(
   prev: LiveSnapshot | null,
   next: LiveSnapshot,
 ): LivePoint {
-  const inf = next.inference;
-  const prevInf = prev?.inference;
   const host = next.host;
   const prevHost = prev?.host;
-  const infSeconds = interval(prevInf, inf);
 
   const hostSeconds = interval(prevHost, host);
   const idle = delta(prevHost?.cpuIdleSecondsTotal, host?.cpuIdleSecondsTotal);
@@ -75,16 +64,6 @@ export function toPoint(
 
   return {
     t: next.at,
-    decodeTps: perSecond(
-      prevInf?.predictedTokensTotal,
-      inf?.predictedTokensTotal,
-      infSeconds,
-    ),
-    prefillTps: perSecond(
-      prevInf?.promptTokensTotal,
-      inf?.promptTokensTotal,
-      infSeconds,
-    ),
     cpuPercent: idleShare === null ? null : 100 * (1 - idleShare),
     gpuBusyPercent: host?.gpuBusyPercent ?? null,
     cpuTempC: host?.cpuTempC ?? null,

@@ -62,6 +62,34 @@ export function hostBinding(
   return firstBound(env, hostMetricsBindingNames(env, organizationId));
 }
 
+function bound(env: object, names: string[]): LiveBinding[] {
+  const bindings = env as Record<string, Partial<UpstreamFetcher> | undefined>;
+  return names.flatMap((name) => {
+    const binding = bindings[name];
+    return typeof binding?.fetch === "function"
+      ? [{ name, fetcher: binding as UpstreamFetcher }]
+      : [];
+  });
+}
+
+// [fork] W12: the bindings the background sampler reads. A VPC binding with an
+// empty allowlist entry (bare name) permits nobody, so it is not sampled.
+export function samplerBindings(env: object): {
+  inference: LiveBinding[];
+  host: LiveBinding[];
+} {
+  const allowlist = parseAllowlist(
+    (env as Record<string, unknown>).VPC_BINDINGS,
+  );
+  const allowed = vpcBindingNames(env).filter(
+    (name) => allowlist.get(name)!.length > 0,
+  );
+  return {
+    inference: bound(env, allowed),
+    host: bound(env, hostMetricsBindingNames(env)),
+  };
+}
+
 /** GET a fixed path through `fetcher`; null on non-2xx, network error or timeout. */
 export async function fetchLiveText(
   fetcher: UpstreamFetcher,

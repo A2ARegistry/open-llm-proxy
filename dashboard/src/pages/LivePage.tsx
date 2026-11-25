@@ -1,9 +1,14 @@
 // [fork] W11: live view of the self-hosted box (throughput, queue, KV,
-// cache, CPU/RAM/GPU, temperatures, power). Polls GET /api/live; history
-// lives only in this page's memory.
+// cache, CPU/RAM/GPU, temperatures, power). Live mode polls GET /api/live and
+// keeps ~10 min of points in the browser; past ranges read the stored history
+// (GET /api/live/history) through LiveHistoryView.
 import { LiveGauge } from "../components/LiveGauge";
+import { LiveHistoryView } from "../components/LiveHistoryView";
+import { LiveTempChart } from "../components/LiveTempChart";
+import { LiveThroughputChart } from "../components/LiveThroughputChart";
+import { TimeRangeControl } from "../components/TimeRangeControl";
 import { Badge, Card, EmptyState, Spinner, StatCard } from "../components/ui";
-import { apiGet, type LiveSnapshot } from "../lib/api";
+import { apiGet, liveHistory, type LiveSnapshot } from "../lib/api";
 import {
   fmtCount,
   fmtDateTime,
@@ -14,32 +19,30 @@ import {
   rowDecodeTps,
 } from "../lib/format";
 import {
+  fmtC,
+  fmtGb,
+  liveWindow,
+  throughputEmptyTitle,
+  throughputPoints,
+  throughputStats,
+  withGaps,
+} from "../lib/liveChart";
+import { LIVE_RANGES, historyPoints } from "../lib/liveHistory";
+import {
+  LIVE_GAP_MS,
   LIVE_POLL_MS,
   advanceLive,
   ratio,
-  type LivePoint,
   type LiveSeriesState,
 } from "../lib/liveSeries";
+import type { RangePreset } from "../lib/timeRange";
+import { useLiveRange } from "../lib/useLiveRange";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { useEffect, useMemo, useState } from "react";
 
 const UNAVAILABLE = "Unavailable";
-
-function fmtGb(bytes: number | null): string {
-  return bytes === null ? "—" : `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
+const PRESETS = LIVE_RANGES.filter((r): r is RangePreset => r !== "live");
+const LIVE_OPTION = { value: "live", label: "Live" };
 
 function fmtClock(t: number): string {
   return new Date(t).toLocaleTimeString([], {
@@ -49,34 +52,17 @@ function fmtClock(t: number): string {
   });
 }
 
-function fmtC(value: number | null): string {
-  return value === null ? "—" : `${Math.round(value)} °C`;
-}
-
-function peak(
-  points: LivePoint[],
-  key: "decodeTps" | "prefillTps",
-): number | null {
-  const values = points
-    .map((p) => p[key])
-    .filter((v): v is number => v !== null);
-  return values.length ? Math.max(...values) : null;
-}
-
-function latest(points: LivePoint[]): LivePoint | null {
-  return points.length ? points[points.length - 1] : null;
-}
-
 export function LivePage() {
+  const time = useLiveRange();
   const [series, setSeries] = useState<LiveSeriesState>({
     prev: null,
     points: [],
   });
-  const points = series.points;
 
   const live = useQuery({
     queryKey: ["live"],
     queryFn: () => apiGet<{ snapshot: LiveSnapshot }>("/api/live"),
+    enabled: time.isLive,
     refetchInterval: LIVE_POLL_MS,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
@@ -84,25 +70,76 @@ export function LivePage() {
   });
   const snapshot = live.data?.snapshot ?? null;
 
+  const stored = useQuery({
+    queryKey: ["live-history", time.start, time.end, time.refreshes],
+    queryFn: () => liveHistory(time.start, time.end),
+    enabled: !time.isLive,
+    staleTime: Infinity,
+  });
+  const history = stored.data ?? null;
+
   useEffect(() => {
     if (snapshot) setSeries((current) => advanceLive(current, snapshot));
   }, [snapshot]);
 
+  const livePoints = useMemo(
+    () => withGaps(series.points, LIVE_GAP_MS),
+    [series.points],
+  );
+  const historyData = useMemo(
+    () => (history ? historyPoints(history) : []),
+    [history],
+  );
+
+  const control = (
+    <TimeRangeControl
+      time={{
+        range: time.range,
+        setRange: time.setRange,
+        refresh: time.isLive ? () => void live.refetch() : time.refresh,
+      }}
+      allowed={PRESETS}
+      leading={LIVE_OPTION}
+      refreshing={time.isLive ? live.isFetching : stored.isFetching}
+    />
+  );
+
+  if (!time.isLive) {
+    return (
+      <LiveHistoryView
+        control={control}
+        loading={stored.isLoading}
+        error={stored.error}
+        history={history}
+        data={historyData}
+        domain={[time.start * 1000, time.end * 1000]}
+      />
+    );
+  }
+
   if (live.isLoading) return <Spinner />;
   if (!snapshot) {
     return (
-      <EmptyState
-        title="Live data unavailable"
-        description={
-          live.error instanceof Error ? live.error.message : undefined
-        }
-      />
+      <div className="space-y-6">
+        <div className="flex justify-end">{control}</div>
+        <EmptyState
+          title="Live data unavailable"
+          description={
+            live.error instanceof Error ? live.error.message : undefined
+          }
+        />
+      </div>
     );
   }
 
   const inf = snapshot.inference;
   const host = snapshot.host;
-  const now = latest(points);
+  const now = series.points.length
+    ? series.points[series.points.length - 1]
+    : null;
+  const domain = liveWindow(snapshot.at);
+  const tps = throughputStats(snapshot.throughput);
+  const throughputEmpty = throughputEmptyTitle(snapshot.throughput);
   const memUsed =
     host?.memTotalBytes != null && host.memAvailableBytes != null
       ? host.memTotalBytes - host.memAvailableBytes
@@ -119,7 +156,6 @@ export function LivePage() {
     ? ratio(inf.draftAcceptedTotal, inf.draftTokensTotal)
     : null;
   const last = snapshot.lastRequest;
-  const chartData = points.map((p) => ({ ...p, label: fmtClock(p.t) }));
 
   return (
     <div className="space-y-6">
@@ -128,7 +164,8 @@ export function LivePage() {
           <h1 className="text-2xl font-semibold text-gray-900">Live</h1>
           <p className="text-sm text-gray-500">
             Throughput, capacity and hardware of the self-hosted server, every{" "}
-            {LIVE_POLL_MS / 1000} s. History is kept while this page is open.
+            {LIVE_POLL_MS / 1000} s. This view keeps the last ~10 min; pick a
+            range for stored history.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -138,63 +175,25 @@ export function LivePage() {
               ? "Connection lost"
               : `Updated ${fmtClock(snapshot.at)}`}
           </Badge>
+          {control}
         </div>
       </div>
 
       <Card
         title="Aggregate throughput"
         subtitle={
-          inf
-            ? `Decode ${fmtTps(now?.decodeTps)} (peak ${fmtTps(peak(points, "decodeTps"))}) · Prefill ${fmtTps(now?.prefillTps)} (peak ${fmtTps(peak(points, "prefillTps"))})`
-            : UNAVAILABLE
+          throughputEmpty === null
+            ? `Decode ${fmtTps(tps.decodeNow)} (peak ${fmtTps(tps.decodePeak)}) · Prefill ${fmtTps(tps.prefillNow)} (peak ${fmtTps(tps.prefillPeak)}) · from finished requests, 10 s buckets`
+            : undefined
         }
       >
-        {inf ? (
-          <ResponsiveContainer width="100%" height={240}>
-            <AreaChart
-              data={chartData}
-              margin={{ top: 5, right: 10, bottom: 0, left: -10 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis
-                dataKey="label"
-                tick={{ fontSize: 11 }}
-                interval="preserveStartEnd"
-                minTickGap={40}
-              />
-              <YAxis yAxisId="decode" tick={{ fontSize: 11 }} />
-              <YAxis
-                yAxisId="prefill"
-                orientation="right"
-                tick={{ fontSize: 11 }}
-              />
-              <Tooltip formatter={(v) => fmtTps(Number(v))} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Area
-                yAxisId="decode"
-                type="monotone"
-                dataKey="decodeTps"
-                name="Decode"
-                stroke="#f59e0b"
-                fill="#fde68a"
-                isAnimationActive={false}
-                connectNulls={false}
-              />
-              <Area
-                yAxisId="prefill"
-                type="monotone"
-                dataKey="prefillTps"
-                name="Prefill"
-                stroke="#3b82f6"
-                fill="#bfdbfe"
-                fillOpacity={0.4}
-                isAnimationActive={false}
-                connectNulls={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+        {throughputEmpty === null ? (
+          <LiveThroughputChart
+            data={throughputPoints(snapshot.throughput)}
+            domain={domain}
+          />
         ) : (
-          <EmptyState title="Inference server unavailable" />
+          <EmptyState title={throughputEmpty} />
         )}
       </Card>
 
@@ -280,62 +279,7 @@ export function LivePage() {
           }
         >
           {host ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart
-                data={chartData}
-                margin={{ top: 5, right: 10, bottom: 0, left: -10 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 11 }}
-                  interval="preserveStartEnd"
-                  minTickGap={40}
-                />
-                <YAxis yAxisId="c" tick={{ fontSize: 11 }} unit="°" />
-                <YAxis
-                  yAxisId="w"
-                  orientation="right"
-                  tick={{ fontSize: 11 }}
-                  unit="W"
-                />
-                <Tooltip />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line
-                  yAxisId="c"
-                  dataKey="cpuTempC"
-                  name="CPU °C"
-                  stroke="#ef4444"
-                  dot={false}
-                  isAnimationActive={false}
-                />
-                <Line
-                  yAxisId="c"
-                  dataKey="gpuTempC"
-                  name="GPU °C"
-                  stroke="#f59e0b"
-                  dot={false}
-                  isAnimationActive={false}
-                />
-                <Line
-                  yAxisId="c"
-                  dataKey="ssdTempC"
-                  name="SSD °C"
-                  stroke="#10b981"
-                  dot={false}
-                  isAnimationActive={false}
-                />
-                <Line
-                  yAxisId="w"
-                  dataKey="gpuPowerW"
-                  name="APU W"
-                  stroke="#6366f1"
-                  strokeDasharray="4 2"
-                  dot={false}
-                  isAnimationActive={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <LiveTempChart data={livePoints} domain={domain} />
           ) : (
             <EmptyState title="Host metrics unavailable" />
           )}
