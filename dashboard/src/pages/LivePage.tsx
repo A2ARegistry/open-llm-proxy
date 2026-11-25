@@ -1,7 +1,8 @@
 // [fork] W11: live view of the self-hosted box (throughput, queue, KV,
 // cache, CPU/RAM/GPU, temperatures, power). Live mode polls GET /api/live and
-// keeps ~10 min of points in the browser; past ranges read the stored history
-// (GET /api/live/history) through LiveHistoryView.
+// keeps ~10 min of points in the browser, seeded on load with the stored 10 s
+// samples of that window so a reload does not empty the charts; past ranges
+// read the stored history (GET /api/live/history) through LiveHistoryView.
 import { LiveGauge } from "../components/LiveGauge";
 import { LiveHistoryView } from "../components/LiveHistoryView";
 import { LiveTempChart } from "../components/LiveTempChart";
@@ -22,14 +23,13 @@ import {
   fmtC,
   fmtGb,
   liveWindow,
+  seededLivePoints,
   throughputEmptyTitle,
   throughputPoints,
   throughputStats,
-  withGaps,
 } from "../lib/liveChart";
 import { LIVE_RANGES, historyPoints } from "../lib/liveHistory";
 import {
-  LIVE_GAP_MS,
   LIVE_POLL_MS,
   advanceLive,
   ratio,
@@ -78,13 +78,32 @@ export function LivePage() {
   });
   const history = stored.data ?? null;
 
+  // Stored samples of the live window, read once per visit so the charts
+  // start full. Not cached: a later visit needs the samples of its own window.
+  const seed = useQuery({
+    queryKey: ["live-seed"],
+    queryFn: () => {
+      const [from, to] = liveWindow(Date.now());
+      return liveHistory(Math.floor(from / 1000), Math.ceil(to / 1000));
+    },
+    enabled: time.isLive,
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: false,
+  });
+  const seedPoints = useMemo(
+    () => (seed.data ? historyPoints(seed.data) : []),
+    [seed.data],
+  );
+
   useEffect(() => {
     if (snapshot) setSeries((current) => advanceLive(current, snapshot));
   }, [snapshot]);
 
+  const windowStart = snapshot ? liveWindow(snapshot.at)[0] : 0;
   const livePoints = useMemo(
-    () => withGaps(series.points, LIVE_GAP_MS),
-    [series.points],
+    () => seededLivePoints(seedPoints, series.points, windowStart),
+    [seedPoints, series.points, windowStart],
   );
   const historyData = useMemo(
     () => (history ? historyPoints(history) : []),
