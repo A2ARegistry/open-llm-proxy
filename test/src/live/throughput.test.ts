@@ -3,6 +3,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   countRequests,
+  mergeThroughputRows,
   rollupThroughput,
   spreadThroughput,
   MAX_REQUEST_S,
@@ -288,5 +289,15 @@ describe("throughputRowsStatement", () => {
     }>();
     expect(results.map((r) => r.prefill_tokens)).toEqual([300, 450, 0, 0]);
     expect(results[3].tokens_output).toBe(0);
+  });
+});
+
+describe("mergeThroughputRows", () => {
+  it("adds pending rows and drops ones already read from D1", () => {
+    const merged = mergeThroughputRows(
+      [req({ id: "a", timestamp: 1 }), req({ id: "b", timestamp: 2 })],
+      [req({ id: "b", timestamp: 2 }), req({ id: "c", timestamp: 3 })],
+    );
+    expect(merged.map((r) => r.id)).toEqual(["a", "b", "c"]);
   });
 });

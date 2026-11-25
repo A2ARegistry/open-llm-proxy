@@ -128,17 +128,24 @@ export interface ThroughputStats {
   prefillPeak: number | null;
 }
 
+/** Complete 10 s buckets averaged into the headline rate (1 minute). */
+export const THROUGHPUT_NOW_BUCKETS = 6;
+
 /**
- * Latest complete and peak decode / prefill rate of a throughput series. The
- * last bucket is still filling (the window ends at the next 10 s boundary),
- * so "now" is the second-to-last point when there are at least two.
+ * Headline and peak decode / prefill rate of a throughput series. The last
+ * bucket is still filling (the window ends at the next 10 s boundary), so the
+ * headline is the mean of the `THROUGHPUT_NOW_BUCKETS` complete buckets before
+ * it: a single 10 s bucket is almost always empty, since a request only
+ * shows up once it has finished.
  */
 export function throughputStats(points: ThroughputPoint[]): ThroughputStats {
-  const latest =
-    points.length >= 2 ? points[points.length - 2] : points[points.length - 1];
+  const complete = points.length >= 2 ? points.slice(0, -1) : points;
+  const recent = complete.slice(-THROUGHPUT_NOW_BUCKETS);
+  const mean = (values: number[]) =>
+    values.length ? values.reduce((s, v) => s + v, 0) / values.length : null;
   return {
-    decodeNow: latest?.decodeTps ?? null,
-    prefillNow: latest?.prefillTps ?? null,
+    decodeNow: mean(recent.map((p) => p.decodeTps)),
+    prefillNow: mean(recent.map((p) => p.prefillTps)),
     decodePeak: points.length
       ? Math.max(...points.map((p) => p.decodeTps))
       : null,

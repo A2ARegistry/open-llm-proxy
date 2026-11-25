@@ -9,6 +9,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { liveRouter } from "~/src/api/live";
 import type { AppBindings } from "~/src/app";
 import { createApp } from "~/src/app";
+import { metricsBufferName } from "~/src/durable/metrics-buffer";
 import type { LiveSnapshot } from "~/src/live/snapshot";
 import type { SessionAuth } from "~/src/types";
 
@@ -140,6 +141,46 @@ describe("GET /api/live", () => {
     expect(t[1].ts - t[0].ts).toBe(10);
     expect(Math.max(...t.map((p) => p.decodeTps))).toBeGreaterThan(0);
     expect(t.at(-1)!.ts).toBeGreaterThan(NOW - 10);
+  });
+
+  it("counts finished requests still waiting in the metrics buffer", async () => {
+    const decodeTokens = (b: { snapshot: LiveSnapshot }) =>
+      b.snapshot.throughput.reduce((s, p) => s + p.decodeTps * 10, 0);
+    const before = decodeTokens(
+      (await get({ VPC_BINDINGS: `HALOGEN:${ORG}` })).body,
+    );
+
+    const buffer = env.METRICS_BUFFER.get(
+      env.METRICS_BUFFER.idFromName(metricsBufferName(ORG)),
+    );
+    await buffer.push([
+      {
+        organization_id: ORG,
+        api_key_id: null,
+        timestamp: NOW - 15,
+        provider: "local-m5",
+        model: "qwen",
+        method: "chat",
+        status_code: 200,
+        latency_ms: 10_000,
+        tokens_input: 100,
+        tokens_output: 500,
+        tokens_cached: null,
+        tokens_cache_read: null,
+        tokens_cache_write: null,
+        cost_usd: 0,
+        error_message: null,
+        cache_hit: 0,
+        ttft_ms: 1000,
+        decode_ms: 9000,
+      },
+    ]);
+
+    const after = decodeTokens(
+      (await get({ VPC_BINDINGS: `HALOGEN:${ORG}` })).body,
+    );
+    expect(after - before).toBeCloseTo(500, 5);
+    await buffer.flush();
   });
 
   it("box down still answers 200", async () => {

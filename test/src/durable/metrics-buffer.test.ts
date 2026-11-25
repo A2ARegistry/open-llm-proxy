@@ -162,4 +162,47 @@ describe("MetricsBuffer DO", () => {
     expect(body.size).toBeGreaterThanOrEqual(1);
     await s.fetch("http://internal/flush");
   });
+
+  it("returns unflushed throughput rows for the org's providers, then none after a flush", async () => {
+    const s = await stub();
+    const now = Math.floor(Date.now() / 1000);
+    await s.fetch("http://internal/push", {
+      method: "POST",
+      body: JSON.stringify({
+        entries: [
+          metric({
+            provider: "box",
+            timestamp: now,
+            latency_ms: 2000,
+            tokens_input: 1000,
+            tokens_cache_read: 600,
+          }),
+          metric({ provider: "box", timestamp: now, status_code: 500 }),
+          metric({ provider: "other", timestamp: now }),
+          metric({ provider: "box", timestamp: now, organization_id: "org_x" }),
+        ],
+      }),
+    });
+    const pending = await s.throughputRows(ORG, ["box"], now - 60, now + 10);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      timestamp: now,
+      latency_ms: 2000,
+      ttft_ms: 150,
+      decode_ms: 1_850,
+      prefill_tokens: 400,
+      tokens_output: 100,
+    });
+    expect(typeof pending[0].id).toBe("string");
+
+    await s.fetch("http://internal/flush");
+    expect(await s.throughputRows(ORG, ["box"], now - 60, now + 10)).toEqual(
+      [],
+    );
+  });
+
+  it("returns no throughput rows when no provider is given", async () => {
+    const s = await stub();
+    expect(await s.throughputRows(ORG, [], 0, 10)).toEqual([]);
+  });
 });
