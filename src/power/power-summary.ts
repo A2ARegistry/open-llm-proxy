@@ -63,11 +63,13 @@ export function effectiveSeconds(
   return Math.max(0, Math.min(p.end, now) - Math.max(p.start, dataStart));
 }
 
-/** What `t` would cost at `ref`; cached tokens are billed at the cache rates. */
+/**
+ * What `t` would cost at `ref`. `input` is stored with cache hits and writes
+ * already removed, so each count is billed at its own rate (as computeCostUsd).
+ */
 export function cloudCostUsd(t: TokenSums, ref: CloudReference): number {
-  const uncachedInput = Math.max(t.input - t.cacheRead - t.cacheWrite, 0);
   return (
-    (uncachedInput * ref.inputPer1m +
+    (t.input * ref.inputPer1m +
       t.output * ref.outputPer1m +
       t.cacheRead * ref.cacheReadPer1m +
       t.cacheWrite * ref.cacheWritePer1m) /

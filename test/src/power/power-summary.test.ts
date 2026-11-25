@@ -56,11 +56,12 @@ describe("summarize", () => {
     expect(totals.overheadKwh).toBeCloseTo(0.01);
     expect(totals.totalKwh).toBeCloseTo(0.03);
     expect(totals.electricityUsd).toBeCloseTo(0.006);
-    expect(totals.cloudUsd).toBeCloseTo(2 * 1 + 1 * 4 + 1 * 0.1); // uncached input 2M
-    expect(totals.savingsUsd).toBeCloseTo(6.1 - 0.006);
+    // stored input already excludes cached tokens: 3M in, 1M out, 1M cache read
+    expect(totals.cloudUsd).toBeCloseTo(3 * 1 + 1 * 4 + 1 * 0.1);
+    expect(totals.savingsUsd).toBeCloseTo(7.1 - 0.006);
     expect(totals.peakW).toBe(60);
     expect(totals.electricityPer1mOutputUsd).toBeCloseTo(0.006);
-    expect(totals.cloudPer1mOutputUsd).toBeCloseTo(6.1);
+    expect(totals.cloudPer1mOutputUsd).toBeCloseTo(7.1);
     expect(periods[0]).toMatchObject({ start: 0, end: 3600, coverage: 0.5 });
   });
 
@@ -179,13 +180,14 @@ describe("effectiveSeconds", () => {
 });
 
 describe("cloudCostUsd", () => {
-  it("never counts negative uncached input", () => {
+  it("prices stored input as uncached and cache tokens at cache rates", () => {
+    // tokens_input is stored with cache hits already removed (pi-ai parseChunkUsage)
     expect(
       cloudCostUsd(
-        { input: 10, output: 0, cacheRead: 20, cacheWrite: 0, requests: 1 },
-        settings.cloudReference!,
+        { input: 1e6, output: 0, cacheRead: 9e6, cacheWrite: 5e5, requests: 1 },
+        { ...settings.cloudReference!, cacheWritePer1m: 2 },
       ),
-    ).toBeCloseTo((20 * 0.1) / 1e6);
+    ).toBeCloseTo(1 + 0.9 + 1);
   });
 });
 

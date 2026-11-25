@@ -138,7 +138,7 @@ describe("GET /api/power", () => {
     expect(body.totals.coverage).toBeLessThanOrEqual(1);
     expect(body.totals.peakW).toBe(45);
     expect(body.totals.tokens.output).toBe(500);
-    expect(body.totals.cloudUsd).toBeCloseTo((1000 * 1 + 500 * 4) / 1e6);
+    expect(body.totals.cloudUsd).toBeCloseTo((1000 * 1 + 500 * 4) / 1e6); // no cache tokens
     expect(body.days).toHaveLength(utcDays(from, to));
     expect(body.projectionUsd).toBeGreaterThan(body.totals.electricityUsd);
     expect(body.idleFloor).toEqual({
