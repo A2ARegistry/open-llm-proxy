@@ -11,6 +11,8 @@ import {
   liveWindow,
   parseLiveRange,
   throughputPoints,
+  historySubtitle,
+  throughputEmptyTitle,
   throughputStats,
   withGaps,
 } from "../../../dashboard/src/lib/liveChart";
@@ -119,12 +121,19 @@ describe("throughputPoints / throughputStats", () => {
     });
   });
 
-  it("reports the latest and peak values", () => {
+  it("reports the latest complete bucket (not the in-progress one) and peaks", () => {
     expect(throughputStats(tp)).toEqual({
-      decodeNow: 30,
-      prefillNow: 800,
+      decodeNow: 55,
+      prefillNow: 200,
       decodePeak: 55,
       prefillPeak: 800,
+    });
+  });
+
+  it("uses the only point when there is just one", () => {
+    expect(throughputStats([tp[2]])).toMatchObject({
+      decodeNow: 30,
+      prefillNow: 800,
     });
   });
 
@@ -135,6 +144,31 @@ describe("throughputPoints / throughputStats", () => {
       decodePeak: null,
       prefillPeak: null,
     });
+  });
+});
+
+describe("throughputEmptyTitle", () => {
+  it("is null when the snapshot has a throughput series", () => {
+    expect(throughputEmptyTitle([{ ts: 0, decodeTps: 0, prefillTps: 0 }])).toBe(
+      null,
+    );
+  });
+
+  it("says there are no self-hosted providers for an empty series", () => {
+    expect(throughputEmptyTitle([])).toBe("No self-hosted providers");
+  });
+});
+
+describe("historySubtitle", () => {
+  it("names the resolution of raw rows", () => {
+    expect(historySubtitle(10)).toBe("Stored samples, 10 s resolution");
+  });
+
+  it("warns that rollups lag for 10-minute buckets and coarser", () => {
+    expect(historySubtitle(600)).toBe(
+      "Stored samples, 10 min resolution · latest ~15 min not yet rolled up",
+    );
+    expect(historySubtitle(3600)).toContain("not yet rolled up");
   });
 });
 

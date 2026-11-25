@@ -103,12 +103,17 @@ export interface ThroughputStats {
   prefillPeak: number | null;
 }
 
-/** Latest and peak decode / prefill rate of a throughput series. */
+/**
+ * Latest complete and peak decode / prefill rate of a throughput series. The
+ * last bucket is still filling (the window ends at the next 10 s boundary),
+ * so "now" is the second-to-last point when there are at least two.
+ */
 export function throughputStats(points: ThroughputPoint[]): ThroughputStats {
-  const last = points[points.length - 1];
+  const latest =
+    points.length >= 2 ? points[points.length - 2] : points[points.length - 1];
   return {
-    decodeNow: last?.decodeTps ?? null,
-    prefillNow: last?.prefillTps ?? null,
+    decodeNow: latest?.decodeTps ?? null,
+    prefillNow: latest?.prefillTps ?? null,
     decodePeak: points.length
       ? Math.max(...points.map((p) => p.decodeTps))
       : null,
@@ -116,6 +121,32 @@ export function throughputStats(points: ThroughputPoint[]): ThroughputStats {
       ? Math.max(...points.map((p) => p.prefillTps))
       : null,
   };
+}
+
+export const NO_SELF_HOSTED = "No self-hosted providers";
+
+/**
+ * Empty-state title for the Live throughput card, or null when the snapshot
+ * carries a throughput series. The series comes from the request log, so it
+ * is empty only when the org has no self-hosted (VPC) provider, whatever the
+ * inference server's state.
+ */
+export function throughputEmptyTitle(points: ThroughputPoint[]): string | null {
+  return points.length > 0 ? null : NO_SELF_HOSTED;
+}
+
+/** Rows coarser than this come from the cron's 10-minute rollups. */
+const ROLLUP_BUCKET_S = 600;
+
+/**
+ * Subtitle of the past-range view. 10-minute rollups are written by a 5-min
+ * cron for completed buckets only, so the newest ~15 min are not there yet.
+ */
+export function historySubtitle(bucketS: number): string {
+  const base = `Stored samples, ${bucketLabel(bucketS)} resolution`;
+  return bucketS >= ROLLUP_BUCKET_S
+    ? `${base} · latest ~15 min not yet rolled up`
+    : base;
 }
 
 /** True when a history response holds at least one stored row. */

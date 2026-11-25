@@ -261,6 +261,53 @@ describe("summarize", () => {
     expect(s.peakGpuTempC).toBe(80);
   });
 
+  it("peak memory shares use max used over avg total, per bucket", () => {
+    const s = summarize(
+      history({
+        host: {
+          binding: "h",
+          points: [
+            {
+              ts: 1000,
+              ok: 1,
+              samples: 60,
+              avg: host({
+                mem_used_bytes: 10,
+                mem_total_bytes: 100,
+                gpu_mem_used_bytes: 20,
+                gpu_mem_total_bytes: 200,
+              }),
+              max: { mem_used_bytes: 50, gpu_mem_used_bytes: 150 },
+            },
+            {
+              ts: 1010,
+              ok: 1,
+              samples: null,
+              avg: host({
+                mem_used_bytes: 60,
+                mem_total_bytes: 200,
+                gpu_mem_used_bytes: 40,
+                gpu_mem_total_bytes: 50,
+              }),
+              max: {},
+            },
+            {
+              ts: 1020,
+              ok: 1,
+              samples: null,
+              avg: host({ mem_used_bytes: 70, gpu_mem_used_bytes: 10 }),
+              max: {},
+            },
+          ],
+        },
+      }),
+    );
+    expect(s.peakRamPct).toBeCloseTo(50);
+    expect(s.peakRamBytes).toBe(70);
+    expect(s.peakGpuMemPct).toBeCloseTo(80);
+    expect(s.peakGpuMemBytes).toBe(150);
+  });
+
   it("peak decode falls back to avg without max columns", () => {
     const s = summarize(
       history({

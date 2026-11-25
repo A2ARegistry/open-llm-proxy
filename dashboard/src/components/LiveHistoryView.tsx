@@ -3,11 +3,11 @@
 import type { LiveHistory } from "../lib/api";
 import { fmtTps } from "../lib/format";
 import {
-  bucketLabel,
   fmtC,
   fmtGb,
   fmtPctValue,
   hasStoredSamples,
+  historySubtitle,
 } from "../lib/liveChart";
 import { summarize, type HistoryPoint } from "../lib/liveHistory";
 import { LiveGauge } from "./LiveGauge";
@@ -69,7 +69,7 @@ export function LiveHistoryView({
   const empty = <EmptyState title={NO_SAMPLES} />;
   return (
     <div className="space-y-6">
-      {header(`Stored samples, ${bucketLabel(history.bucketS)} resolution`)}
+      {header(historySubtitle(history.bucketS))}
 
       <Card
         title="Aggregate throughput"
@@ -101,12 +101,17 @@ export function LiveHistoryView({
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="System vitals" subtitle="Peak over the range">
-          <div className="grid grid-cols-3 gap-4 p-5">
+          <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-4">
             <LiveGauge label="CPU" percent={sum.peakCpuPct} />
+            <LiveGauge
+              label="RAM"
+              percent={sum.peakRamPct}
+              hint={`peak ${fmtGb(sum.peakRamBytes)}`}
+            />
             <LiveGauge label="GPU" percent={sum.peakGpuPct} />
             <LiveGauge
               label="GPU memory"
-              percent={null}
+              percent={sum.peakGpuMemPct}
               hint={`peak ${fmtGb(sum.peakGpuMemBytes)}`}
             />
           </div>

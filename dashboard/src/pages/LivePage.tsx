@@ -1,6 +1,7 @@
 // [fork] W11: live view of the self-hosted box (throughput, queue, KV,
-// cache, CPU/RAM/GPU, temperatures, power). Polls GET /api/live; history
-// lives only in this page's memory.
+// cache, CPU/RAM/GPU, temperatures, power). Live mode polls GET /api/live and
+// keeps ~10 min of points in the browser; past ranges read the stored history
+// (GET /api/live/history) through LiveHistoryView.
 import { LiveGauge } from "../components/LiveGauge";
 import { LiveHistoryView } from "../components/LiveHistoryView";
 import { LiveTempChart } from "../components/LiveTempChart";
@@ -21,6 +22,7 @@ import {
   fmtC,
   fmtGb,
   liveWindow,
+  throughputEmptyTitle,
   throughputPoints,
   throughputStats,
   withGaps,
@@ -137,6 +139,7 @@ export function LivePage() {
     : null;
   const domain = liveWindow(snapshot.at);
   const tps = throughputStats(snapshot.throughput);
+  const throughputEmpty = throughputEmptyTitle(snapshot.throughput);
   const memUsed =
     host?.memTotalBytes != null && host.memAvailableBytes != null
       ? host.memTotalBytes - host.memAvailableBytes
@@ -161,8 +164,8 @@ export function LivePage() {
           <h1 className="text-2xl font-semibold text-gray-900">Live</h1>
           <p className="text-sm text-gray-500">
             Throughput, capacity and hardware of the self-hosted server, every{" "}
-            {LIVE_POLL_MS / 1000} s. Hardware history is kept while this page is
-            open.
+            {LIVE_POLL_MS / 1000} s. This view keeps the last ~10 min; pick a
+            range for stored history.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -179,18 +182,18 @@ export function LivePage() {
       <Card
         title="Aggregate throughput"
         subtitle={
-          inf
+          throughputEmpty === null
             ? `Decode ${fmtTps(tps.decodeNow)} (peak ${fmtTps(tps.decodePeak)}) · Prefill ${fmtTps(tps.prefillNow)} (peak ${fmtTps(tps.prefillPeak)}) · from finished requests, 10 s buckets`
-            : UNAVAILABLE
+            : undefined
         }
       >
-        {inf ? (
+        {throughputEmpty === null ? (
           <LiveThroughputChart
             data={throughputPoints(snapshot.throughput)}
             domain={domain}
           />
         ) : (
-          <EmptyState title="Inference server unavailable" />
+          <EmptyState title={throughputEmpty} />
         )}
       </Card>
 
