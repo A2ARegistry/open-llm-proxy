@@ -58,6 +58,8 @@ export interface HostSnapshot {
   cpuSecondsTotal: number | null;
   memTotalBytes: number | null;
   memAvailableBytes: number | null;
+  /** File pages mapped into processes (model weights); MemAvailable counts them as reclaimable. */
+  memMappedBytes: number | null;
   gpuBusyPercent: number | null;
   gpuMemUsedBytes: number | null;
   gpuMemTotalBytes: number | null;
@@ -190,6 +192,7 @@ export function toHost(
     cpuSecondsTotal: promSum(m, "node_cpu_seconds_total"),
     memTotalBytes: promValue(m, "node_memory_MemTotal_bytes"),
     memAvailableBytes: promValue(m, "node_memory_MemAvailable_bytes"),
+    memMappedBytes: promValue(m, "node_memory_Mapped_bytes"),
     gpuBusyPercent: promValue(m, "node_drm_gpu_busy_percent"),
     gpuMemUsedBytes: promValue(m, "node_drm_memory_gtt_used_bytes"),
     gpuMemTotalBytes: promValue(m, "node_drm_memory_gtt_size_bytes"),

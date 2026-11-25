@@ -1,5 +1,5 @@
 // [fork] W12: stored 10-minute throughput rollups.
-import migration from "../../../migrations/0006_box_samples.sql?raw";
+import { createBoxTables } from "./box-schema";
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -48,13 +48,7 @@ beforeAll(async () => {
   await env.DB.exec(
     "CREATE TABLE IF NOT EXISTS provider_configs (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, provider TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, config TEXT NOT NULL, UNIQUE(organization_id, provider));",
   );
-  // exec needs one statement per line.
-  await env.DB.exec("DROP TABLE IF EXISTS throughput_rollups");
-  const create = migration
-    .split(";")
-    .map((s) => s.replace(/--.*$/gm, "").replace(/\s+/g, " ").trim())
-    .find((s) => s.startsWith("CREATE TABLE throughput_rollups"))!;
-  await env.DB.exec(create);
+  await createBoxTables(env.DB, ["throughput_rollups"]);
 });
 
 beforeEach(async () => {

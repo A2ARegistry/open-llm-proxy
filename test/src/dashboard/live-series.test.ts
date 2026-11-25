@@ -45,6 +45,7 @@ function host(over: Partial<HostSnapshot> = {}): HostSnapshot {
     cpuSecondsTotal: 200,
     memTotalBytes: 128,
     memAvailableBytes: 64,
+    memMappedBytes: 32,
     gpuBusyPercent: 90,
     gpuMemUsedBytes: 10,
     gpuMemTotalBytes: 100,

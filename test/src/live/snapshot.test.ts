@@ -74,6 +74,8 @@ describe("toHost", () => {
     expect(h.cpuIdleSecondsTotal).toBeGreaterThan(0);
     expect(h.cpuSecondsTotal!).toBeGreaterThan(h.cpuIdleSecondsTotal!);
     expect(h.memAvailableBytes!).toBeLessThan(h.memTotalBytes!);
+    expect(h.memMappedBytes!).toBeGreaterThan(0);
+    expect(h.memMappedBytes!).toBeLessThan(h.memTotalBytes!);
     expect(h.gpuBusyPercent).toBeGreaterThanOrEqual(0);
     expect(h.gpuBusyPercent).toBeLessThanOrEqual(100);
     expect(h.gpuMemUsedBytes!).toBeLessThanOrEqual(h.gpuMemTotalBytes!);

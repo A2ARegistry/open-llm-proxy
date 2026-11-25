@@ -27,6 +27,7 @@ const host = (o: Partial<HostAvg> = {}): HostAvg => ({
   cpu_busy_pct: null,
   mem_used_bytes: null,
   mem_total_bytes: null,
+  mem_in_use_bytes: null,
   gpu_busy_pct: null,
   gpu_mem_used_bytes: null,
   gpu_mem_total_bytes: null,
@@ -263,7 +264,7 @@ describe("summarize", () => {
     expect(s.peakGpuTempC).toBe(80);
   });
 
-  it("peak memory shares use max used over avg total, per bucket", () => {
+  it("peak memory shares use max in-use over avg total, per bucket", () => {
     const s = summarize(
       history({
         host: {
@@ -274,19 +275,19 @@ describe("summarize", () => {
               ok: 1,
               samples: 60,
               avg: host({
-                mem_used_bytes: 10,
+                mem_in_use_bytes: 10,
                 mem_total_bytes: 100,
                 gpu_mem_used_bytes: 20,
                 gpu_mem_total_bytes: 200,
               }),
-              max: { mem_used_bytes: 50, gpu_mem_used_bytes: 150 },
+              max: { mem_in_use_bytes: 50, gpu_mem_used_bytes: 150 },
             },
             {
               ts: 1010,
               ok: 1,
               samples: null,
               avg: host({
-                mem_used_bytes: 60,
+                mem_in_use_bytes: 60,
                 mem_total_bytes: 200,
                 gpu_mem_used_bytes: 40,
                 gpu_mem_total_bytes: 50,
@@ -297,7 +298,7 @@ describe("summarize", () => {
               ts: 1020,
               ok: 1,
               samples: null,
-              avg: host({ mem_used_bytes: 70, gpu_mem_used_bytes: 10 }),
+              avg: host({ mem_in_use_bytes: 70, gpu_mem_used_bytes: 10 }),
               max: {},
             },
           ],
