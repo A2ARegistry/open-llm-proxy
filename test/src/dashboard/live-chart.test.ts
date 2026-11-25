@@ -10,12 +10,14 @@ import {
   isLiveRange,
   liveWindow,
   parseLiveRange,
+  seededLivePoints,
   throughputPoints,
   historySubtitle,
   throughputEmptyTitle,
   throughputStats,
   withGaps,
 } from "../../../dashboard/src/lib/liveChart";
+import type { LivePoint } from "../../../dashboard/src/lib/liveSeries";
 import { describe, expect, it } from "vitest";
 
 describe("parseLiveRange / isLiveRange", () => {
@@ -232,5 +234,56 @@ describe("value formatters", () => {
     expect(fmtC(null)).toBe("—");
     expect(fmtPctValue(42.4)).toBe("42%");
     expect(fmtPctValue(null)).toBe("Unavailable");
+  });
+});
+
+describe("seededLivePoints", () => {
+  const pt = (t: number, c: number | null = 40): LivePoint => ({
+    t,
+    cpuPercent: c,
+    gpuBusyPercent: c,
+    cpuTempC: c,
+    gpuTempC: c,
+    ssdTempC: c,
+    gpuPowerW: c,
+  });
+  const isBreak = (p: LivePoint) => p.cpuTempC === null;
+
+  it("returns the polled points (with gaps) when there is no seed", () => {
+    const live = [pt(100_000), pt(102_000)];
+    expect(seededLivePoints([], live, 0)).toEqual(live);
+  });
+
+  it("returns the seed alone before the first poll", () => {
+    const seed = [pt(10_000), pt(20_000)];
+    expect(seededLivePoints(seed, [], 0)).toEqual(seed);
+  });
+
+  it("keeps 10 s seed points joined (no break between them)", () => {
+    const seed = [pt(10_000), pt(20_000), pt(30_000)];
+    const out = seededLivePoints(seed, [pt(32_000)], 0);
+    expect(out.map((p) => p.t)).toEqual([10_000, 20_000, 30_000, 32_000]);
+    expect(out.some(isBreak)).toBe(false);
+  });
+
+  it("drops seed points at or after the first poll and before the window", () => {
+    const seed = [pt(5_000), pt(10_000), pt(20_000), pt(30_000)];
+    const out = seededLivePoints(seed, [pt(20_000), pt(22_000)], 8_000);
+    expect(out.map((p) => p.t)).toEqual([10_000, 20_000, 22_000]);
+  });
+
+  it("breaks the line where stored samples end well before the first poll", () => {
+    const seed = [pt(10_000), pt(20_000)];
+    const out = seededLivePoints(seed, [pt(80_000)], 0);
+    expect(out).toHaveLength(4);
+    expect(isBreak(out[2])).toBe(true);
+    expect(out[2].t).toBeGreaterThan(20_000);
+    expect(out[2].t).toBeLessThan(80_000);
+  });
+
+  it("still marks gaps between polled points", () => {
+    const out = seededLivePoints([], [pt(100_000), pt(120_000)], 0);
+    expect(out).toHaveLength(3);
+    expect(isBreak(out[1])).toBe(true);
   });
 });

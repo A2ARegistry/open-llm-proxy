@@ -2,7 +2,7 @@
 import type { LiveHistory, ThroughputPoint } from "./api";
 import { pct } from "./format";
 import { LIVE_RANGES } from "./liveHistory";
-import { LIVE_HISTORY_POINTS, LIVE_POLL_MS } from "./liveSeries";
+import { LIVE_GAP_MS, LIVE_HISTORY_POINTS, LIVE_POLL_MS } from "./liveSeries";
 import type { RangePreset } from "./timeRange";
 
 export type LiveRange = RangePreset | "live";
@@ -72,6 +72,31 @@ export function axisTick(ms: number, spanMs: number): string {
   if (spanMs <= DAY_MS) return time;
   const date = d.toLocaleDateString([], { month: "short", day: "numeric" });
   return spanMs <= 14 * DAY_MS ? `${date}, ${time}` : date;
+}
+
+/** Stored samples are 10 s apart; a longer step between them is a gap. */
+const SEED_GAP_MS = 15_000;
+
+/**
+ * Live chart points: stored 10 s samples (`seed`, from GET /api/live/history,
+ * already gap-filled per bucket) from `windowStart` up to the first polled
+ * point, then the polled points with gaps marked. The page keeps the last
+ * ~10 min across a reload this way instead of starting empty. Seed points are
+ * further apart than LIVE_GAP_MS, so `withGaps` is applied to the polled
+ * points only; a break is added where the seed ends well before the polls
+ * start (stored rows reach D1 up to ~1 min late).
+ */
+export function seededLivePoints<T extends { t: number }>(
+  seed: T[],
+  points: T[],
+  windowStart: number,
+): T[] {
+  const live = withGaps(points, LIVE_GAP_MS);
+  const firstPoll = points.length ? points[0].t : Infinity;
+  const stored = seed.filter((p) => p.t >= windowStart && p.t < firstPoll);
+  if (!stored.length || !live.length) return [...stored, ...live];
+  const joint = withGaps([stored[stored.length - 1], live[0]], SEED_GAP_MS);
+  return [...stored, ...joint.slice(1, -1), ...live];
 }
 
 /** [from, to] ms of the Live view's browser history, ending at `atMs`. */
