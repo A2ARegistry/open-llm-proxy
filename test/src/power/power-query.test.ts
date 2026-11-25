@@ -113,6 +113,51 @@ const T0 = NOW - DAY; // bucket-aligned: NOW is a multiple of 600
 const range = [{ start: T0, end: NOW }];
 
 describe("loadPowerData energy", () => {
+  it("unaligned range start counts the edge rollup pro rata", async () => {
+    await host(600, T0, 20);
+    await host(600, T0 + 600, 20);
+    const { periods } = await loadPowerData(
+      e,
+      ORG,
+      [{ start: T0 + 300, end: T0 + 1200 }],
+      NOW,
+    );
+    expect(periods[0].measuredS).toBeCloseTo(900);
+    expect(periods[0].measuredWs).toBeCloseTo(20 * 900);
+  });
+
+  it("unaligned range end never counts more than the range", async () => {
+    await host(600, T0, 20);
+    const { periods } = await loadPowerData(
+      e,
+      ORG,
+      [
+        { start: T0, end: T0 + 450 },
+        { start: T0 + 450, end: T0 + 600 },
+      ],
+      NOW,
+    );
+    expect(periods.map((p) => p.measuredS)).toEqual([450, 150]);
+  });
+
+  it("raw rows older than the raw retention are not read", async () => {
+    // a bucket with no rollup 40 days ago: its raw rows would be pruned in prod
+    await host(10, NOW - 40 * DAY, 30);
+    const { periods } = await loadPowerData(
+      e,
+      ORG,
+      [{ start: NOW - 41 * DAY, end: NOW }],
+      NOW,
+    );
+    expect(periods[0].measuredS).toBe(0);
+  });
+
+  it("dataStart seeks rollups and raw rows", async () => {
+    await host(600, T0 + 1200, 5);
+    await host(10, T0 + 600, 5);
+    expect((await loadPowerData(e, ORG, range, NOW)).dataStart).toBe(T0 + 600);
+  });
+
   it("sums rollup rows", async () => {
     await host(600, T0, 20, { max: 50 });
     await host(600, T0 + 600, 40, { samples: 30, max: 70 });
