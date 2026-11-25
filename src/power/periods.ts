@@ -15,6 +15,8 @@ interface LocalDate {
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
+const MAX_FORMATTERS = 64;
+
 function formatter(tz: string): Intl.DateTimeFormat {
   let f = formatters.get(tz);
   if (!f) {
@@ -28,9 +30,16 @@ function formatter(tz: string): Intl.DateTimeFormat {
       minute: "numeric",
       second: "numeric",
     });
-    formatters.set(tz, f);
+    // `tz` comes from the query string and zone names are case-insensitive,
+    // so callers can send endless spellings: cap the cache.
+    if (formatters.size < MAX_FORMATTERS) formatters.set(tz, f);
   }
   return f;
+}
+
+/** Number of cached formatters (for tests). */
+export function formatterCacheSize(): number {
+  return formatters.size;
 }
 
 /** Wall-clock fields of `ts` (unix s) in `tz`. */

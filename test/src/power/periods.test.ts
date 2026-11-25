@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   dayPeriods,
+  formatterCacheSize,
   isValidTimeZone,
   monthPeriods,
   startOfMonth,
@@ -76,5 +77,20 @@ describe("isValidTimeZone", () => {
     expect(isValidTimeZone("Europe/Madrid")).toBe(true);
     expect(isValidTimeZone("UTC")).toBe(true);
     expect(isValidTimeZone("Mars/Base")).toBe(false);
+  });
+});
+
+describe("formatter cache", () => {
+  it("stays bounded for many spellings of a zone", () => {
+    // Zone names are case-insensitive, so a caller can send endless variants.
+    const variants = Array.from({ length: 200 }, (_, i) =>
+      "europe/madrid"
+        .split("")
+        .map((ch, j) => ((i >> j) & 1 ? ch.toUpperCase() : ch))
+        .join(""),
+    );
+    for (const tz of variants) expect(isValidTimeZone(tz)).toBe(true);
+    expect(formatterCacheSize()).toBeLessThanOrEqual(64);
+    expect(dayPeriods(0, 86400, variants[199])).toHaveLength(2);
   });
 });
