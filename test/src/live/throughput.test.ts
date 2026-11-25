@@ -5,6 +5,7 @@ import {
   countRequests,
   rollupThroughput,
   spreadThroughput,
+  MAX_REQUEST_S,
   throughputRowsStatement,
   type ThroughputRequest,
 } from "~/src/live/throughput";
@@ -235,6 +236,26 @@ describe("throughputRowsStatement", () => {
       prefill_tokens: 500,
       tokens_output: 50,
     });
+  });
+
+  it("stops at to + MAX_REQUEST_S instead of scanning to the present", async () => {
+    // Both started inside [1000, 2000); only the first ends before the bound.
+    await insert("long", {
+      ts: 2000 + MAX_REQUEST_S - 1,
+      latency: (MAX_REQUEST_S + 500) * 1000,
+    });
+    await insert("too-long", {
+      ts: 2000 + MAX_REQUEST_S,
+      latency: (MAX_REQUEST_S + 500) * 1000,
+    });
+    const { results } = await throughputRowsStatement(
+      env as unknown as Env,
+      "org_a",
+      ["box"],
+      1000,
+      2000,
+    ).all<{ timestamp: number }>();
+    expect(results.map((r) => r.timestamp)).toEqual([2000 + MAX_REQUEST_S - 1]);
   });
 
   it("keeps a request that started before the range and ends in it", async () => {

@@ -12,4 +12,8 @@ describe("rollupWindow", () => {
     expect(rollupWindow(9660).to).toBe(9600);
     expect(rollupWindow(9659).to).toBe(9000);
   });
+
+  it("takes a wider window", () => {
+    expect(rollupWindow(100_000, 86_400)).toEqual({ from: 13_200, to: 99_600 });
+  });
 });

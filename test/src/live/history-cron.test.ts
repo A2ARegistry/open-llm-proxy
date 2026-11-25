@@ -20,6 +20,30 @@ async function seed(ts: number) {
   await env.DB.batch(insertStatements(e, [infRow(ts)], []));
 }
 
+async function boxConfig() {
+  await env.DB.prepare(
+    "INSERT INTO provider_configs (id, organization_id, provider, config) VALUES ('c', 'org_a', 'box', ?)",
+  )
+    .bind(
+      JSON.stringify({
+        keys: [],
+        settings: { transport: "vpc", vpcBinding: "HALOGEN" },
+      }),
+    )
+    .run();
+}
+
+async function boxRequest(id: string, ts: number) {
+  await env.DB.prepare(
+    `INSERT INTO request_metrics
+       (id, organization_id, timestamp, provider, model, method, status_code,
+        latency_ms, tokens_input, tokens_output, cache_hit)
+     VALUES (?, 'org_a', ?, 'box', 'm', 'chat', 200, 60000, 6000, 12000, 0)`,
+  )
+    .bind(id, ts)
+    .run();
+}
+
 async function count(resolution: number): Promise<number> {
   const r = await env.DB.prepare(
     "SELECT COUNT(*) AS n FROM inference_samples WHERE resolution_s = ?",
@@ -85,25 +109,34 @@ describe("runHistoryMaintenance", () => {
     expect(await count(600)).toBe(1);
   });
 
-  it("rolls up throughput every run", async () => {
-    await env.DB.prepare(
-      "INSERT INTO provider_configs (id, organization_id, provider, config) VALUES ('c', 'org_a', 'box', ?)",
-    )
-      .bind(
-        JSON.stringify({
-          keys: [],
-          settings: { transport: "vpc", vpcBinding: "HALOGEN" },
-        }),
+  it("daily step recomputes 24 h of throughput, the 2 h window does not", async () => {
+    await boxConfig();
+    // Ends 02:01, 10 h before the run: outside the 2 h window.
+    await boxRequest("old", at("02:01") / 1000);
+    const withBinding = {
+      ...env,
+      VPC_BINDINGS: "HALOGEN:org_a",
+    } as unknown as Env;
+    const bucket = () =>
+      env.DB.prepare(
+        "SELECT requests FROM throughput_rollups WHERE organization_id = 'org_a' AND ts = ?",
       )
-      .run();
-    await env.DB.prepare(
-      `INSERT INTO request_metrics
-         (id, organization_id, timestamp, provider, model, method, status_code,
-          latency_ms, tokens_input, tokens_output, cache_hit)
-       VALUES ('r1', 'org_a', ?, 'box', 'm', 'chat', 200, 60000, 6000, 12000, 0)`,
-    )
-      .bind(at("11:25") / 1000)
-      .run();
+        .bind(at("02:00") / 1000)
+        .first<{ requests: number }>();
+
+    await env.SESSION_CACHE.put(MARKER, "1"); // daily step already done
+    await runHistoryMaintenance(withBinding, at("12:00"));
+    expect(await bucket()).toBeNull();
+
+    await env.SESSION_CACHE.delete(MARKER);
+    await runHistoryMaintenance(withBinding, at("12:00"));
+    expect((await bucket())?.requests).toBe(1);
+    expect(await env.SESSION_CACHE.get(MARKER)).not.toBeNull();
+  });
+
+  it("rolls up throughput every run", async () => {
+    await boxConfig();
+    await boxRequest("r1", at("11:25") / 1000);
     const withBinding = {
       ...env,
       VPC_BINDINGS: "HALOGEN:org_a",

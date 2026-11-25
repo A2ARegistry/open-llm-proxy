@@ -27,6 +27,13 @@ export interface ThroughputRollup {
 }
 
 const ROLLUP_S = 600;
+/**
+ * Upper bound on a request's latency, in seconds. Lets a past-window query
+ * stop at `to + MAX_REQUEST_S` instead of scanning to the present: we assume
+ * no request runs longer than 1 h, so one that finished later than that
+ * after the window cannot have started inside it.
+ */
+export const MAX_REQUEST_S = 3600;
 
 /** `[start, end)` of the prefill and decode phases, in unix seconds. */
 function phases(r: ThroughputRequest): {
@@ -142,7 +149,8 @@ function mean(values: number[]): number {
 
 /**
  * Rows of finished requests overlapping `[from, to)`, as a statement for the
- * caller's own `DB.batch`. Errors and response-cache hits are skipped;
+ * caller's own `DB.batch`. Bounded to requests finishing before
+ * `to + MAX_REQUEST_S`. Errors and response-cache hits are skipped;
  * `prefill_tokens` excludes prompt-cache reads.
  */
 export function throughputRowsStatement(
@@ -164,7 +172,8 @@ export function throughputRowsStatement(
         AND status_code < 400
         AND cache_hit = 0
         AND timestamp >= ?
+        AND timestamp < ?
         AND timestamp - latency_ms / 1000.0 < ?
       ORDER BY timestamp`,
-  ).bind(orgId, ...providers, from, to);
+  ).bind(orgId, ...providers, from, to + MAX_REQUEST_S, to);
 }

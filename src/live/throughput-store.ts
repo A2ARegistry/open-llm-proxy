@@ -1,6 +1,6 @@
 // [fork] W12: stored 10-minute request throughput per organization.
 import { vpcProviders } from "./provider-binding";
-import { rollupWindow } from "./rollup-window";
+import { RECENT_WINDOW_S, rollupWindow } from "./rollup-window";
 import {
   countRequests,
   rollupThroughput,
@@ -13,16 +13,18 @@ const SAMPLE_S = 10;
 const ROLLUP_S = 600;
 
 /**
- * Recompute the completed 10-minute buckets of the last 2 h for every org
- * that uses the box. Two D1 round trips (all reads, then all writes).
+ * Recompute the completed 10-minute buckets of the last `windowS` seconds
+ * (2 h on every cron tick, 24 h once a day to heal cron outages) for every
+ * org that uses the box. Two D1 round trips (all reads, then all writes).
  * `requests` counts the requests overlapping the bucket, so one long request
  * counts in each bucket it spans. Idle buckets are written with zeros.
  */
 export async function rollupThroughputRecent(
   env: Env,
   nowS: number,
+  windowS: number = RECENT_WINDOW_S,
 ): Promise<void> {
-  const { from, to } = rollupWindow(nowS);
+  const { from, to } = rollupWindow(nowS, windowS);
   const byOrg = new Map<string, string[]>();
   for (const p of await vpcProviders(env)) {
     byOrg.set(p.organizationId, [

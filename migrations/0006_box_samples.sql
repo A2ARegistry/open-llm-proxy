@@ -1,5 +1,6 @@
 -- [fork] W12: live history of the self-hosted box (inference server + host).
--- resolution_s 10  = raw samples (14 columns of data, `samples` and *_max NULL).
+-- resolution_s 10  = raw samples (`ok` plus 10 value columns per table;
+--                    `samples` and *_max NULL).
 -- resolution_s 600 = 10-minute rollups: avg columns are AVG of the ok=1 raw
 --                    rows, *_max the MAX, `samples` the count of those rows.
 -- ts is unix seconds (sample time, or bucket start for rollups).
@@ -27,6 +28,10 @@ CREATE TABLE inference_samples (
   PRIMARY KEY (binding, resolution_s, ts)
 ) WITHOUT ROWID;
 
+-- Rollup and prune filter on (resolution_s, ts) across all bindings; the PK
+-- leads with binding, so without this they scan the whole table.
+CREATE INDEX idx_inference_samples_res_ts ON inference_samples(resolution_s, ts);
+
 CREATE TABLE host_samples (
   binding TEXT NOT NULL,
   resolution_s INTEGER NOT NULL,
@@ -52,6 +57,8 @@ CREATE TABLE host_samples (
   gpu_power_w_max REAL,
   PRIMARY KEY (binding, resolution_s, ts)
 ) WITHOUT ROWID;
+
+CREATE INDEX idx_host_samples_res_ts ON host_samples(resolution_s, ts);
 
 -- 10-minute request throughput per organization, recomputed from
 -- request_metrics by the cron rollup. Never pruned.
