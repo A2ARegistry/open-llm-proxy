@@ -1,3 +1,4 @@
+import type { PowerSettings } from "../power/power-settings";
 import { TenantKeys, rowToTenantKeys } from "../tenants/encryption";
 import { newId, nowSeconds, safeJsonParse } from "../utils/crypto";
 
@@ -79,6 +80,8 @@ export interface TenantSettings {
     fromAddress?: string;
     provider?: string;
   };
+  // [fork] W13: electricity price, overhead and cloud reference for the Power page.
+  power?: PowerSettings;
   [key: string]: unknown;
 }
 
