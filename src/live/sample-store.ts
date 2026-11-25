@@ -1,4 +1,5 @@
 // [fork] W12: D1 storage of box samples: 10 s rows, 10-minute rollups, prune.
+import { rollupWindow } from "./rollup-window";
 import {
   HOST_COLUMNS,
   INFERENCE_COLUMNS,
@@ -7,7 +8,6 @@ import {
   type HostSampleRow,
   type InferenceSampleRow,
 } from "./sample-row";
-import { rollupWindow } from "./rollup-window";
 
 /** D1 allows 100 bound parameters per statement. */
 const MAX_PARAMS = 100;
